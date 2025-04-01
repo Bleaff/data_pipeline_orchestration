@@ -1,0 +1,134 @@
+# Overview:
+# This pyproject.toml file manages the build, packaging, and distribution of the library
+
+# Key Sections:
+# - [build-system]: Specifies the build requirements and backend (e.g., poetry, setuptools, wheel).
+# - [tool.poetry]: Includes details like name, version, description, authors, dependencies and more.
+# - [tool.poetry.optional-dependencies]: Provides additional, optional packages for extended features.
+# - [tool.*]: Configures settings for various tools (pytest, yapf, etc.) used in the project.
+
+# Installation:
+# The neudc library can be installed using the command: 'pip install neudc'
+# For development purposes, you can install the package in editable mode with: 'pip install -e .'
+# This approach allows for real-time code modifications without the need for re-installation.
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# Project settings -----------------------------------------------------------------------------------------------------
+[tool.poetry]
+name = "neudc"
+version = "0.1.0"  # Update as appropriate or use dynamic versioning
+description = "Premarkup framework for object detection tasks."
+readme = "README.md"
+authors = [
+    "Aleksander Dulebo",
+    "Ilya Basharov",
+]
+maintainers = [
+    "Aleksander Dulebo",
+    "Ilya Basharov",
+]
+license = "AGPL-3.0"
+keywords = ["machine-learning", "deep-learning", "computer-vision", "cvat"]
+classifiers = [
+    "Development Status :: 0 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "neudc.__version__"}
+
+# Required dependencies ------------------------------------------------------------------------------------------------
+[tool.poetry.dependencies]
+python = ">=3.9"
+pyyaml = "==6.0.2"
+jaxtyping = "==0.2.36"
+numba = "==0.60"
+numpy = ">2.0.0,<2.1.0"
+pytz = "==2024.2"
+opencv-python-headless = "==4.10.0.84"
+click = "==8.1.7"
+tqdm = "*"
+scipy = "*"
+pydantic = "*"
+torch = [
+    {version = "^2.2.1", source="pypi", markers = "sys_platform == 'darwin'"},
+    {version = "^2.2.1", source="torch_cuda121", markers = "sys_platform == 'linux' or sys_platform == 'win32'"},
+]
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.0.2"
+pytest-cov = "^6.0.0"
+
+# Optional dependencies ------------------------------------------------------------------------------------------------
+[tool.poetry.optional-dependencies]
+dev = [
+    "pre-commit==4.0.1",
+    "virtualenv==20.28.0",
+    "ipdb==0.13.13",
+]
+
+trt = [
+    "cuda-python==12.6.2.post1",
+    "tensorrt==10.5.0",
+]
+
+onnx = [
+    "onnxruntime-gpu",
+]
+
+# Project URLs --------------------------------------------------------------------------------------------------------
+[tool.poetry.urls]
+"Source" = "https://gitflic.ru/project/adulebo/stratim.git"
+
+# Tools settings -------------------------------------------------------------------------------------------------------
+[tool.isort]
+profile = "black"
+line_length = 120
+multi_line_output = 3
+include_trailing_comma = true
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.black]
+line-length = 120
+target-version = ['py311', 'py310', 'py312', 'py39']
+include = '\.pyi?$'
+
+[tool.yapf]
+based_on_style = "pep8"
+spaces_before_comment = 2
+column_limit = 120
+coalesce_brackets = true
+spaces_around_power_operator = true
+space_between_ending_comma_and_closing_bracket = true
+split_before_closing_bracket = false
+split_before_first_argument = false
+
+[tool.ruff]
+line-length = 120
+
+[tool.docformatter]
+wrap-summaries = 120
+wrap-descriptions = 120
+in-place = true
+pre-summary-newline = true
+close-quotes-on-newline = true
+
+[tool.codespell]
+ignore-words-list = "crate,nd,ned,strack,dota,ane,segway,fo,gool,winn,commend,bloc,nam,afterall"
+skip = '*.pt,*.pth,*.torchscript,*.onnx,*.tflite,*.pb,*.bin,*.param,*.mlmodel,*.engine,*.npy,*.data*,*.csv,*pnnx*,*venv*,*translat*,__pycache__*,*.ico,*.jpg,*.png,*.mp4,*.mov,/runs,/.git,./docs/??/*.md,./docs/mkdocs_??.yml'
