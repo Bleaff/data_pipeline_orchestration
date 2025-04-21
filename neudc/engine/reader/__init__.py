@@ -1,5 +1,4 @@
 """
-    Image/video reader factory
+Image/video reader factory
 
 """
-

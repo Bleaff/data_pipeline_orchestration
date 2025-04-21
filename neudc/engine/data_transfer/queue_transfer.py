@@ -1,11 +1,12 @@
-import sys
 import queue
+import sys
 from collections import deque
-
-import zmq
 from multiprocessing.util import register_after_fork
 
+import zmq
+
 from .queue_base import QueueLike
+
 
 class ZeroQueue(QueueLike):
     def __init__(self, port=None):
@@ -13,7 +14,7 @@ class ZeroQueue(QueueLike):
         self.context = zmq.Context()
         self.socket_pub = self.context.socket(zmq.PUB)
         if not self.port:
-            self.port = self.socket_pub.bind_to_random_port(f"tcp://*")
+            self.port = self.socket_pub.bind_to_random_port("tcp://*")
         else:
             self.socket_pub.bind(f"tcp://*:{self.port}")
 
@@ -24,13 +25,13 @@ class ZeroQueue(QueueLike):
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-        if sys.platform != 'win32':
+        if sys.platform != "win32":
             register_after_fork(self, ZeroQueue._after_fork)
 
     def __str__(self):
         return f"{self.__class__.__name__}(port={self.port})"
 
-    def get(self, timeout: float|int|None = None):
+    def get(self, timeout: float | int | None = None):
         timeout_millis = int(timeout * 1000) if timeout else None
 
         if self.socket_sub in dict(self.poller.poll(timeout=timeout_millis)):
@@ -74,7 +75,7 @@ class ZeroQueueConsumer(QueueLike):
         self.context = zmq.Context()
         self.socket_sub = self.context.socket(zmq.REP)
         if not self.port:
-            self.port = self.socket_sub.bind_to_random_port(f"tcp://*")
+            self.port = self.socket_sub.bind_to_random_port("tcp://*")
         else:
             self.socket_sub.connect(f"tcp://localhost:{self.port}")
 
@@ -95,9 +96,9 @@ class ZeroQueueConsumer(QueueLike):
             data = self.socket_sub.recv_pyobj(zmq.NOBLOCK)
             self.socket_sub.send(b"0", zmq.NOBLOCK)
             return data
-        
+
     def get_nowait(self):
-        if self.socket_sub in dict(self.poller.poll(timeout=1)): # ?
+        if self.socket_sub in dict(self.poller.poll(timeout=1)):  # ?
             try:
                 data = self.socket_sub.recv_pyobj(zmq.NOBLOCK)
                 self.socket_sub.send(b"0", zmq.NOBLOCK)
@@ -109,7 +110,7 @@ class ZeroQueueConsumer(QueueLike):
 
     def put(self, item):
         raise NotImplementedError
-    
+
     def put_nowait(self, item):
         raise NotImplementedError
 
@@ -119,7 +120,7 @@ class ZeroQueueProducer(QueueLike):
     TIMEOUT_MS = 100
     TMP_N = 40
 
-    def __init__(self, port=None, deque_len=None, dlq_db_path=""):      
+    def __init__(self, port=None, deque_len=None, dlq_db_path=""):
         self.port = port
         if deque_len:
             self.deque = deque(maxlen=deque_len)
@@ -136,7 +137,7 @@ class ZeroQueueProducer(QueueLike):
         self.socket_pub = self.context.socket(zmq.REQ)
         self.socket_pub.setsockopt(zmq.LINGER, 0)
         if not self.port:
-            self.port = self.socket_pub.bind_to_random_port(f"tcp://*")
+            self.port = self.socket_pub.bind_to_random_port("tcp://*")
         else:
             self.socket_pub.connect(f"tcp://localhost:{self.port}")
 
@@ -161,7 +162,7 @@ class ZeroQueueProducer(QueueLike):
         else:
             return False
 
-    def put(self, item, timeout: float|int|None = None):
+    def put(self, item, timeout: float | int | None = None):
         if len(self.deque) == self.DEQUE_LEN:
             old_item = self.deque.popleft()
             self.dlq.save_to_dlq_raw(old_item)
@@ -179,10 +180,10 @@ class ZeroQueueProducer(QueueLike):
                     self.stop()
                     self.init()
                     break
-                    
+
     def put_nowait(self, _item):
         self.socket_pub.send_pyobj(_item)
-        if self.socket_pub in dict(self.poller.poll(timeout=self.TIMEOUT_MS//5+1)):
+        if self.socket_pub in dict(self.poller.poll(timeout=self.TIMEOUT_MS // 5 + 1)):
             self.socket_pub.recv()
         else:
             self.dlq.save_to_dlq_raw(_item)
@@ -190,9 +191,8 @@ class ZeroQueueProducer(QueueLike):
             self.init()
             raise queue.Full
 
-
     def get(self, timeout):
         raise NotImplementedError
-    
+
     def get_nowait(self):
         raise NotImplementedError

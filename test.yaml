@@ -2,4 +2,4 @@ pipes:
   - AlertPipe:
       data_mining: AlertReader
       structure:
-        - inference: 
+        - inference:
