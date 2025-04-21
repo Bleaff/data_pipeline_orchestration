@@ -8,7 +8,7 @@ class BaseAttribute(BaseModel):
     """
     source_node_id: int = -1
 
-class ClassifiedObject(BaseAttribute):
+class Class(BaseAttribute):
     r"""
     Attribute showing belonging to a class.
     """
@@ -39,6 +39,7 @@ class Box(BaseAttribute):
     y2: float
     class_id: str
     score: float
+    labels : List[Class] = None
 
     reid: str = -1
     # feature_vector: Optional[torch.Tensor] = torch.zeros(1, dtype=torch.float32)
@@ -68,5 +69,8 @@ class Frame(BaseModel):
     r"""
     Frame with boxes.
     """
+    image: np.ndarray
+    timestamp: float
+    source_frame: str
     frame_id: int
     boxes: List[Box]

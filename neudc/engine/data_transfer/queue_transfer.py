@@ -120,7 +120,6 @@ class ZeroQueueProducer(QueueLike):
     TMP_N = 40
 
     def __init__(self, port=None, deque_len=None, dlq_db_path=""):      
-        self.dlq = DeadLetterQueue(self.TMP_N, dlq_db_path)
         self.port = port
         if deque_len:
             self.deque = deque(maxlen=deque_len)
