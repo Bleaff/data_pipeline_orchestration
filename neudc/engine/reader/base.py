@@ -22,7 +22,6 @@ class AReaderThread(ABC):
     def status(self) -> bool:
         pass
 
-    
     def put(self, message) -> None:
         for queue in self.out_queue:
             pass
