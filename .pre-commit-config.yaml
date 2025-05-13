@@ -2,61 +2,58 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
     rev: v5.0.0
     hooks:
-    - id: check-added-large-files
-      args:
-        - "--maxkb=150"
-      exclude: '^assets/'
-    - id: check-ast
-    - id: check-case-conflict
-    - id: check-json
-    - id: check-merge-conflict
-    - id: check-toml
-    - id: check-xml
-    - id: check-yaml
-    - id: debug-statements
-    - id: end-of-file-fixer
-    - id: name-tests-test
-    - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ["--maxkb=150"]
+        exclude: '^assets/'
+      - id: check-ast
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: name-tests-test
+      - id: trailing-whitespace
 
   - repo: https://github.com/asottile/pyupgrade.git
     rev: v3.19.1
     hooks:
       - id: pyupgrade
         name: Upgrade code
-        args:
-          - "--py39-plus"
+        args: ["--py39-plus"]
 
   - repo: https://github.com/psf/black.git
     rev: 25.1.0
     hooks:
       - id: black
         language: python
-        args:
-          - "--line-length=120"
+        args: ["--line-length=120"]
 
   - repo: https://github.com/PyCQA/isort.git
     rev: 6.0.1
     hooks:
       - id: isort
-        args:
-          - "--line-length=120"
-          - "--profile=black"
+        args: ["--line-length=120", "--profile=black"]
 
-  - repo: https://github.com/PyCQA/flake8.git
-    rev: 7.2.0
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.4.0
     hooks:
-      - id: flake8
-        language_version: python3
+      - id: ruff
         args:
-          - "--max-line-length=120"
+          - "--select=ALL"
           - "--ignore=E203,E266,E501,E722,W503,F403,F401,E704"
+          - "--target-version=py39"
+          - "--line-length=120"
 
   - repo: https://github.com/PyCQA/autoflake.git
     rev: v2.3.1
     hooks:
-    -   id: autoflake
+      - id: autoflake
         args:
           - "--remove-all-unused-imports"
+          - "--expand-star-imports"
           - "--in-place"
 
   - repo: https://github.com/codespell-project/codespell.git
@@ -64,22 +61,21 @@ repos:
     hooks:
       - id: codespell
         args:
-          - "--ignore-words-list=ACN,ALLE,COO,ACN,ALLE,COO,Synopsys,TE,Varian,Berkley,IHS"
-        exclude:
-            (?x)^(
-                .*\.toml
-            )$
+          - "--ignore-words-list=ACN,ALLE,COO,Synopsys,TE,Varian,Berkley,IHS"
+        exclude: '.*\.toml$'
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-  - repo: https://github.com/PyCQA/pydocstyle
-    rev: 6.3.0
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
     hooks:
-      - id: pydocstyle
-        args: ["--convention=pep257"]
-  - repo: https://github.com/terrencepreilly/darglint
-    rev: v1.8.1
+      - id: mypy
+        args: ["--ignore-missing-imports"]
+
+  - repo: https://github.com/PyCQA/doc8
+    rev: v1.1.2
     hooks:
-      - id: darglint
-        args: ["--docstring-style=pep257"]
+      - id: doc8
