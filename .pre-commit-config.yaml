@@ -43,9 +43,10 @@ repos:
       - id: ruff
         args:
           - "--select=ALL"
-          - "--ignore=E203,E266,E501,E722,W503,F403,F401,E704"
-          - "--target-version=py39"
+          - "--ignore=E203,E266,E501,E722,F403,F401,ANN101,ANN401,D203,D213,G004,PLR0913"
           - "--line-length=120"
+          - "--fix"
+          - "--unsafe-fixes"
 
   - repo: https://github.com/PyCQA/autoflake.git
     rev: v2.3.1

@@ -1,7 +1,16 @@
-from typing import Any
+"""Base class for box attributes.
 
-import numpy as np
+This class defines the base attributes for a box, including the source node ID.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    import numpy as np
 
 # === Base Attribute ===
 
@@ -28,6 +37,8 @@ class Segmentation(BaseAttribute):
     image: np.ndarray
 
     class Config:
+        """Pydantic config for Segmentation class."""
+
         arbitrary_types_allowed = True
 
 
@@ -52,9 +63,10 @@ class Box(BaseAttribute):
     score: float
     labels: list[Class] | None = None
     reid: str = "-1"
-    # feature_vector: torch.Tensor | None = None
 
     class Config:
+        """Service config for Box class."""
+
         arbitrary_types_allowed = True
 
 
@@ -71,9 +83,7 @@ class Keypoint(BaseModel):
 
 
 class Keypoints(BaseModel):
-    """
-    Dict[str, Keypoint]. Used by models to describe body parts, facial landmarks, etc.
-    """
+    """Dict[str, Keypoint]. Used by models to describe body parts, facial landmarks, etc."""
 
     keypoints: dict[str, Keypoint] = {}
     description: str = ""
@@ -92,6 +102,8 @@ class Frame(BaseModel):
     boxes: list[Box]
 
     class Config:
+        """Pydantic config for Frame class."""
+
         arbitrary_types_allowed = True
 
 
