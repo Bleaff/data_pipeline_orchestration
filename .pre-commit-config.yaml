@@ -43,7 +43,7 @@ repos:
       - id: ruff
         args:
           - "--select=ALL"
-          - "--ignore=E203,E266,E501,E722,F403,F401,ANN101,ANN401,D203,D213,G004,PLR0913"
+          - "--ignore=E203,E266,E501,E722,F403,F401,ANN101,ANN401,D203,D213,G004,PLR0913,S101"
           - "--line-length=120"
           - "--fix"
           - "--unsafe-fixes"

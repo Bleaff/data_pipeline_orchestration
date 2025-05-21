@@ -43,7 +43,7 @@ class ZeroQueue(QueueLike):
             port (Optional[int]): Port for PUB/SUB communication. If None, a random free port is chosen.
 
         """
-        self.port = port
+        self.port: int | None = port  # type: ignore[assignment]
         self.context = zmq.Context()
         self.socket_pub = self.context.socket(zmq.PUB)
         if not self.port:
@@ -61,6 +61,22 @@ class ZeroQueue(QueueLike):
     def __str__(self) -> str:
         """Magic methods for string representation of queue."""
         return f"{self.__class__.__name__}(port={self.port})"
+
+    @property
+    def port(self) -> int:
+        """Get the port number."""
+        return self.port
+
+    @port.setter
+    def port(self, value: int) -> None:
+        """Set the port number."""
+        if self.port != value:
+            self.port = value
+            self.socket_pub.bind(f"tcp://*:{self.port}")
+            self.socket_sub.connect(f"tcp://localhost:{self.port}")
+            self.socket_sub.subscribe("")
+            self.poller = zmq.Poller()
+            self.poller.register(self.socket_sub, zmq.POLLIN)
 
     def get(self, timeout: float | None = None) -> Any | None:
         """Receive an item from the queue with timeout.
