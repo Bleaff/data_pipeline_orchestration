@@ -31,3 +31,8 @@ def test_cross_instance_put_get() -> None:
 
     result = queue_receiver.get(timeout=1)
     assert result == test_msg
+
+
+if __name__ == "__main__":
+    test_queue_put_and_get()
+    test_cross_instance_put_get()

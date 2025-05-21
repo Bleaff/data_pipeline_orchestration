@@ -35,7 +35,7 @@ class ZeroQueue(QueueLike):
     Suitable for inter-process message passing on a single machine.
     """
 
-    def __init__(self, port: int | None = None) -> None:
+    def __init__(self, port: int = -1) -> None:
         """Initialize the ZeroQueue.
 
         Args:
@@ -43,13 +43,20 @@ class ZeroQueue(QueueLike):
             port (Optional[int]): Port for PUB/SUB communication. If None, a random free port is chosen.
 
         """
-        self.port: int | None = port  # type: ignore[assignment]
+        self._port: int = port  # type: ignore[assignment]
         self.context = zmq.Context()
         self.socket_pub = self.context.socket(zmq.PUB)
-        if not self.port:
-            self.port = self.socket_pub.bind_to_random_port("tcp://*")
+        if self.port == -1:
+            self._port = self.socket_pub.bind_to_random_port("tcp://*")
         else:
-            self.socket_pub.bind(f"tcp://*:{self.port}")
+            try:
+                self.socket_pub.bind(f"tcp://*:{self.port}")
+            except zmq.ZMQError as e:
+                if e.errno == zmq.EADDRINUSE:
+                    logger.exception(f"Port {self.port} is already in use.")
+                    self._port = self.socket_pub.bind_to_random_port("tcp://*")
+                else:
+                    logger.exception(f"Failed to bind to port {self.port}")
 
         self.socket_sub = self.context.socket(zmq.SUB)
         self.socket_sub.connect(f"tcp://localhost:{self.port}")
@@ -65,13 +72,13 @@ class ZeroQueue(QueueLike):
     @property
     def port(self) -> int:
         """Get the port number."""
-        return self.port
+        return self._port
 
     @port.setter
     def port(self, value: int) -> None:
         """Set the port number."""
-        if self.port != value:
-            self.port = value
+        if self._port != value:
+            self._port = value
             self.socket_pub.bind(f"tcp://*:{self.port}")
             self.socket_sub.connect(f"tcp://localhost:{self.port}")
             self.socket_sub.subscribe("")
