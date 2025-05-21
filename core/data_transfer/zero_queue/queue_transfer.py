@@ -112,15 +112,6 @@ class ZeroQueue(QueueLike):
         self.socket_sub.subscribe("")
 
         self.poller = zmq.Poller()
-        self.poller.register(self.socket_sub, zmq.POLLIN)
-
-    def __getstate__(self) -> tuple:
-        """Get the state of the object for pickling."""
-        return (self.socket_pub, self.socket_sub, self.poller)
-
-    def __setstate__(self, state: tuple) -> None:
-        """Set the state of the object after unpickling."""
-        self.socket_pub, self.socket_sub, self.poller = state
 
 
 class ZeroQueueConsumer(QueueLike):
@@ -297,7 +288,8 @@ class ZeroQueueProducer(QueueLike):
             if not self._put_from_deque(timeout=timeout_millis or self.TIMEOUT_MS):
                 self.stop()
                 self.init()
-                break
+                # retry once on the fresh connection
+                continue
 
     def put_nowait(self, item: Any) -> None:
         """Send a message immediately without blocking.
@@ -315,6 +307,8 @@ class ZeroQueueProducer(QueueLike):
         if self.socket_pub in dict(self.poller.poll(timeout=self.TIMEOUT_MS // 5 + 1)):
             self.socket_pub.recv()
         else:
+            # Preserve data - enqueue for later retry
+            self.deque.appendleft(item)
             self.stop()
             self.init()
             raise queue.Full
