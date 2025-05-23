@@ -25,6 +25,7 @@ from typing import Any
 import zmq
 
 from core.base.base_queue import QueueLike
+from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +36,36 @@ class ZeroQueue(QueueLike):
     Suitable for inter-process message passing on a single machine.
     """
 
-    def __init__(self, port: int = -1) -> None:
+    def __init__(
+        self,
+        port: int = -1,
+        mode: ZeroQueueMode = ZeroQueueMode.SUB,
+        contype: ZeroQueueConnectionType = ZeroQueueConnectionType.CONNECT,
+        message_topic: str = "",
+    ) -> None:
         """Initialize the ZeroQueue.
 
         Args:
         ----
             port (Optional[int]): Port for PUB/SUB communication. If None, a random free port is chosen.
+            mode (ZeroQueueMode): Mode of the queue (SUB(subscriber) or PUB(publisher)). Default is SUB.
+            contype (ZeroQueueConnectionType): Connection type (bind or connect). Default is CONNECT.
+            message_topic (str): Topic to subscribe to. Default is "" (no topic).
 
         """
         self._port: int = port  # type: ignore[assignment]
-        self.context = zmq.Context()
+        self.context: zmq.Context = zmq.Context()
+        self.mode: ZeroQueueMode = mode
+        self.contype: ZeroQueueConnectionType = contype
+
+        if mode == ZeroQueueMode.SUB:
+            self._init_sub(contype, message_topic)
+        elif mode == ZeroQueueMode.PUB:
+            self._init_pub(contype)
+        else:
+            msg = f"Invalid mode: {mode}"
+            raise ValueError(msg)
+
         self.socket_pub = self.context.socket(zmq.PUB)
         if self.port == -1:
             self._port = self.socket_pub.bind_to_random_port("tcp://*")
@@ -64,6 +85,64 @@ class ZeroQueue(QueueLike):
 
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
+
+    def _init_sub(self, contype: ZeroQueueConnectionType, message_topic: str) -> None:  # type: ignore[no-untyped-def]
+        """Initialize the subscriber socket. Ports gets from initialization.
+
+        Args:
+        ----
+            contype (ZeroQueueConnectionType): Connection type (bind or connect).
+            message_topic (str): Topic to subscribe to.
+
+        """
+        self.socket_pub = None
+        self.socket_sub = self.context.socket(zmq.SUB)
+        self._set_connection(self.socket_sub, contype)
+        self.socket_sub.subscribe(message_topic)
+        self.poller = zmq.Poller()
+        self.poller.register(self.socket_sub, zmq.POLLIN)
+
+    def _init_pub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
+        """Initialize the publisher socket. Ports gets from initialization.
+
+        Args:
+        ----
+            contype (ZeroQueueConnectionType): Connection type (bind or connect).
+
+        """
+        self.socket_pub = self.context.socket(zmq.PUB)
+        self._set_connection(self.socket_pub, contype)
+        self.socket_sub = None
+
+    def bind_port(self, port: int, socket: zmq.Context.socket) -> int:
+        """Bind the socket to a random port and return the port number."""
+        if port != -1:
+            socket.bind(f"tcp://*:{port}")
+            logger.info(f"ZeroQueue bound to port {port}")
+            return port
+        port = socket.bind_to_random_port("tcp://*")
+        logger.info(f"ZeroQueue bound to random port {port}")
+        return port
+
+    def _set_connection(self, socket: zmq.Context.socket, contype: ZeroQueueConnectionType) -> None:
+        """Set the connection type for the socket.
+
+        Sets the connection type for the socket based on the provided
+        connection type. If the connection type is CONNECT, the socket
+        connects to the specified port. If the connection type is BIND,
+        the socket binds to a random port.
+        """
+        if contype == ZeroQueueConnectionType.CONNECT:
+            if self.port != -1:
+                socket.connect(f"tcp://localhost:{self.port}")
+            else:
+                msg = "Port is not set"
+                raise ValueError(msg)
+        elif contype == ZeroQueueConnectionType.BIND:
+            self.bind_port(self.port, socket)
+        else:
+            msg = f"Invalid connection type: {contype}"
+            raise ValueError(msg)
 
     def __str__(self) -> str:
         """Magic methods for string representation of queue."""
