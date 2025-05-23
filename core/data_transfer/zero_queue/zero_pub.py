@@ -3,9 +3,10 @@
 This class extends the ZeroQueue class to publish data to a ZeroQueueSubscriber.
 """
 
-from zero_queue import ZeroQueue
-from zmq_state import ZeroQueueConnectionType
-from zmq_state import ZeroQueueMode
+from typing import NoReturn
+
+from core.data_transfer.zero_queue.zero_queue import ZeroQueue
+from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 
 class ZeroQueuePub(ZeroQueue):
@@ -13,26 +14,24 @@ class ZeroQueuePub(ZeroQueue):
 
     Extends the ZeroQueue class to publish data to a ZeroQueueSubscriber.
     """
-    def __init__(self, port = -1, contype = ZeroQueueConnectionType.CONNECT):
+
+    def __init__(self, port=-1, contype=ZeroQueueConnectionType.CONNECT) -> None:
+        """Initialize the ZeroQueuePub.
+
+        Args:
+        ----
+            port (Optional[int]): Port for PUB/SUB communication. If None, a random free port is chosen.
+            contype (ZeroQueueConnectionType): Connection type (bind or connect). Default is CONNECT.
+
+        """
         super().__init__(port, mode=ZeroQueueMode.PUB, contype=contype)
-    
-    def get(self, timeout = None):
-        raise NotImplementedError("ZeroQueuePub does not support get() method.")
-    def get_nowait(self):
-        raise NotImplementedError("ZeroQueuePub does not support get_nowait() method.")
-        
-if __name__ == "__main__":
-    import logging
-    import time
 
-    logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger(__name__)
-    port = int(input("Enter port: "))
-    # Example usage
-    pub = ZeroQueuePub(port=port)
-    logger.info(f"ZeroQueuePub bound to port {pub.port}")
+    def get(self, timeout=None) -> NoReturn:
+        """Protect get method not supported for ZeroQueuePub."""
+        msg = "ZeroQueuePub does not support get() method."
+        raise NotImplementedError(msg)
 
-    while True:
-        message = input("Enter message to send: ")
-        ret = pub.put(message)
-        time.sleep(1)
+    def get_nowait(self) -> NoReturn:
+        """Protect get_nowait method not supported for ZeroQueuePub."""
+        msg = "ZeroQueuePub does not support get_nowait() method."
+        raise NotImplementedError(msg)

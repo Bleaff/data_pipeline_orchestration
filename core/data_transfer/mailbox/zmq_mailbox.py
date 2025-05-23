@@ -17,14 +17,13 @@ Typical usage:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import zmq
+import logging
+from typing import Any
 
 from core.base.base_mailbox import BaseMailbox
+from core.data_transfer.zero_queue import ZeroQueuePub, ZeroQueueSub
 
-if TYPE_CHECKING:
-    import logging
+logging.basicConfig(level=logging.DEBUG)
 
 
 class ZMQMailbox(BaseMailbox[dict]):
@@ -32,62 +31,39 @@ class ZMQMailbox(BaseMailbox[dict]):
 
     def __init__(
         self,
-        address: str = "tcp://127.0.0.1:5555",
         *,
-        bind: bool = True,
         logger: logging.Logger | None = None,
     ) -> None:
         """Initialize the ZeroMQ mailbox."""
-        self.address = address
-        self.bind = bind
-        self.context = zmq.Context()
-        self._started = False
         self.logger = logger
-
-    def start(self) -> None:
-        """Start the mailbox."""
-        if self._started:
-            msg = "ZMQMailbox already started"
-            raise RuntimeError(msg)
-
-        self.socket: zmq.Socket = self.context.socket(zmq.PAIR)
-        self.socket.linger = 0
-        (self.socket.bind if self.bind else self.socket.connect)(self.address)
-        self._started = True
-        if self.logger:
-            self.logger.debug(f"ZMQMailbox started at {self.address} (bind={self.bind})")
+        self.pub_sockets: dict[int, ZeroQueuePub] = {}
+        self.sub_queue: ZeroQueueSub = ZeroQueueSub()
+        self.consume_port: int = self.sub_queue.port
+        if not logger:
+            self.logger = logging.getLogger(__name__)
 
     def stop(self) -> None:
         """Stop the mailbox."""
-        self.socket.close(0)
-        self.context.term()
-        self._started = False
-        if self.logger:
-            self.logger.debug(f"ZMQMailbox stopped at {self.address}")
+        self.sub_queue.stop()
+        for pub_socket in self.pub_sockets.values():
+            pub_socket.stop()
 
-    def send(self, message: dict) -> None:
+    def send(self, message: Any) -> None:
         """Send a message to the mailbox."""
-        if not self._started or self.socket is None:
-            msg = "Mailbox not started"
-            raise RuntimeError(msg)
-        self.socket.send_json(message)
+        for pub_socket in self.pub_sockets.values():
+            pub_socket.put(message)
         if self.logger:
-            self.logger.debug(f"[SEND] → {self.address}: {message}")
+            self.logger.debug(f"[SEND] → {message}")
 
     def receive(self) -> dict:
         """Receive a message from the mailbox."""
-        message = self.socket.recv_json()
+        message = self.sub_queue.get_nowait()
         if self.logger:
-            self.logger.debug(f"[RECEIVE] ← {self.address}: {message}")
+            self.logger.debug(f"[RECV] ← {message}")
         return message
 
-    def has_messages(self) -> bool:
-        """Check if there are messages available in the socket."""
-        return self.socket.poll(timeout=0) == zmq.POLLIN
+    def add_publisher(self, port: int) -> None:
+        self.pub_sockets[port] = ZeroQueuePub(port=port)
 
-    def clear(self) -> None:
-        """Clear all pending messages in the mailbox."""
-        while self.socket.poll(timeout=0) == zmq.POLLIN:
-            dropped = self.socket.recv_json(zmq.NOBLOCK)
-            if self.logger:
-                self.logger.debug(f"[CLEAR] Dropped message: {dropped}")
+    def remove_publisher(self, port: int) -> None:
+        self.pub_sockets.pop(port)

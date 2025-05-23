@@ -20,13 +20,6 @@ class BaseMailbox(ABC, Generic[T]):
     """
 
     @abstractmethod
-    def start(self) -> None:
-        """Start the mailbox.
-
-        This method should be overridden by subclasses to implement the specific startup logic for the mailbox.
-        """
-
-    @abstractmethod
     def stop(self) -> None:
         """Stop the mailbox.
 
@@ -45,18 +38,4 @@ class BaseMailbox(ABC, Generic[T]):
         """Receive a message from the mailbox.
 
         This method should be overridden by subclasses to implement the specific receiving logic for the mailbox.
-        """
-
-    @abstractmethod
-    def has_messages(self) -> bool:
-        """Check if there are messages in the mailbox.
-
-        This method should be overridden by subclasses to implement the specific logic for checking messages in the mailbox.
-        """
-
-    @abstractmethod
-    def clear(self) -> None:
-        """Clear the mailbox.
-
-        This method should be overridden by subclasses to implement the specific logic for clearing the mailbox.
         """

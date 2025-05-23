@@ -20,12 +20,12 @@ concurrently without worrying about race conditions.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import zmq
 
-# from core.base.base_queue import QueueLike
-from zmq_state import ZeroQueueConnectionType, ZeroQueueMode
+from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ class ZeroQueue:
         port: int = -1,
         mode: ZeroQueueMode = ZeroQueueMode.SUB,
         contype: ZeroQueueConnectionType = ZeroQueueConnectionType.CONNECT,
+        queue_size: int = 100,
     ) -> None:
         """Initialize the ZeroQueue.
 
@@ -67,7 +68,7 @@ class ZeroQueue:
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_sub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
+    def _init_sub(self, contype: ZeroQueueConnectionType, queue_size: int = 100) -> None:  # type: ignore[no-untyped-def]
         """Initialize the subscriber socket. Ports gets from initialization.
 
         Args:
@@ -75,14 +76,15 @@ class ZeroQueue:
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
 
         """
-        self.socket_pub = None
-        self.socket_sub = self.context.socket(zmq.SUB)
+        self.socket_pub: zmq.Context.socket | None = None
+        self.socket_sub: zmq.Context.socket | None = self.context.socket(zmq.SUB)
+        self.socket_sub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_sub, contype)
         self.socket_sub.subscribe("")
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_pub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
+    def _init_pub(self, contype: ZeroQueueConnectionType, queue_size: int = 100) -> None:  # type: ignore[no-untyped-def]
         """Initialize the publisher socket. Ports gets from initialization.
 
         Args:
@@ -90,11 +92,12 @@ class ZeroQueue:
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
 
         """
-        self.socket_pub = self.context.socket(zmq.PUB)
+        self.socket_pub: zmq.Context.socket | None = self.context.socket(zmq.PUB)
+        self.socket_pub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_pub, contype)
-        self.socket_sub = None
+        self.socket_sub: zmq.Context.socket | None = None
 
-    def bind_port(self, port: int, socket: zmq.Context.socket) -> int:
+    def _bind_port(self, port: int, socket: zmq.Context.socket) -> int:
         """Bind the socket to a random port and return the port number."""
         if port != -1:
             socket.bind(f"tcp://*:{port}")
@@ -115,11 +118,12 @@ class ZeroQueue:
         if contype == ZeroQueueConnectionType.CONNECT:
             if self.port != -1:
                 socket.connect(f"tcp://localhost:{self.port}")
+                logger.debug(f"ZeroQueue connected to port {self.port}")
             else:
                 msg = "Port is not set"
                 raise ValueError(msg)
         elif contype == ZeroQueueConnectionType.BIND:
-            self.bind_port(self.port, socket)
+            self.port = self._bind_port(self.port, socket)
         else:
             msg = f"Invalid connection type: {contype}"
             raise ValueError(msg)
@@ -138,11 +142,6 @@ class ZeroQueue:
         """Set the port number."""
         if self._port != value:
             self._port = value
-            self.socket_pub.bind(f"tcp://*:{self.port}")
-            self.socket_sub.connect(f"tcp://localhost:{self.port}")
-            self.socket_sub.subscribe("")
-            self.poller = zmq.Poller()
-            self.poller.register(self.socket_sub, zmq.POLLIN)
 
     def get(self, timeout: float | None = None) -> Any | None:
         """Receive an item from the queue with timeout.
@@ -163,7 +162,10 @@ class ZeroQueue:
 
     def get_nowait(self) -> Any:
         """Receive a message without waiting."""
-        return self.socket_sub.recv_pyobj(zmq.NOBLOCK)
+        socks = dict(self.poller.poll(timeout=0))
+        if self.socket_sub in socks:
+            return self.socket_sub.recv_pyobj(zmq.NOBLOCK)
+        return None
 
     def put(self, item: Any) -> None:
         """Send a message.
@@ -173,6 +175,7 @@ class ZeroQueue:
             item (Any): Object to send.
 
         """
+        time.sleep(0.001)
         self.socket_pub.send_pyobj(item)
 
     def put_nowait(self, item: Any) -> None:
@@ -199,3 +202,11 @@ class ZeroQueue:
         self.socket_sub.subscribe("")
 
         self.poller = zmq.Poller()
+
+    def stop(self) -> None:
+        """Close sockets and terminate context."""
+        if self.socket_pub:
+            self.socket_pub.close()
+        if self.socket_sub:
+            self.socket_sub.close()
+        self.context.term()
