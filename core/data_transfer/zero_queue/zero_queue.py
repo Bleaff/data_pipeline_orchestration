@@ -24,13 +24,13 @@ from typing import Any
 
 import zmq
 
-from core.base.base_queue import QueueLike
-from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
+# from core.base.base_queue import QueueLike
+from zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 logger = logging.getLogger(__name__)
 
 
-class ZeroQueue(QueueLike):
+class ZeroQueue:
     """PUB/SUB-based queue implementation using ZeroMQ.
 
     Suitable for inter-process message passing on a single machine.
@@ -41,7 +41,6 @@ class ZeroQueue(QueueLike):
         port: int = -1,
         mode: ZeroQueueMode = ZeroQueueMode.SUB,
         contype: ZeroQueueConnectionType = ZeroQueueConnectionType.CONNECT,
-        message_topic: str = "",
     ) -> None:
         """Initialize the ZeroQueue.
 
@@ -50,7 +49,6 @@ class ZeroQueue(QueueLike):
             port (Optional[int]): Port for PUB/SUB communication. If None, a random free port is chosen.
             mode (ZeroQueueMode): Mode of the queue (SUB(subscriber) or PUB(publisher)). Default is SUB.
             contype (ZeroQueueConnectionType): Connection type (bind or connect). Default is CONNECT.
-            message_topic (str): Topic to subscribe to. Default is "" (no topic).
 
         """
         self._port: int = port  # type: ignore[assignment]
@@ -59,46 +57,28 @@ class ZeroQueue(QueueLike):
         self.contype: ZeroQueueConnectionType = contype
 
         if mode == ZeroQueueMode.SUB:
-            self._init_sub(contype, message_topic)
+            self._init_sub(contype)
         elif mode == ZeroQueueMode.PUB:
             self._init_pub(contype)
         else:
             msg = f"Invalid mode: {mode}"
             raise ValueError(msg)
 
-        self.socket_pub = self.context.socket(zmq.PUB)
-        if self.port == -1:
-            self._port = self.socket_pub.bind_to_random_port("tcp://*")
-        else:
-            try:
-                self.socket_pub.bind(f"tcp://*:{self.port}")
-            except zmq.ZMQError as e:
-                if e.errno == zmq.EADDRINUSE:
-                    logger.exception(f"Port {self.port} is already in use.")
-                    self._port = self.socket_pub.bind_to_random_port("tcp://*")
-                else:
-                    logger.exception(f"Failed to bind to port {self.port}")
-
-        self.socket_sub = self.context.socket(zmq.SUB)
-        self.socket_sub.connect(f"tcp://localhost:{self.port}")
-        self.socket_sub.subscribe("")
-
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_sub(self, contype: ZeroQueueConnectionType, message_topic: str) -> None:  # type: ignore[no-untyped-def]
+    def _init_sub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
         """Initialize the subscriber socket. Ports gets from initialization.
 
         Args:
         ----
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
-            message_topic (str): Topic to subscribe to.
 
         """
         self.socket_pub = None
         self.socket_sub = self.context.socket(zmq.SUB)
         self._set_connection(self.socket_sub, contype)
-        self.socket_sub.subscribe(message_topic)
+        self.socket_sub.subscribe("")
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
