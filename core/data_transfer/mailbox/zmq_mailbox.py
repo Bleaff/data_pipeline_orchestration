@@ -16,12 +16,15 @@ Typical usage:
 """
 
 from __future__ import annotations
-
+from queue import Queue, Empty, Full
+import time
 import logging
 from typing import Any
 
 from core.base.base_mailbox import BaseMailbox
 from core.data_transfer.zero_queue import ZeroQueuePub, ZeroQueueSub
+import threading
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -32,6 +35,7 @@ class ZMQMailbox(BaseMailbox[dict]):
     def __init__(
         self,
         *,
+        message_queue_size: int = 20,
         logger: logging.Logger | None = None,
     ) -> None:
         """Initialize the ZeroMQ mailbox."""
@@ -39,8 +43,39 @@ class ZMQMailbox(BaseMailbox[dict]):
         self.pub_sockets: dict[int, ZeroQueuePub] = {}
         self.sub_queue: ZeroQueueSub = ZeroQueueSub()
         self.consume_port: int = self.sub_queue.port
+        self._message_queue: Queue = Queue(message_queue_size)
+        self._running = False
+        self._thread = None
+
         if not logger:
             self.logger = logging.getLogger(__name__)
+    def _receiver_loop(self) -> None:
+        """Thread loop for receiving messages from the ZeroMQ subscriber."""
+        _unsent_message: Any = None
+        while self._running:
+            try:
+                message = self.sub_queue.get(timeout=1)
+                self._message_queue.put(message, timeout=1)
+                if self.logger:
+                    self.logger.debug(f"[ZMQMailbox] [RECV] ← message")
+            except Empty:
+                continue
+            except Full:
+                self.logger.warning("Message queue is full")
+                while self._message_queue.full():
+                    time.sleep(0.01)  # Sleep briefly to avoid busy waiting
+                self._message_queue.put(_unsent_message)
+                self.logger.debug(f"[_MESSAGE_QUEUE] [SENDING] -> unsent message")
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"Error in receiver loop: {e}")
+            
+    def start(self) -> None:
+        """Start the receiving thread."""
+        self._running = True
+        self._thread = threading.Thread(target=self._receiver_loop, daemon=True)
+        self._thread.start()
+
 
     def stop(self) -> None:
         """Stop the mailbox."""
