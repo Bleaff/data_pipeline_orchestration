@@ -9,8 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-if TYPE_CHECKING:
-    import numpy as np
+import numpy as np
 
 # === Base Attribute ===
 

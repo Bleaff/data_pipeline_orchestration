@@ -25,7 +25,7 @@ from typing import Any
 
 import zmq
 
-from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
+from core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 logger = logging.getLogger(__name__)
 

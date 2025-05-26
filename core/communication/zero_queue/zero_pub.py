@@ -5,8 +5,8 @@ This class extends the ZeroQueue class to publish data to a ZeroQueueSubscriber.
 
 from typing import NoReturn
 
-from core.data_transfer.zero_queue.zero_queue import ZeroQueue
-from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
+from core.communication.zero_queue.zero_queue import ZeroQueue
+from core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 
 class ZeroQueuePub(ZeroQueue):

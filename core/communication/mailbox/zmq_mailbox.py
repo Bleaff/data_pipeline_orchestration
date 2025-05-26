@@ -22,7 +22,7 @@ import logging
 from typing import Any
 
 from core.base.base_mailbox import BaseMailbox
-from core.data_transfer.zero_queue import ZeroQueuePub, ZeroQueueSub
+from core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 import threading
 
 
@@ -37,6 +37,7 @@ class ZMQMailbox(BaseMailbox[dict]):
         *,
         message_queue_size: int = 20,
         logger: logging.Logger | None = None,
+        name: str = "ZMQMailbox",
     ) -> None:
         """Initialize the ZeroMQ mailbox."""
         self.logger = logger
@@ -46,9 +47,12 @@ class ZMQMailbox(BaseMailbox[dict]):
         self._message_queue: Queue = Queue(message_queue_size)
         self._running = False
         self._thread = None
+        self._join_timeout = 0.5
+        self.name = name
 
         if not logger:
             self.logger = logging.getLogger(__name__)
+        self.start()
     def _receiver_loop(self) -> None:
         """Thread loop for receiving messages from the ZeroMQ subscriber."""
         _unsent_message: Any = None
@@ -57,7 +61,7 @@ class ZMQMailbox(BaseMailbox[dict]):
                 message = self.sub_queue.get(timeout=1)
                 self._message_queue.put(message, timeout=1)
                 if self.logger:
-                    self.logger.debug(f"[ZMQMailbox] [RECV] ← message")
+                    self.logger.debug(f"[{self.name}][RECV] ← message")
             except Empty:
                 continue
             except Full:
@@ -65,7 +69,7 @@ class ZMQMailbox(BaseMailbox[dict]):
                 while self._message_queue.full():
                     time.sleep(0.01)  # Sleep briefly to avoid busy waiting
                 self._message_queue.put(_unsent_message)
-                self.logger.debug(f"[_MESSAGE_QUEUE] [SENDING] -> unsent message")
+                self.logger.debug(f"[{self.name}][SENDING] -> unsent message")
             except Exception as e:
                 if self.logger:
                     self.logger.error(f"Error in receiver loop: {e}")
@@ -80,25 +84,42 @@ class ZMQMailbox(BaseMailbox[dict]):
     def stop(self) -> None:
         """Stop the mailbox."""
         self.sub_queue.stop()
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=self._join_timeout)
+            
         for pub_socket in self.pub_sockets.values():
             pub_socket.stop()
 
     def send(self, message: Any) -> None:
         """Send a message to the mailbox."""
         for pub_socket in self.pub_sockets.values():
+            if self.logger:
+                self.logger.debug(f"[{self.name}][START SENDING] → {time.time()}")
             pub_socket.put(message)
+            if self.logger:
+                self.logger.debug(f"[{self.name}][END SENDING] → {time.time()}")
         if self.logger:
-            self.logger.debug(f"[SEND] → {message}")
+            self.logger.debug(f"[{self.name}][SEND] → {type(message)}")
 
     def receive(self) -> dict:
         """Receive a message from the mailbox."""
-        message = self.sub_queue.get_nowait()
-        if self.logger:
-            self.logger.debug(f"[RECV] ← {message}")
+        try:
+            message = self._message_queue.get(timeout=0.1)
+            if self.logger:
+                self.logger.debug(f"[{self.name}][RECV][{time.time()}] ← {type(message)}")
+        except Empty:
+            message = None
         return message
 
     def add_publisher(self, port: int) -> None:
+        """Connect a publisher to the mailbox. This method is not thread-safe."""
         self.pub_sockets[port] = ZeroQueuePub(port=port)
+        if self.logger:
+            self.logger.debug(f"[{self.name}][Added publisher] → port:{port}")
 
     def remove_publisher(self, port: int) -> None:
-        self.pub_sockets.pop(port)
+        """Removes a publisher from the mailbox."""
+        rm_pub = self.pub_sockets.pop(port)
+        if self.logger:
+            self.logger.debug(f"[{self.name}][Removed publisher] → {rm_pub}")

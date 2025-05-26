@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import zmq
 from core.data_transfer.zero_queue.zero_pub import ZeroQueuePub
 from core.data_transfer.zero_queue.zero_queue import ZeroQueue
 from core.data_transfer.zero_queue.zero_sub import ZeroQueueSub
@@ -55,11 +56,17 @@ def test_zeroqueue_put_sends_object(mock_zmq) -> None:
 
 def test_zeroqueue_get_nowait_receives_object(mock_zmq) -> None:
     test_msg = {"msg": "hello"}
-    mock_zmq["socket"].recv_pyobj.return_value = test_msg
+    socket = mock_zmq["socket"]
+    poller = mock_zmq["poller"]
+
+    socket.recv_pyobj.return_value = test_msg
+    poller.poll.return_value = [(socket, zmq.POLLIN)]  # <-- вот это фиксит
 
     sub = ZeroQueue(port=5555, mode=ZeroQueueMode.SUB, contype=ZeroQueueConnectionType.CONNECT)
     result = sub.get_nowait()
+
     assert result == test_msg
+
 
 
 def test_zeroqueue_get_timeout_returns_none(mock_zmq) -> None:
