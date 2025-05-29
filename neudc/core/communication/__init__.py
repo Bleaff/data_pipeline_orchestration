@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from core.communication.mailbox.zmq_mailbox import ZMQMailbox
-from core.communication.zero_queue.queue_transfer import ZeroQueue, ZeroQueueProducer
+from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
+from neudc.core.communication.zero_queue.queue_transfer import ZeroQueue, ZeroQueueProducer
 
 if TYPE_CHECKING:
-    from core.base.base_mailbox import BaseMailbox
-    from core.base.base_queue import QueueLike
+    from neudc.core.base.base_mailbox import BaseMailbox
+    from neudc.core.base.base_queue import QueueLike
 
 
 class TransferFactory:

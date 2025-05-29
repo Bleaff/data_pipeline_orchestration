@@ -1,7 +1,7 @@
 import logging
-from core.communication.messaging.routing_factory import RoutingFactory
-from core.node.node_factory import NodeFactory
-from core.utils.config_loader import load_config
+from neudc.core.communication.messaging.routing_factory import RoutingFactory
+from neudc.core.node.node_factory import NodeFactory
+from neudc.core.utils.config_loader import load_config
 
 
 def main(config_path: str):

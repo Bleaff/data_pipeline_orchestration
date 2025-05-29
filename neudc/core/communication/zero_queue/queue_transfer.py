@@ -18,7 +18,7 @@ from typing import Any
 
 import zmq
 
-from core.base.base_queue import QueueLike
+from neudc.core.base.base_queue import QueueLike
 
 
 class ZeroQueue(QueueLike):

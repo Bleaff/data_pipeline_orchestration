@@ -5,8 +5,8 @@ This class extends the ZeroQueue class to receive data from a ZeroQueuePublisher
 
 from typing import NoReturn
 
-from core.communication.zero_queue.zero_queue import ZeroQueue
-from core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
+from neudc.core.communication.zero_queue.zero_queue import ZeroQueue
+from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 
 class ZeroQueueSub(ZeroQueue):

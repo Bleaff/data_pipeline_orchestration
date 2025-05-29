@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 
-from core.data_transfer.zero_queue import ZeroQueuePub, ZeroQueueSub
+from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)

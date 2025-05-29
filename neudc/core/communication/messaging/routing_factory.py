@@ -12,7 +12,7 @@ The "outputs" parameter is optional and contains a list of target node_ids
 that the node should send messages to.
 """
 
-from core.communication.mailbox.zmq_mailbox import ZMQMailbox
+from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from typing import Dict
 
 

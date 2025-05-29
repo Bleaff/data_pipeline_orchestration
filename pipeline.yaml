@@ -4,7 +4,7 @@ nodes:
     folder_path: "./test_images"
     mode: "loop"
     frame_delay: 0.5
-    outputs: [resize]
+    outputs: [resize, saver]
 
   - id: resize
     type: ResizeNode

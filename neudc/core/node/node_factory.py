@@ -1,6 +1,6 @@
-from core.node.readers.image_reader import FolderImageNode
-from core.node.processors.dummy_resize import ResizeNode
-from core.node.broadcast.image_saver import SaveImageNode
+from neudc.core.node.readers.image_reader import FolderImageNode
+from neudc.core.node.processors.dummy_resize import ResizeNode
+from neudc.core.node.broadcast.image_saver import SaveImageNode
 from typing import Any
 
 

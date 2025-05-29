@@ -21,8 +21,8 @@ import time
 import logging
 from typing import Any
 
-from core.base.base_mailbox import BaseMailbox
-from core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
+from neudc.core.base.base_mailbox import BaseMailbox
+from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 import threading
 
 

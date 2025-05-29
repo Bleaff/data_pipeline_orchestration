@@ -1,7 +1,7 @@
 import threading
 import time
 
-from core.data_transfer.mailbox.zmq_mailbox import ZMQMailbox
+from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 
 
 def test_add_publisher_and_send() -> None:

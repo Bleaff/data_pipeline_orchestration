@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 import pytest
 
 import zmq
-from core.data_transfer.zero_queue.zero_pub import ZeroQueuePub
-from core.data_transfer.zero_queue.zero_queue import ZeroQueue
-from core.data_transfer.zero_queue.zero_sub import ZeroQueueSub
-from core.data_transfer.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
+from neudc.core.communication.zero_queue.zero_pub import ZeroQueuePub
+from neudc.core.communication.zero_queue.zero_queue import ZeroQueue
+from neudc.core.communication.zero_queue.zero_sub import ZeroQueueSub
+from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 
 @pytest.fixture()

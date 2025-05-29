@@ -20,8 +20,8 @@ Example:
 import cv2
 from typing import Any
 
-from core.base.base_node import BaseNode
-from core.communication.messaging.types import Frame
+from neudc.core.base.base_node import BaseNode
+from neudc.core.communication.messaging.types import Frame
 
 
 class ResizeNode(BaseNode):

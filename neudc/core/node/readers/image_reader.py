@@ -13,8 +13,8 @@ import threading
 from typing import Any
 import numpy as np
 
-from core.base.base_node import BaseNode
-from core.communication.messaging.types import Frame  # Frame class as given
+from neudc.core.base.base_node import BaseNode
+from neudc.core.communication.messaging.types import Frame  # Frame class as given
 
 
 class FolderImageNode(BaseNode):
