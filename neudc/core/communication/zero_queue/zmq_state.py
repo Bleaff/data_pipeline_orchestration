@@ -14,6 +14,15 @@ class ZeroQueueConnectionType(str, Enum):
     """Enum for ZeroQueue connection states.
 
     Connecting to an existing port or binding(hosting) to a new one.
+    ----
+    fields:
+    ----
+        CONNECT
+        BIND
+    values:
+    ----
+        "connect"
+        "bind"
     """
 
     CONNECT = "connect"

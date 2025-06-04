@@ -8,12 +8,13 @@ allowing for parallel execution of node graphs.
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from core.base.base_node import BaseNode
+from neudc.core.base.base_node import BaseNode
 
 
 class BaseProcessNode(BaseNode, mp.Process, ABC):
@@ -27,7 +28,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     HEALTH_CHECK_INTERVAL = 5  # seconds
     HEALTH_TIMEOUT = 15  # seconds
 
-    def __init__(self, mailbox: Any, logger: Any, config: dict) -> None:
+    def __init__(self, mailbox: Any, logger: Any) -> None:
         """Initialize the base process node.
 
         Args:
@@ -40,16 +41,29 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         # Initialize BaseNode and multiprocessing.Process
         BaseNode.__init__(self, mailbox, logger)
         mp.Process.__init__(self)
-        self.config = config
-        self.stop_event = mp.Event()
-        self._last_success_time = mp.Value("d", time.time())
-        self._healthy = mp.Value("b", self.HEALTH_INITIAL)
-        self._health_thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        """Start the process node."""
+        self.logger.info(f"Starting process node {self.id}...")
+        mp.Process.start(self)
+
+    def thread_start(self) -> None:
+        """Start the base node's thread & initialize health monitoring."""
+        self._health_thread = threading.Thread(target=self._health_monitor, daemon=True)
+        self._health_thread.start()
+        # Call the start method of BaseNode to initialize its thread
+        BaseNode.init_runtime(self)
 
     def run(self) -> None:
         """Process entrypoint: start health monitor and processing loop."""
-        self._health_thread = threading.Thread(target=self._health_monitor, daemon=True)
-        self._health_thread.start()
+        self.logger.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
+
+        self._healthy = mp.Value("b", self.HEALTH_INITIAL)
+        self.stop_event = mp.Event()
+        self._last_success_time = mp.Value("d", time.time())
+
+        self.thread_start()  # Start the node's thread
+        self.logger.info("Process node started, entering processing loop...")
 
         while not self.stop_event.is_set():
             try:
@@ -95,3 +109,12 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     def from_config(cls: type[BaseProcessNode], config: dict[str, Any]) -> BaseProcessNode:
         """From config-based constructor for building node with specified config."""
         raise NotImplementedError
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Set the state of the process node."""
+        # Update the instance's __dict__ with the state dictionary
+        # This is necessary for unpickling the process node
+        self.__dict__.update(state)
+        import logging
+
+        self.logger = logging.getLogger(f"ProcessNode.{self.id}")

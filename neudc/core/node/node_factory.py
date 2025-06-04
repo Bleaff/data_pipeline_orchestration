@@ -1,38 +1,52 @@
-from neudc.core.node.readers.image_reader import FolderImageNode
-from neudc.core.node.processors.dummy_resize import ResizeNode
+"""Create node factory instances based on config.
+
+This module provides a factory to create node instances from configuration
+dictionaries. The factory knows how to create nodes of different types based on
+the config.
+
+"""
+
+from __future__ import annotations
+
+from typing import Any, ClassVar
+
 from neudc.core.node.broadcast.image_saver import SaveImageNode
-from typing import Any
+from neudc.core.node.processors.resize_node import ResizeNode
+from neudc.core.node.processors.resize_process_node import ResizeProcessNode
+from neudc.core.node.readers.image_reader import FolderImageNode
 
 
 class NodeFactory:
-    """
-    Factory to create node instances based on config.
-    """
+    """Factory to create node instances based on config."""
 
-    NODE_CLASS_MAP = {
+    NODE_CLASS_MAP: ClassVar = {
         "FolderImageNode": FolderImageNode,
         "ResizeNode": ResizeNode,
         "SaveImageNode": SaveImageNode,
+        "ResizeProcessNode": ResizeProcessNode,
     }
 
     @staticmethod
     def create(config: dict[str, Any], mailbox: Any, logger: Any) -> Any:
-        """
-        Create a node instance from its config.
+        """Create a node instance from its config.
 
         Args:
+        ----
             config (dict): Node config.
             mailbox (Any): Precreated mailbox for this node.
             logger (Any): Logger for this node.
 
         Returns:
+        -------
             Any: Instantiated node.
+
         """
         node_type = config["type"]
         node_class = NodeFactory.NODE_CLASS_MAP.get(node_type)
 
         if not node_class:
-            raise ValueError(f"Unknown node type: {node_type}")
+            msg = f"Unknown node type: {node_type}"
+            raise ValueError(msg)
 
         config = dict(config)  # make a copy
         config["mailbox"] = mailbox

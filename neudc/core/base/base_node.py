@@ -4,83 +4,113 @@ Nodes are the fundamental building blocks that process data and communicate with
 each other through mailboxes.
 """
 
+from __future__ import annotations
+
+import threading
 from abc import ABC, abstractmethod
 from typing import Any
-import threading
 
 
 class BaseNode(ABC):
     """Abstract base class for node implementations in a distributed system.
 
+    ----
     This class defines the standard methods a node must implement to be used in
     the system. It provides a common interface for all nodes, regardless of the
     specific functionality they provide.
-
+    ----
     Nodes are the fundamental building blocks that process data and communicate
     with each other through mailboxes.
+    ----
+    There are 2 main types of nodes:
+    1. Process Nodes: These nodes run in separate processes and can handle
+       parallel execution of tasks.
+    2. Threaded Nodes: These nodes run in separate threads and are suitable for
+       tasks that require concurrency without the overhead of process management.
+    ----
+    Each node must implement the `process` method, which contains the main
+    functionality of the node. The `run` method is responsible for continuously
+    processing data from the mailbox and sending results back to the mailbox.
+    It is also possible to change data collection logic by overriding the `_collect_data` method.
+    ----
+    The `start` method initializes the node and starts its processing thread.
+    By default you can use just `init_runtime` method to make your node work.
     """
-    def __init__(self, mailbox: Any, logger: Any, id:str = "BaseNode"):
+
+    def __init__(self, mailbox: Any, logger: Any, _id: str = "BaseNode") -> None:
         """Initialize the node with a mailbox and a logger."""
         super().__init__()
         self.mailbox = mailbox
         self.logger = logger
-        self.thread = None
-        self._stop_event = threading.Event()
+        self.thread: threading.Thread | None = None
         self._join_timeout = 0.1
         self.is_running = False
-        self.id = id
-        self.start()
+        self.id = _id
 
-    def _collect_data(self)-> Any:
+    def _collect_data(self) -> Any:
         """Grabs data from mailbox."""
         return self.mailbox.receive()
 
     @staticmethod
-    def from_config(config: dict[str, Any])-> "BaseNode":
+    def from_config(config: dict[str, Any]) -> BaseNode:
         """Create a node instance from the given configuration.
 
         Args:
+        ----
             config (dict[str, Any]): Configuration details for the node.
 
         Returns:
+        -------
             BaseNode: A node instance.
 
         Raises:
+        ------
             NotImplementedError: If the method is not implemented by a subclass.
+
         """
         raise NotImplementedError
-    
-    def __call__(self, *args, **kwargs)-> Any:
-        """Calls the run method of the node."""
-        return self.run(*args, **kwargs)
-    
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Start the processing loop by wrapping the `run` method."""
+        return self._run(*args, **kwargs)
+
     @abstractmethod
-    def process(self, *args, **kwargs)-> Any:
+    def process(self, *args: Any, **kwargs: Any) -> Any:
         """Execute the node's main functionality.
 
-        Raises:
+        Raises
+        ------
             NotImplementedError: If the method is not implemented by a subclass.
+
         """
         raise NotImplementedError
-    def run(self):
+
+    def _run(self) -> None:
         """Run the node processing loop."""
         while True:
-            try:
-                data = self._collect_data()
-                if data is not None:
+            data = self._collect_data()
+            if data is not None:
+                try:
                     result = self.process(data)
                     self.mailbox.send(result)
-            except Exception as e:
-                self.logger.exception(f"Error while processing: {e}")
-    
-    def start(self):
-        """Start the thread with the run method."""
+                except Exception:
+                    self.logger.exception("Error while processing")
+
+    @abstractmethod
+    def start(self) -> None:
+        """Start func should implement behavior to initialize the node."""
+        raise NotImplementedError
+
+    def init_runtime(self) -> None:
+        """Initialize runtime resources for the node."""
+        # This method can be overridden by subclasses to initialize specific resources
         self.logger.info("Starting node...")
-        self.thread = threading.Thread(target=self.run, daemon=True)
+        self._stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         self.logger.info("Node started.")
-    
-    def stop(self):
+
+    def stop(self) -> None:
         """Signal the thread to stop and wait for it."""
         self.logger.info("Stopping node...")
         self._stop_event.set()

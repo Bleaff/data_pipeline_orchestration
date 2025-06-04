@@ -4,10 +4,10 @@ nodes:
     folder_path: "./test_images"
     mode: "loop"
     frame_delay: 0.5
-    outputs: [resize, saver]
+    outputs: [resize]
 
   - id: resize
-    type: ResizeNode
+    type: ResizeProcessNode
     target_width: 320
     target_height: 240
     outputs: [saver]

@@ -3,7 +3,7 @@
 This class extends the ZeroQueue class to receive data from a ZeroQueuePublisher.
 """
 
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from neudc.core.communication.zero_queue.zero_queue import ZeroQueue
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
@@ -21,20 +21,20 @@ class ZeroQueueSub(ZeroQueue):
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, port: int = -1, contype: ZeroQueueConnectionType = ZeroQueueConnectionType.BIND) -> None:
         """Initialize the ZeroQueueSub.
 
         This class is used to receive data from a ZeroQueuePublisher. It always binds to a random port.
 
         """
-        super().__init__(port=-1, mode=ZeroQueueMode.SUB, contype=ZeroQueueConnectionType.BIND)
+        super().__init__(port=port, mode=ZeroQueueMode.SUB, contype=contype)
 
-    def put(self, item) -> NoReturn:
+    def put(self, item: Any) -> NoReturn:
         """Protect put method not supported for ZeroQueueSub."""
-        msg = "ZeroQueueSub does not support put() method."
+        msg = f"ZeroQueueSub does not support put() method. Cannot put item typeof {type(item)}."
         raise NotImplementedError(msg)
 
-    def put_nowait(self, item) -> NoReturn:
+    def put_nowait(self, item: Any) -> NoReturn:
         """Protect put_nowait method not supported for ZeroQueueSub."""
-        msg = "ZeroQueueSub does not support put_nowait() method."
+        msg = f"ZeroQueueSub does not support put_nowait() method. Cannot put item typeof {type(item)}."
         raise NotImplementedError(msg)

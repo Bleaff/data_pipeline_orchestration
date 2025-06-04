@@ -13,10 +13,19 @@ from typing import TYPE_CHECKING, Any, Callable, Self
 
 import torch
 
-from neudc.utils import CUDA_PROFILE_ENABLE
+from .logger import LOGGER
 
 if TYPE_CHECKING:
     import logging
+
+
+try:
+    import cuda
+
+    CUDA_PROFILE_ENABLE = True
+except ImportError:
+    CUDA_PROFILE_ENABLE = False
+    LOGGER.info("Cuda library is not installed. Check your installation carefully.")
 
 if CUDA_PROFILE_ENABLE:
     from cuda import cuda, cudart

@@ -41,7 +41,6 @@ class ZeroQueue:
         port: int = -1,
         mode: ZeroQueueMode = ZeroQueueMode.SUB,
         contype: ZeroQueueConnectionType = ZeroQueueConnectionType.CONNECT,
-        queue_size: int = 100,
     ) -> None:
         """Initialize the ZeroQueue.
 
@@ -68,7 +67,7 @@ class ZeroQueue:
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_sub(self, contype: ZeroQueueConnectionType, queue_size: int = 100) -> None:  # type: ignore[no-untyped-def]
+    def _init_sub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
         """Initialize the subscriber socket. Ports gets from initialization.
 
         Args:
@@ -84,7 +83,7 @@ class ZeroQueue:
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_pub(self, contype: ZeroQueueConnectionType, queue_size: int = 100) -> None:  # type: ignore[no-untyped-def]
+    def _init_pub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
         """Initialize the publisher socket. Ports gets from initialization.
 
         Args:
@@ -92,10 +91,10 @@ class ZeroQueue:
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
 
         """
-        self.socket_pub: zmq.Context.socket | None = self.context.socket(zmq.PUB)
+        self.socket_pub: zmq.Context.socket | None = self.context.socket(zmq.PUB)  # type: ignore[no-redef]
         self.socket_pub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_pub, contype)
-        self.socket_sub: zmq.Context.socket | None = None
+        self.socket_sub: zmq.Context.socket | None = None  # type: ignore[no-redef]
 
     def _bind_port(self, port: int, socket: zmq.Context.socket) -> int:
         """Bind the socket to a random port and return the port number."""
@@ -164,7 +163,7 @@ class ZeroQueue:
         """Receive a message without waiting."""
         socks = dict(self.poller.poll(timeout=0))
         if self.socket_sub in socks:
-            return self.socket_sub.recv_pyobj(zmq.NOBLOCK)
+            return self.socket_sub.recv_pyobj(zmq.NOBLOCK)  # type: ignore[union-attr]
         return None
 
     def put(self, item: Any) -> None:
@@ -176,7 +175,7 @@ class ZeroQueue:
 
         """
         time.sleep(0.001)
-        self.socket_pub.send_pyobj(item)
+        self.socket_pub.send_pyobj(item)  # type: ignore[union-attr]
 
     def put_nowait(self, item: Any) -> None:
         """Send a message without blocking.
@@ -186,7 +185,7 @@ class ZeroQueue:
             item (Any): Object to send.
 
         """
-        self.socket_pub.send_pyobj(item, zmq.NOBLOCK)
+        self.socket_pub.send_pyobj(item, zmq.NOBLOCK)  # type: ignore[union-attr]
 
     def _after_fork(self) -> None:
         """Reset sockets after fork (Unix only)."""

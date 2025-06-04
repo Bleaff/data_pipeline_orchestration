@@ -74,7 +74,7 @@ repos:
     rev: v1.10.0
     hooks:
       - id: mypy
-        args: ["--ignore-missing-imports"]
+        args: ["--ignore-missing-imports", "--explicit-package-bases"]
 
   - repo: https://github.com/PyCQA/doc8
     rev: v1.1.2

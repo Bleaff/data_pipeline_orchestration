@@ -1,25 +1,32 @@
-"""core.utils.config_loader
+"""core.utils.config_loader.
 
 This module contains a single function to load a YAML configuration file for the (NUDC) pipeline.
 
 """
 
-import yaml
+from __future__ import annotations
+
 from pathlib import Path
 
+from yaml import safe_load  # type: ignore[import-untyped]
+
+
 def load_config(path: str | Path) -> dict:
-    """
-    Load YAML pipeline configuration.
+    """Load YAML pipeline configuration.
 
     Args:
+    ----
         path (str | Path): Path to YAML config.
 
     Returns:
+    -------
         dict: Parsed configuration dictionary.
+
     """
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"YAML config not found: {path}")
+        msg = f"YAML config not found: {path}"
+        raise FileNotFoundError(msg)
 
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+    with path.open() as f:
+        return safe_load(f)
