@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 # === Base Attribute ===
 
@@ -104,6 +105,12 @@ class Frame(BaseModel):
         """Pydantic config for Frame class."""
 
         arbitrary_types_allowed = True
+
+
+class Batch(BaseModel):
+    """Batch of frames."""
+
+    frames: list[Frame]
 
 
 # === Pipeline Configuration ===

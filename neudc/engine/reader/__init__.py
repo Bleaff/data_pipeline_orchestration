@@ -1,4 +1,0 @@
-"""
-Image/video reader factory
-
-"""

@@ -16,3 +16,8 @@ nodes:
     type: SaveImageNode
     save_dir: "./output_images"
     outputs: []
+
+  - id: detect
+    type: DetectProcessNode
+    model_path: "./model.onnx"
+    threshold: 0.5
