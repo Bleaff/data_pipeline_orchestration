@@ -34,5 +34,6 @@ def main() -> None:
     ready_for_inf = preprocess_input("test_images/1.jpeg")
 
     # Perform inference
-    backend(ready_for_inf)
+    print(backend(ready_for_inf))
+    # backend(ready_for_inf)
 
