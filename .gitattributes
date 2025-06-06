@@ -5,3 +5,4 @@
 *.pt filter=lfs diff=lfs merge=lfs
 *.pth filter=lfs diff=lfs merge=lfs
 *.mp4 filter=lfs diff=lfs merge=lfs
+*.onnx filter=lfs diff=lfs merge=lfs
