@@ -53,12 +53,7 @@ class YOLOv8(BaseDetector):
             max_det (int): Maximum number of detections to return
             nms (bool): Whether to use non-maximum suppression
         """
-
-        backend = backend(
-            path=path,
-            device_id=device_id,
-        )
-
+        super().__init__(path=path, backend=backend, device_id=device_id)
         # Check names
         if not names and "names" not in backend.metadata:  # names missing
             names = default_class_names()

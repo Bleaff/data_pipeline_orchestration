@@ -74,3 +74,6 @@ class ONNXRuntimeBackend(BaseBackend):
             {self.input_name: input_data},
         )
         return outputs
+
+    def __del__(self):
+        pass
