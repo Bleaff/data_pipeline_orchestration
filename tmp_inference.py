@@ -1,39 +1,30 @@
 import cv2
 import numpy as np
+import os
 
-from neudc.nn.backends.onnxruntime import ONNXRuntimeBackend
+from neudc.nn.models.det.yolo import YOLOv8
+from neudc.nn.backends import ONNXRuntimeBackend
 from neudc.utils.types import FloatImagesBatch
-
-
-def preprocess_input(image_path) -> FloatImagesBatch:
-    """Preprocess the input image for ONNX inference.
-
-    Args:
-    ----
-        image (np.ndarray): Input image to preprocess.
-
-    Returns:
-    -------
-        FloatImagesBatch: Preprocessed image batch.
-
-    """
-    # Load the image using OpenCV
-    image = cv2.imread(image_path)  # h w c
-
-    # Example preprocessing: normalize and convert to float
-    image = image.astype(np.float32) / 255.0
-    np.tramspose(image, (2, 0, 1))
-    np.expand_dims(image, axis=0)
-    return image  # Wrap in a list to match FloatImagesBatch type
 
 
 def main() -> None:
     # Example usage of ONNXRuntimeBackend
-    backend = ONNXRuntimeBackend(path="models/yolov11.onnx", device_id=-1)
+    backend = ONNXRuntimeBackend("./yolov8n.onnx", -1)
+    model = YOLOv8(
+        path="./yolov8n.onnx",
+        backend=backend,
+        device_id=-1,
+        imgsz=640,
+    )
 
-    ready_for_inf = preprocess_input("test_images/1.jpeg")
-
-    # Perform inference
-    print(backend(ready_for_inf))
+    ready_for_inf = cv2.imread("test_images/1.jpeg") # hwc image
+    print(ready_for_inf.shape)
+    
+    print(model([ready_for_inf]))
     # backend(ready_for_inf)
 
+
+if __name__ == "__main__":
+    print(os.getcwd())
+    print(os.listdir())
+    main()
