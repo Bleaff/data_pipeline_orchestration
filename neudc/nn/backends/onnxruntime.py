@@ -1,5 +1,5 @@
 import onnxruntime as ort
-
+import ast
 from neudc.nn.backends import BaseBackend
 from neudc.utils import LOGGER, PROFILE_FREQ, Profile
 from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
@@ -53,8 +53,11 @@ class ONNXRuntimeBackend(BaseBackend):
 
         # Reading metadata
         self.metadata = self.model.get_modelmeta().custom_metadata_map
+        self.metadata['imgsz'] = ast.literal_eval(self.metadata.get("imgsz", "(640, 640)"))
         self.dynamic = isinstance(self.model.get_outputs()[0].shape[0], str)
+        self.fp16 = ast.literal_eval(self.metadata['args']).get('half', False)
         self.fp16 = "float16" in self.model.get_inputs()[0].type
+        print(self.model.get_inputs()[0].type)
 
     @Profile(use_cuda=cuda, use_torch=False, logger=LOGGER, freq=PROFILE_FREQ, name="onnx")
     def __call__(
@@ -74,3 +77,6 @@ class ONNXRuntimeBackend(BaseBackend):
             {self.input_name: input_data},
         )
         return outputs
+
+    def __del__(self):
+        pass
