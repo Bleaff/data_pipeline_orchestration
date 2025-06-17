@@ -26,7 +26,7 @@ def get_backend(backend_type: BackendType) -> BaseBackend:
             raise RuntimeError(
                 "TensorRTBackend is not available. Ensure CUDA_PROFILE_ENABLE and TENSORRT_ENABLE are True."
             )
-    elif backend_type == BackendType.ONNX:
+    elif backend_type == BackendType.ONNXRUNTIME:
         if ONNX_PROFILE_ENABLE:
             return ONNXRuntimeBackend
         else:
