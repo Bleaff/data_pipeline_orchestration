@@ -4,4 +4,4 @@ from ultralytics import YOLO
 model = YOLO("yolov8n.pt")  # load an official model
 
 # Export the model
-model.export(format="onnx")
+model.export(format="torchscript")

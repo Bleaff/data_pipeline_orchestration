@@ -46,6 +46,7 @@ class BaseNode(ABC):
         self._join_timeout = 0.1
         self.is_running = False
         self.id = _id
+        self.is_ready = False
 
     def _collect_data(self) -> Any:
         """Grabs data from mailbox."""
@@ -87,13 +88,15 @@ class BaseNode(ABC):
 
     def _run(self) -> None:
         """Run the node processing loop."""
-        while True:
+        self.is_ready = True
+        while self.is_running:
             data = self._collect_data()
             if data is not None:
                 try:
                     result = self.process(data)
                     self.mailbox.send(result)
                 except Exception:
+                    self.is_ready = False
                     self.logger.exception("Error while processing")
 
     @abstractmethod
@@ -105,6 +108,7 @@ class BaseNode(ABC):
         """Initialize runtime resources for the node."""
         # This method can be overridden by subclasses to initialize specific resources
         self.logger.info("Starting node...")
+        self.is_running = True
         self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
@@ -113,8 +117,14 @@ class BaseNode(ABC):
     def stop(self) -> None:
         """Signal the thread to stop and wait for it."""
         self.logger.info("Stopping node...")
+        self.is_running = False
+        self.is_ready = False
         self._stop_event.set()
         self.mailbox.stop()
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=self._join_timeout)
         self.logger.info("Node stopped.")
+
+    def status(self) -> bool:
+        """Check the status of the node."""
+        return self.is_ready

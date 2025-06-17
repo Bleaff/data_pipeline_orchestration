@@ -4,12 +4,19 @@ nodes:
     folder_path: "./test_images"
     mode: "loop"
     frame_delay: 0.5
-    outputs: [resize]
+    outputs: [model]
 
-  - id: resize
-    type: ResizeProcessNode
-    target_width: 320
-    target_height: 240
+  - id: model
+    type: ProcessDetInference
+    model_config:
+      type: YOLOv8
+      path: "/Users/bleaf/Desktop/Job/neudc/models/yolov8n.torchscript"
+      backend: TorchBackend
+      device_id: -1
+    outputs: [visualizer]
+
+  - id: visualizer
+    type: DrawNode
     outputs: [saver]
 
   - id: saver
@@ -17,7 +24,3 @@ nodes:
     save_dir: "./output_images"
     outputs: []
 
-  - id: detect
-    type: DetectProcessNode
-    model_path: "./model.onnx"
-    threshold: 0.5

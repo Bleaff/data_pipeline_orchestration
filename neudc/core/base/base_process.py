@@ -24,7 +24,8 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     Includes health monitoring and lifecycle control.
     """
 
-    HEALTH_INITIAL = True
+    HEALTH_INITIAL = False
+    HEALTH_NORMAL = True
     HEALTH_CHECK_INTERVAL = 5  # seconds
     HEALTH_TIMEOUT = 15  # seconds
 
@@ -41,6 +42,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         # Initialize BaseNode and multiprocessing.Process
         BaseNode.__init__(self, mailbox, logger)
         mp.Process.__init__(self)
+        self._healthy = mp.Value("b", self.HEALTH_INITIAL)
 
     def start(self) -> None:
         """Start the process node."""
@@ -58,7 +60,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Process entrypoint: start health monitor and processing loop."""
         self.logger.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
 
-        self._healthy = mp.Value("b", self.HEALTH_INITIAL)
+        self._healthy = mp.Value("b", self.HEALTH_NORMAL)
         self.stop_event = mp.Event()
         self._last_success_time = mp.Value("d", time.time())
 
@@ -88,6 +90,9 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Return current health status."""
         with self._healthy.get_lock():
             return self._healthy.value
+    
+    def status(self) -> bool:
+        return self.is_healthy()
 
     def _health_monitor(self) -> None:
         """Monitor if node continues to process over time."""
