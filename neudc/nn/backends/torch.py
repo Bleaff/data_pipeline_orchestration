@@ -72,7 +72,7 @@ class TorchBackend(BaseBackend):
         Returns:
             list[FloatFeaturesBatch]: The output of the model.
         """
-        torch_input = torch.from_numpy(input).pin_memory().to(self.device, non_blocking=True)
+        torch_input = torch.from_numpy(input).to(self.device, non_blocking=True)
         # Run the model on the GPU.
         torch_output = self.model(torch_input)
 

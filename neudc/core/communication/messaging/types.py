@@ -5,12 +5,11 @@ This class defines the base attributes for a box, including the source node ID.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import BaseModel
 
-if TYPE_CHECKING:
-    import numpy as np
+import numpy as np
 
 # === Base Attribute ===
 
@@ -55,10 +54,10 @@ class Text(BaseAttribute):
 class Box(BaseAttribute):
     """Box with absolute coordinates."""
 
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+    x1: float | int
+    y1: float | int
+    x2: float | int
+    y2: float | int
     class_id: str
     score: float
     labels: list[Class] | None = None
