@@ -1,9 +1,9 @@
 nodes:
   - id: reader
     type: FolderImageNode
-    folder_path: "~/DesktopJob/neudc/assets/images"
+    folder_path: "assets/images"
     mode: "loop"
-    frame_delay: 0.5
+    frame_delay: 0.1
     outputs: [model]
 
   - id: model
