@@ -23,7 +23,7 @@ version = "0.1.0"  # Update as appropriate or use dynamic versioning
 description = "Premarkup framework for object detection tasks."
 readme = "README.md"
 authors = [
-    "Aleksander Dulebo",
+    "Aleksander Dulebo", 
     "Ilya Basharov",
 ]
 maintainers = [
@@ -40,6 +40,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -61,6 +62,7 @@ numba = "==0.60"
 numpy = ">2.0.0,<2.1.0"
 pytz = "==2024.2"
 opencv-python-headless = "==4.10.0.84"
+pyzmq = "==27.0.0"
 click = "==8.1.7"
 tqdm = "*"
 scipy = "*"
@@ -106,7 +108,7 @@ ensure_newline_before_comments = true
 
 [tool.black]
 line-length = 120
-target-version = ['py311', 'py310', 'py312', 'py39']
+target-version = ['py39', 'py311', 'py310', 'py312', 'py313']
 include = '\.pyi?$'
 
 [tool.yapf]
@@ -131,4 +133,4 @@ close-quotes-on-newline = true
 
 [tool.codespell]
 ignore-words-list = "crate,nd,ned,strack,dota,ane,segway,fo,gool,winn,commend,bloc,nam,afterall"
-skip = '*.pt,*.pth,*.torchscript,*.onnx,*.tflite,*.pb,*.bin,*.param,*.mlmodel,*.engine,*.npy,*.data*,*.csv,*pnnx*,*venv*,*translat*,__pycache__*,*.ico,*.jpg,*.png,*.mp4,*.mov,/runs,/.git,./docs/??/*.md,./docs/mkdocs_??.yml'
+skip = '*.pt,*.pth,*.torchscript,*.onnx,*.tflite,*.pb,*.bin,*.param,*.mlmodel,*.engine,*.npy,*.data*,*.csv,*pnnx*,*venv*,*translat*,__pycache__*,*.ico,*.jpg,*.png,*.mp4,*.mov,/runs,./configs,/.git,./docs/??/*.md,./docs/mkdocs_??.yml'
