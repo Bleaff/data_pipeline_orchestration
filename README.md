@@ -21,7 +21,7 @@ pre-commit run --all-files
 
 ### Starting project
 ```bash
-python3 main.py configs/pipeline.yaml
+python3 neudc/main.py PATH/TO/CONFIG/FILE/pipeline.yaml
 ```
 
 ### Run pytest
