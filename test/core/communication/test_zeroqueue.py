@@ -21,8 +21,8 @@ def mock_zmq(monkeypatch):
     poller_mock = MagicMock()
 
     context_mock.socket.return_value = socket_mock
-    monkeypatch.setattr("core.data_transfer.zero_queue.zero_queue.zmq.Context", lambda: context_mock)
-    monkeypatch.setattr("core.data_transfer.zero_queue.zero_queue.zmq.Poller", lambda: poller_mock)
+    monkeypatch.setattr("neudc.core.communication.zero_queue.zero_queue.zmq.Context", lambda: context_mock)
+    monkeypatch.setattr("neudc.core.communication.zero_queue.zero_queue.zmq.Poller", lambda: poller_mock)
 
     return {
         "context": context_mock,
@@ -83,7 +83,7 @@ def test_zeroqueue_invalid_mode_raises() -> None:
 
 
 def test_zeroqueue_invalid_connection_type(monkeypatch) -> None:
-    from core.data_transfer.zero_queue.zero_queue import ZeroQueue
+    from neudc.core.communication.zero_queue.zero_queue import ZeroQueue
 
     class FakeEnum:
         pass
