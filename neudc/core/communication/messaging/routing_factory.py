@@ -43,6 +43,8 @@ class RoutingFactory:
             node_id = node_cfg["id"]
             outputs = node_cfg.get("outputs", [])
             for target_node_id in outputs:
+                if target_node_id not in mailboxes:
+                    raise ValueError(f"Target node '{target_node_id}' not found in mailboxes.")
                 pub_port = mailboxes[target_node_id].consume_port
                 mailboxes[node_id].add_publisher(pub_port)
 
