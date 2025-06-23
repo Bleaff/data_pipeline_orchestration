@@ -104,8 +104,8 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         """
         if self._model_initialized.is_set():
             return
+        self._model_initialized.set()
         self.logger.info(f"Created model at {id(self)}")
         self.logger.info(f"Initializing model...🙈\nModel config is{self.model_config}")
         self.model = ModelFactory.create(copy.copy(self.model_config))
-        self._model_initialized.set()
 
