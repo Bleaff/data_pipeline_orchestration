@@ -43,10 +43,10 @@ def main(config_path: str) -> None:
         node.start()
         nodes.append(node)
 
-    # Wait for all nodes to be ready
-    for node in nodes:
-        while not node.status():
-            time.sleep(1)
+    # # Wait for all nodes to be ready
+    # for node in nodes:
+    #     while not node.status():
+    #         time.sleep(1)
 
     # 3. Keep the main thread alive while nodes are working
     try:
