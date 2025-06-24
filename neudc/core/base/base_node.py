@@ -94,7 +94,8 @@ class BaseNode(ABC):
             if data is not None:
                 try:
                     result = self.process(data)
-                    self.mailbox.send(result)
+                    if result:
+                        self.mailbox.send(result)
                 except Exception:
                     self.is_ready = False
                     self.logger.exception("Error while processing")
