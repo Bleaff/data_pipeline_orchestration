@@ -33,6 +33,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         self.model = None
         self.model_config = model_config
         self._model_initialized = Event()
+        self.model_initialization_status = Event()
 
     def process(self, item: Frame) -> Any:
         """
@@ -50,14 +51,11 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
             Any: Processed data.
         """
 
-        if not self._model_initialized.is_set():
-            # Initialize the model on the first call
-            self.initialize_model()
-            self.logger.info(f"Model initialized!-> Warmuping...{self.model}")
-            self.model.warmup(iters=10)
         # Run the model on the input data
+        while self.model is None:
+            time.sleep(0.1)
+
         result = self.model([item.image,])
-        # Print the result
         pp_item = self.postprocess_result(result, item)
         return pp_item
 
@@ -92,7 +90,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         """
         return cls(config["model_config"], config["mailbox"], config["logger"])
 
-    def initialize_model(self) -> None:
+    def init_process_runtime(self) -> None:
         """
         Initialize the model.
 

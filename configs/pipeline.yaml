@@ -10,7 +10,7 @@ nodes:
     type: ProcessDetInference
     model_config:
       type: YOLOv8
-      path: "/Users/bleaf/Desktop/Job/neudc/models/yolov8n.torchscript"
+      path: "models/yolov8n.torchscript"
       backend: TorchBackend
       device_id: -1
     outputs: [visualizer]
@@ -18,9 +18,8 @@ nodes:
   - id: visualizer
     type: DrawNode
     outputs: [saver]
-
+  
   - id: saver
     type: SaveImageNode
-    save_dir: "./output_images"
+    save_dir: "output_images"
     outputs: []
-
