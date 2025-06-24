@@ -51,7 +51,7 @@ class SIFT(BaseCMC):
         grayscale=True,
         draw_keypoint_matches=False,
         align=False,
-    ):
+    ) -> None:
         """Compute the warp matrix from src to dst.
 
         Parameters
@@ -80,6 +80,7 @@ class SIFT(BaseCMC):
             if motion models is homography, the warp matrix will be 3x3, otherwise 2x3
         src_aligned: ndarray
             aligned source image of gray
+
         """
         self.grayscale = grayscale
         self.scale = scale
@@ -115,8 +116,8 @@ class SIFT(BaseCMC):
         ndarray
             The warp matrix from the matching keypoint in the previous image to the current.
             The warp matrix is always 2x3.
-        """
 
+        """
         H = np.eye(2, 3)
 
         img = self.preprocess(img)
@@ -225,7 +226,7 @@ class SIFT(BaseCMC):
             if self.align:
                 self.prev_img_aligned = cv2.warpAffine(self.prev_img, H, (w, h), flags=cv2.INTER_LINEAR)
         else:
-            print("Warning: not enough matching points")
+            pass
 
         # Store to next iteration
         self.prev_img = img.copy()
@@ -273,6 +274,7 @@ class ECC(BaseCMC):
             if motion models is homography, the warp matrix will be 3x3, otherwise 2x3
         src_aligned: ndarray
             aligned source image of gray
+
         """
         self.align = align
         self.grayscale = grayscale
@@ -284,15 +286,17 @@ class ECC(BaseCMC):
     def apply(self, img: np.ndarray, dets: np.ndarray = None) -> np.ndarray:
         """Apply sparse optical flow to compute the warp matrix.
 
-        Parameters:
+        Parameters
+        ----------
             img (ndarray): The input image.
             dets: Description of dets parameter.
 
-        Returns:
+        Returns
+        -------
             ndarray: The warp matrix from the source to the destination.
                 If the motion model is homography, the warp matrix will be 3x3; otherwise, it will be 2x3.
-        """
 
+        """
         if self.warp_mode == cv2.MOTION_HOMOGRAPHY:
             warp_matrix = np.eye(3, 3, dtype=np.float32)
         else:
@@ -306,7 +310,13 @@ class ECC(BaseCMC):
 
         try:
             (ret_val, warp_matrix) = cv2.findTransformECC(
-                self.prev_img, img, warp_matrix, self.warp_mode, self.termination_criteria, None, 1  # already processed
+                self.prev_img,
+                img,
+                warp_matrix,
+                self.warp_mode,
+                self.termination_criteria,
+                None,
+                1,  # already processed
             )
         except Exception as e:
             LOGGER.warning(f"Affine matrix could not be generated: {e}. Returning identity")
@@ -361,6 +371,7 @@ class ORB(BaseCMC):
             Whether to draw keypoint matches on the output image. Defaults to False.
         align: bool, optional
             Whether to align the images based on keypoint matches. Defaults to False.
+
         """
         self.grayscale = grayscale
         self.scale = scale
@@ -388,8 +399,8 @@ class ORB(BaseCMC):
         ndarray
             The warp matrix from the matching keypoint in the previous image to the current.
             The warp matrix is always 2x3.
-        """
 
+        """
         H = np.eye(2, 3)
 
         img = self.preprocess(img)
@@ -505,7 +516,7 @@ class ORB(BaseCMC):
             if self.align:
                 self.prev_img_aligned = cv2.warpAffine(self.prev_img, H, (w, h), flags=cv2.INTER_LINEAR)
         else:
-            print("Warning: not enough matching points")
+            pass
 
         # Store to next iteration
         self.prev_img = img.copy()
@@ -526,7 +537,7 @@ class SOF(BaseCMC):
         align=False,
         grayscale=True,
         draw_optical_flow=False,
-    ):
+    ) -> None:
         """Compute the warp matrix from src to dst.
 
         Parameters
@@ -555,6 +566,7 @@ class SOF(BaseCMC):
             if motion models is homography, the warp matrix will be 3x3, otherwise 2x3
         src_aligned: ndarray
             aligned source image of gray
+
         """
         self.align = align
         self.grayscale = grayscale
@@ -581,8 +593,8 @@ class SOF(BaseCMC):
         ndarray
             The warp matrix from the matching keypoint in the previous image to the current.
             The warp matrix is always 2x3.
-        """
 
+        """
         H = np.eye(2, 3)
 
         img = self.preprocess(img)
@@ -649,7 +661,7 @@ class SOF(BaseCMC):
         if self.draw_optical_flow:
             self.warped_img = cv2.warpAffine(self.prev_img, H, (w, h), flags=cv2.INTER_LINEAR)
             self.mask = np.zeros_like(img)
-            for i, (new, old) in enumerate(zip(next_keypoints, self.prev_keypoints)):
+            for _i, (new, old) in enumerate(zip(next_keypoints, self.prev_keypoints)):
                 a, b = new.ravel()
                 c, d = old.ravel()
                 self.mask = cv2.line(
@@ -660,7 +672,11 @@ class SOF(BaseCMC):
                     thickness=1,
                 )
                 self.mask = cv2.circle(
-                    img=self.mask, center=tuple(np.int32([a, b])), radius=1, color=(255, 255, 255), thickness=2
+                    img=self.mask,
+                    center=tuple(np.int32([a, b])),
+                    radius=1,
+                    color=(255, 255, 255),
+                    thickness=2,
                 )
 
         # store to next iteration

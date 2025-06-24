@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import itertools
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from neudc.utils.types import BoolMask, UInt8HWC
+if TYPE_CHECKING:
+    from neudc.utils.types import BoolMask, UInt8HWC
 
-from .base import BaseFilter
+    from .base import BaseFilter
 
 __all__ = ("ComposeFilter",)
 
@@ -13,20 +17,24 @@ class ComposeFilter:
     def __init__(
         self,
         filters: list[BaseFilter],
-    ) -> "ComposeFilter":
-        """
-        Args:
+    ) -> ComposeFilter:
+        """Args:
+        ----
             filters (list): List of filters to compose.
+
         """
         self.filters = filters
 
     def __call__(self, ims: list[UInt8HWC], loader_ids: list[int]) -> BoolMask:
-        """
-        Args:
+        """Args:
+        ----
             ims (list): List of images.
             loader_ids (list): List of loader IDs.
-        Returns:
+
+        Returns
+        -------
             BoolMask: Boolean mask indicating image should be saved or filtered out.
+
         """
         final_mask = np.ones(len(ims), dtype=bool)
         for im_filter in self.filters:

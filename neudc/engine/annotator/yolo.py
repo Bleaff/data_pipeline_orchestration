@@ -20,14 +20,15 @@ class YOLOAnnotator(BaseAnnotator):
         frame: np.ndarray,
         dets: np.ndarray,
     ) -> None:
-        """
-        Add detections to the YOLO annotations.
+        """Add detections to the YOLO annotations.
 
         Args:
+        ----
             image_id (int): Unique ID of the image.
             image_name (str): Name of the image.
             frame (np.ndarray): Original image.
             dets (np.ndarray): Detections in the format [{"xmin": float, "ymin": float, "xmax": float, "ymax": float, "score": float, "class_id": int}, ...].
+
         """
         height, width = frame.shape[:2]
         txt_path = os.path.join(self.save_dir, os.path.splitext(image_name)[0] + ".txt")
@@ -45,7 +46,5 @@ class YOLOAnnotator(BaseAnnotator):
                 f.write(f"{int(cls_id)} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}\n")
 
     def finalize(self, _: Optional[str] = None) -> None:
-        """
-        Finalize the YOLO annotations.
-        """
+        """Finalize the YOLO annotations."""
         LOGGER.info(f"YOLO annotations saved to {self.save_dir}")

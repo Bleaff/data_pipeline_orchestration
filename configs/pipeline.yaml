@@ -23,4 +23,3 @@ nodes:
     type: SaveImageNode
     save_dir: "./output_images"
     outputs: []
-

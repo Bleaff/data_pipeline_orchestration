@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import math
 import os
-from typing import Optional
 
 import cv2
 
@@ -24,8 +25,8 @@ class VideoLoader(BaseLoader):
         self,
         path: str,
         skip_time_ms: int = 0,
-        intervals: Optional[list[tuple[float, float]]] = None,
-    ) -> "VideoLoader":
+        intervals: list[tuple[float, float]] | None = None,
+    ) -> VideoLoader:
 
         if not os.path.isfile(path):
             LOGGER.error(f"Video not found: {path}")
@@ -50,7 +51,7 @@ class VideoLoader(BaseLoader):
             if start_frame <= end_frame:
                 self.frame_intervals.append((start_frame, end_frame))
         LOGGER.info(
-            f"Added VideoDataLoader for file: path={path}, intervals(frames)={self.frame_intervals}, skip_time_ms={self.skip_time_ms}"
+            f"Added VideoDataLoader for file: path={path}, intervals(frames)={self.frame_intervals}, skip_time_ms={self.skip_time_ms}",
         )
 
     def register_intervals(self) -> None: ...
@@ -92,7 +93,7 @@ class VideoLoader(BaseLoader):
             total += (interval_frames + effective_step - 1) // effective_step
         return total
 
-    def __del__(self):
+    def __del__(self) -> None:
         if self.cap.isOpened():
             self.cap.release()
 

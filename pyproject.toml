@@ -23,7 +23,7 @@ version = "0.1.0"  # Update as appropriate or use dynamic versioning
 description = "Premarkup framework for object detection tasks."
 readme = "README.md"
 authors = [
-    "Aleksander Dulebo", 
+    "Aleksander Dulebo",
     "Ilya Basharov",
 ]
 maintainers = [

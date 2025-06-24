@@ -1,6 +1,10 @@
-from abc import ABC, abstractmethod
+from __future__ import annotations
 
-from neudc.utils.types import BoolMask, UInt8HWC
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from neudc.utils.types import BoolMask, UInt8HWC
 
 __all__ = ("BaseFilter",)
 
@@ -12,20 +16,24 @@ class BaseFilter(ABC):
     def __init__(
         self,
         separate_by_loader: bool = False,
-    ) -> "BaseFilter":
-        """
-        Args:
+    ) -> BaseFilter:
+        """Args:
+        ----
             separate_by_loader (bool): Whether to separate seen hashes by loader.
+
         """
         self.separate_by_loader = separate_by_loader
 
     @abstractmethod
     def __call__(self, ims: list[UInt8HWC], loader_ids: list[int]) -> BoolMask:
-        """
-        Args:
+        """Args:
+        ----
             ims (list): List of images.
             loader_ids (list): List of loader IDs.
-        Returns:
+
+        Returns
+        -------
             BoolMask: Boolean mask indicating image should be saved or filtered out.
+
         """
         ...

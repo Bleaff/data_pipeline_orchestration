@@ -1,18 +1,24 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from neudc.nn.models.op import apply_nms, make_sahi_slices_batch, postprocess_yolo_outputs
 from neudc.utils import LOGGER, PROFILE_FREQ, NoProfile, Profile
 from neudc.utils.checks import to_tuple
-from neudc.utils.types import (
-    FloatBBoxesWithCls,
-    FloatFeaturesBatch,
-    FloatImagesBatch,
-    ImageShape,
-    LetterboxParams,
-    UInt8HWC,
-)
 
 from .base import BaseDetector
+
+if TYPE_CHECKING:
+    from neudc.utils.types import (
+        FloatBBoxesWithCls,
+        FloatFeaturesBatch,
+        FloatImagesBatch,
+        ImageShape,
+        LetterboxParams,
+        UInt8HWC,
+    )
 
 # from numba import jit, prange
 
@@ -29,17 +35,17 @@ class SAHIDetector(BaseDetector):
         imgsz: ImageShape,
         crop_size: ImageShape = (640, 640),
         crop_overlap: ImageShape = (100, 100),
-    ) -> "SAHIDetector":
-        """
-        Initialize the SAHI detector.
+    ) -> SAHIDetector:
+        """Initialize the SAHI detector.
 
         Args:
+        ----
             detector (BaseDetector): Detector for inference the model
             imgsz: (int | tuple[int, int]): Full image size for the inference (height, width).
             crop_size: (int | tuple[int, int]): Image size for the inference (height, width).
             crop_overlap: (int | tuple[int, int]): Overlap for the inference (height, width).
-        """
 
+        """
         self.detector = detector
 
         # convert to tuple
@@ -77,7 +83,7 @@ class SAHIDetector(BaseDetector):
         if adjusted_imgsz != self.imgsz:
             LOGGER.warning(
                 f"WARNING ⚠️ Adjusted inference image size from {self.imgsz} to {adjusted_imgsz} "
-                f"to ensure integer number of crops with crop size {self.crop_size} and overlap {self.crop_overlap}."
+                f"to ensure integer number of crops with crop size {self.crop_size} and overlap {self.crop_overlap}.",
             )
             self.imgsz = adjusted_imgsz
 
@@ -91,18 +97,22 @@ class SAHIDetector(BaseDetector):
 
     @staticmethod
     def _adjust_imgsz_to_crop_overlap(
-        imgsz: tuple[int, int], crop_size: tuple[int, int], overlap: tuple[int, int]
+        imgsz: tuple[int, int],
+        crop_size: tuple[int, int],
+        overlap: tuple[int, int],
     ) -> tuple[int, int]:
-        """
-        Adjust the image size to be divisible by crop size and overlap.
+        """Adjust the image size to be divisible by crop size and overlap.
 
         Args:
+        ----
             imgsz (tuple[int, int]): Image size.
             crop_size (tuple[int, int]): Crop size.
             overlap (tuple[int, int]): Overlap.
 
         Returns:
+        -------
             (tuple[int, int]): Adjusted image size.
+
         """
         adjusted_size = []
         for i in range(2):
@@ -120,14 +130,16 @@ class SAHIDetector(BaseDetector):
         self,
         ims: list[UInt8HWC],
     ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
-        """
-        Pre-transform input image in BGR format before inference.
+        """Pre-transform input image in BGR format before inference.
 
         Args:
+        ----
             im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
 
         Returns:
+        -------
             (tuple): A list of transformed images, letterbox params, and origins.
+
         """
         letterbox_images, letterbox_params = self.detector._pre_transform(
             ims=ims,
@@ -160,18 +172,21 @@ class SAHIDetector(BaseDetector):
         max_det: int,
         n_ims: int,
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Numba-compiled post-transform input image before inference.
+        """Numba-compiled post-transform input image before inference.
 
         Args:
+        ----
             predictions (Float(np.ndarray)): (B, ...) as output from a network.
             letterbox_params (List(LetterboxParams)): Ratios, pads and origins of every image after letterbox, (B, 5)
             conf (float): Confidence threshold.
             iou (float): IoU threshold.
             max_det (int): Maximum number of detections to return.
             n_ims (int): Number of images.
+
         Returns:
+        -------
             (list): Rescaled bboxes.
+
         """
         b = len(predictions)  # batch = number of crops * number of images
         ncrops = b // n_ims  # number of crops
@@ -213,15 +228,18 @@ class SAHIDetector(BaseDetector):
         predictions: FloatFeaturesBatch,
         letterbox_params: list[LetterboxParams],
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Post-transform input image before inference.
+        """Post-transform input image before inference.
 
         Args:
+        ----
             predictions (Float(np.ndarray)): (B, ...) as output from a network, B = K * N
             letterbox_params: List(LetterboxParams): Ratios and pads of every image after letterbox, (K, 2)
             origins: List(Tuple[int, int]): Origins of every image after letterbox, (N, 3)
+
         Returns:
+        -------
             (list): Rescaled bboxes.
+
         """
         return self._post_transform(
             predictions=predictions,
@@ -236,35 +254,35 @@ class SAHIDetector(BaseDetector):
         self,
         ims: list[UInt8HWC],
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Runs inference on the YOLOv8 model.
+        """Runs inference on the YOLOv8 model.
 
         Args:
+        ----
             ims (List(np.ndarray)): [(H, W, C) x N] for list.
 
         Returns:
+        -------
             (List[Tuple[np.ndarray]]): Tuple containing the bboxes, score, class_id
-        """
 
+        """
         batch_ims, batch_params = self.pre_transform(ims)
         predictions = self.detector.backend(batch_ims)[0]  # yolov8 has only one output
-        output = self.post_transform(
+        return self.post_transform(
             predictions=predictions,
             letterbox_params=batch_params,
         )
-
-        return output
 
     @NoProfile
     def warmup(
         self,
         iters: int = 10,
     ) -> None:
-        """
-        Warm up the model by running one forward pass with a dummy input.
+        """Warm up the model by running one forward pass with a dummy input.
 
         Args:
+        ----
             iters (int): Number of iterations to warm up the model.
+
         """
         # First, warm up the underlying detector.
         self.detector.warmup(iters=iters)

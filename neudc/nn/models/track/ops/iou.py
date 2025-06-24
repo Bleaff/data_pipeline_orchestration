@@ -6,14 +6,15 @@ from numba import njit
 
 class AssociationFunction:
     def __init__(self, w: int, h: int, asso_mode: str = "iou") -> "AssociationFunction":
-        """
-        Initializes the AssociationFunction class with the necessary parameters for bounding box operations.
+        """Initializes the AssociationFunction class with the necessary parameters for bounding box operations.
         The association function is selected based on the `asso_mode` string provided during class creation.
 
-        Parameters:
+        Parameters
+        ----------
         w (int): The width of the frame, used for normalizing centroid distance.
         h (int): The height of the frame, used for normalizing centroid distance.
         asso_mode (str): The association function to use (e.g., "iou", "giou", "centroid", etc.).
+
         """
         self.w = w
         self.h = h
@@ -33,26 +34,27 @@ class AssociationFunction:
         w = np.maximum(0.0, xx2 - xx1)
         h = np.maximum(0.0, yy2 - yy1)
         wh = w * h
-        o = wh / (
+        return wh / (
             (bboxes1[..., 2] - bboxes1[..., 0]) * (bboxes1[..., 3] - bboxes1[..., 1])
             + (bboxes2[..., 2] - bboxes2[..., 0]) * (bboxes2[..., 3] - bboxes2[..., 1])
             - wh
         )
-        return o
 
     @staticmethod
     @njit(fastmath=True, parallel=True)
     def hmiou_batch(bboxes1: np.ndarray, bboxes2: np.ndarray) -> np.ndarray:
-        """
-        Compute a modified Intersection over Union (hIoU) between two batches of bounding boxes,
+        """Compute a modified Intersection over Union (hIoU) between two batches of bounding boxes,
         incorporating a vertical overlap ratio.
 
-        Parameters:
+        Parameters
+        ----------
         - bboxes1: (N, 4) array of bounding boxes [x1, y1, x2, y2]
         - bboxes2: (M, 4) array of bounding boxes [x1, y1, x2, y2]
 
-        Returns:
+        Returns
+        -------
         - hmiou: (N, M) array where hmiou[i, j] is the modified IoU between bboxes1[i] and bboxes2[j]
+
         """
         # Expand dimensions for broadcasting
         bboxes1 = np.expand_dims(bboxes1, axis=1)  # Shape: (N, 1, 4)
@@ -87,15 +89,12 @@ class AssociationFunction:
         iou = inter_area / (union_area + 1e-10)
 
         # Modify IoU with vertical overlap ratio
-        hmiou = iou * o
-
-        return hmiou
+        return iou * o
 
     @staticmethod
     @njit(fastmath=True, parallel=True)
     def giou_batch(bboxes1: np.ndarray, bboxes2: np.ndarray) -> np.ndarray:
-        """
-        :param bboxes1: predict of bbox(N,4)(x1,y1,x2,y2)
+        """:param bboxes1: predict of bbox(N,4)(x1,y1,x2,y2)
         :param bboxes2: groundtruth of bbox(N,4)(x1,y1,x2,y2)
         :return:
         """
@@ -131,17 +130,18 @@ class AssociationFunction:
 
         # Corrected GIoU computation
         giou = iou - (area_enclose - union_area) / area_enclose
-        giou = (giou + 1.0) / 2.0  # Resize from (-1,1) to (0,1)
-        return giou
+        return (giou + 1.0) / 2.0  # Resize from (-1,1) to (0,1)
 
     @staticmethod
     @njit
     def centroid_batch(bboxes1: np.ndarray, bboxes2: np.ndarray, w: int, h: int) -> np.ndarray:
         centroids1 = np.stack(
-            ((bboxes1[..., 0] + bboxes1[..., 2]) / 2, (bboxes1[..., 1] + bboxes1[..., 3]) / 2), axis=-1
+            ((bboxes1[..., 0] + bboxes1[..., 2]) / 2, (bboxes1[..., 1] + bboxes1[..., 3]) / 2),
+            axis=-1,
         )
         centroids2 = np.stack(
-            ((bboxes2[..., 0] + bboxes2[..., 2]) / 2, (bboxes2[..., 1] + bboxes2[..., 3]) / 2), axis=-1
+            ((bboxes2[..., 0] + bboxes2[..., 2]) / 2, (bboxes2[..., 1] + bboxes2[..., 3]) / 2),
+            axis=-1,
         )
 
         centroids1 = np.expand_dims(centroids1, 1)
@@ -156,8 +156,7 @@ class AssociationFunction:
     @staticmethod
     @njit(fastmath=True, parallel=True)
     def ciou_batch(bboxes1: np.ndarray, bboxes2: np.ndarray) -> np.ndarray:
-        """
-        Calculate Complete Intersection over Union (CIoU) for batches of bounding boxes.
+        """Calculate Complete Intersection over Union (CIoU) for batches of bounding boxes.
 
         :param bboxes1: Predicted bounding boxes of shape (N, 4) as (x1, y1, x2, y2)
         :param bboxes2: Ground truth bounding boxes of shape (N, 4) as (x1, y1, x2, y2)
@@ -224,8 +223,7 @@ class AssociationFunction:
     @staticmethod
     @njit(fastmath=True, parallel=True)
     def diou_batch(bboxes1: np.ndarray, bboxes2: np.ndarray) -> np.ndarray:
-        """
-        :param bbox_p: predict of bbox(N,4)(x1,y1,x2,y2)
+        """:param bbox_p: predict of bbox(N,4)(x1,y1,x2,y2)
         :param bbox_g: groundtruth of bbox(N,4)(x1,y1,x2,y2)
         :return:
         """
@@ -267,24 +265,27 @@ class AssociationFunction:
 
     @staticmethod
     def run_asso_func(self, bboxes1: np.ndarray, bboxes2: np.ndarray) -> np.ndarray:
-        """
-        Runs the selected association function (based on the initialization string) on the input bounding boxes.
+        """Runs the selected association function (based on the initialization string) on the input bounding boxes.
 
-        Parameters:
+        Parameters
+        ----------
         bboxes1: First set of bounding boxes.
         bboxes2: Second set of bounding boxes.
+
         """
         return self.asso_func(bboxes1, bboxes2)
 
     def _get_asso_func(self) -> Callable:
-        """
-        Returns the corresponding association function based on the provided mode string.
+        """Returns the corresponding association function based on the provided mode string.
 
-        Parameters:
+        Parameters
+        ----------
         asso_mode (str): The association function to use (e.g., "iou", "giou", "centroid", etc.).
 
-        Returns:
+        Returns
+        -------
         function: The appropriate function for the association calculation.
+
         """
         ASSO_FUNCS = {
             "iou": AssociationFunction.iou_batch,
@@ -293,11 +294,15 @@ class AssociationFunction:
             "ciou": AssociationFunction.ciou_batch,
             "diou": AssociationFunction.diou_batch,
             "centroid": lambda b1, b2: AssociationFunction.centroid_batch(
-                b1, b2, self.w, self.h
+                b1,
+                b2,
+                self.w,
+                self.h,
             ),  # only not being staticmethod
         }
 
         if self.asso_mode not in ASSO_FUNCS:
-            raise ValueError(f"Invalid association mode: {self.asso_mode}. Choose from {list(ASSO_FUNCS.keys())}")
+            msg = f"Invalid association mode: {self.asso_mode}. Choose from {list(ASSO_FUNCS.keys())}"
+            raise ValueError(msg)
 
         return ASSO_FUNCS[self.asso_mode]

@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import json
 import os
-from typing import Optional
-
-import numpy as np
+from typing import TYPE_CHECKING
 
 from neudc.utils import LOGGER
 
 from .base import BaseAnnotator
+
+if TYPE_CHECKING:
+    import numpy as np
 
 __all__ = ("COCOAnnotator",)
 
@@ -17,14 +20,15 @@ class COCOAnnotator(BaseAnnotator):
     def __init__(
         self,
         save_dir: str,
-        categories: Optional[list[dict]] = None,
-    ) -> "COCOAnnotator":
-        """
-        Initialize the COCOAnnotator.
+        categories: list[dict] | None = None,
+    ) -> COCOAnnotator:
+        """Initialize the COCOAnnotator.
 
         Args:
+        ----
             save_dir (str): Directory to save the JSON file.
             categories (Optional[List[Dict]]): List of categories in the format [{"id": int, "name": str}, ...].
+
         """
         super().__init__(save_dir, categories)
         self.images = []
@@ -38,14 +42,15 @@ class COCOAnnotator(BaseAnnotator):
         frame: np.ndarray,
         dets: np.ndarray,
     ) -> None:
-        """
-        Add detections to the COCO annotations.
+        """Add detections to the COCO annotations.
 
         Args:
+        ----
             image_id (int): Unique ID of the image.
             image_name (str): Name of the image.
             frame (np.ndarray): Original image.
             dets (np.ndarray): Detections in the format [{"xmin": float, "ymin": float, "xmax": float, "ymax": float, "score": float, "class_id": int}, ...].
+
         """
         height, width = frame.shape[:2]
         # Add image metadata if not exists
@@ -67,16 +72,17 @@ class COCOAnnotator(BaseAnnotator):
                     "score": float(score),
                     "area": float(w * h),
                     "iscrowd": 0,
-                }
+                },
             )
             self.ann_id += 1
 
     def finalize(self, filename: str = "annotations_coco.json") -> None:
-        """
-        Finalize the COCO annotations.
+        """Finalize the COCO annotations.
 
         Args:
+        ----
             filename (str): Name of the file to save the annotations.
+
         """
         output_path = os.path.join(self.save_dir, filename)
         coco_data = {"images": self.images, "annotations": self.annotations, "categories": self.categories}

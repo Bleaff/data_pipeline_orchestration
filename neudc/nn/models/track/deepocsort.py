@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 from collections import deque
-from typing import Optional
 
 import numpy as np
 
@@ -26,9 +27,8 @@ def k_previous_obs(observations, cur_age, k):
 
 
 def convert_x_to_bbox(x, score=None):
-    """
-    Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
-      [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
+    """Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
+    [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right.
     """
     w = np.sqrt(x[2] * x[3])
     h = x[2] / w
@@ -39,19 +39,22 @@ def convert_x_to_bbox(x, score=None):
 
 
 class KalmanBoxTracker:
-    """
-    This class represents the internal state of individual tracked objects observed as bbox.
-    """
+    """This class represents the internal state of individual tracked objects observed as bbox."""
 
     count = 0
 
     def __init__(
-        self, det, min_hits=3, delta_t=3, emb=None, alpha=0, max_obs=50, Q_xy_scaling=0.01, Q_s_scaling=0.0001
-    ):
-        """
-        Initialises a tracker using initial bounding box.
-
-        """
+        self,
+        det,
+        min_hits=3,
+        delta_t=3,
+        emb=None,
+        alpha=0,
+        max_obs=50,
+        Q_xy_scaling=0.01,
+        Q_s_scaling=0.0001,
+    ) -> None:
+        """Initialises a tracker using initial bounding box."""
         # define constant velocity model
         self.max_obs = max_obs
         bbox = det[0:5]
@@ -73,7 +76,7 @@ class KalmanBoxTracker:
                 [0, 0, 0, 0, 1, 0, 0],
                 [0, 0, 0, 0, 0, 1, 0],
                 [0, 0, 0, 0, 0, 0, 1],
-            ]
+            ],
         )
         self.kf.H = np.array(
             [
@@ -81,7 +84,7 @@ class KalmanBoxTracker:
                 [0, 1, 0, 0, 0, 0, 0],
                 [0, 0, 1, 0, 0, 0, 0],
                 [0, 0, 0, 1, 0, 0, 0],
-            ]
+            ],
         )
         self.kf.R[2:, 2:] *= 10.0
         self.kf.P[4:, 4:] *= 1000.0  # give high uncertainty to the unobservable initial velocities
@@ -113,7 +116,7 @@ class KalmanBoxTracker:
         # Used to output track after min_hits reached
         self.features = deque([], maxlen=self.max_obs)
         # Used for velocity
-        self.observations = dict()
+        self.observations = {}
         self.velocity = None
         self.delta_t = delta_t
         self.history_observations = deque([], maxlen=self.max_obs)
@@ -123,10 +126,8 @@ class KalmanBoxTracker:
         self.frozen = False
         self.state = TrackState.New
 
-    def clear_buffer(self):
-        """
-        Clears the buffers and resets state variables for the tracker.
-        """
+    def clear_buffer(self) -> None:
+        """Clears the buffers and resets state variables for the tracker."""
         self.history.clear()
         self.observations.clear()
         self.history_observations.clear()
@@ -136,11 +137,8 @@ class KalmanBoxTracker:
         self.time_since_update = 0
         self.last_observation = np.array([-1, -1, -1, -1, -1])  # Reset placeholder
 
-    def update(self, det):
-        """
-        Updates the state vector with observed bbox.
-        """
-
+    def update(self, det) -> None:
+        """Updates the state vector with observed bbox."""
         if det is not None:
             bbox = det[0:5]
             self.conf = det[4]
@@ -181,14 +179,14 @@ class KalmanBoxTracker:
                 self.state = TrackState.Lost
             self.frozen = True
 
-    def update_emb(self, emb, alpha=0.9):
+    def update_emb(self, emb, alpha=0.9) -> None:
         self.emb = alpha * self.emb + (1 - alpha) * emb
         self.emb /= np.linalg.norm(self.emb)
 
     def get_emb(self):
         return self.emb
 
-    def apply_affine_correction(self, affine):
+    def apply_affine_correction(self, affine) -> None:
         m = affine[:, :2]
         t = affine[:, 2].reshape(2, 1)
         # For OCR
@@ -208,9 +206,7 @@ class KalmanBoxTracker:
         self.kf.apply_affine_correction(m, t)
 
     def predict(self):
-        """
-        Advances the state vector and returns the predicted bounding box estimate.
-        """
+        """Advances the state vector and returns the predicted bounding box estimate."""
         # Don't allow negative bounding boxes
         if (self.kf.x[6] + self.kf.x[2]) <= 0:
             self.kf.x[6] *= 0.0
@@ -225,9 +221,7 @@ class KalmanBoxTracker:
         return self.history[-1]
 
     def get_state(self):
-        """
-        Returns the current bounding box estimate.
-        """
+        """Returns the current bounding box estimate."""
         return self.x_to_bbox_func(self.kf.x)
 
     def mahalanobis(self, bbox):
@@ -236,10 +230,10 @@ class KalmanBoxTracker:
 
 
 class DeepOcSort(BaseTracker):
-    """
-    DeepOCSort Tracker: A tracking algorithm that utilizes a combination of appearance and motion-based tracking.
+    """DeepOCSort Tracker: A tracking algorithm that utilizes a combination of appearance and motion-based tracking.
 
     Args:
+    ----
         per_class (bool, optional): Whether to perform per-class tracking. If True, tracks are maintained separately for each object class.
         det_thresh (float, optional): Detection confidence threshold. Detections below this threshold will be ignored.
         max_age (int, optional): Maximum number of frames to keep a track alive without any detections.
@@ -257,6 +251,7 @@ class DeepOcSort(BaseTracker):
         Q_xy_scaling (float, optional): Scaling factor for the process noise covariance in the Kalman Filter for position coordinates.
         Q_s_scaling (float, optional): Scaling factor for the process noise covariance in the Kalman Filter for scale coordinates.
         **kwargs: Additional arguments for future extensions or parameters.
+
     """
 
     def __init__(
@@ -277,7 +272,7 @@ class DeepOcSort(BaseTracker):
         Q_xy_scaling: float = 0.01,
         Q_s_scaling: float = 0.0001,
         **kwargs: dict,
-    ):
+    ) -> None:
         super().__init__(max_age=max_age, per_class=per_class, asso_func=asso_func)
         """
         Sets key parameters for SORT
@@ -308,9 +303,8 @@ class DeepOcSort(BaseTracker):
     @Profile(logger=LOGGER, use_cuda=False, freq=PROFILE_FREQ, name="tracker")
     @BaseTracker.on_first_frame_setup
     @BaseTracker.per_class_decorator
-    def update(self, dets: np.ndarray, img: np.ndarray, embs: Optional[np.ndarray] = None) -> np.ndarray:
-        """
-        Params:
+    def update(self, dets: np.ndarray, img: np.ndarray, embs: np.ndarray | None = None) -> np.ndarray:
+        """Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
         Requires: this method must be called once for each frame even with empty detections
         (use np.empty((0, 5)) for frames without detections).
@@ -359,20 +353,17 @@ class DeepOcSort(BaseTracker):
                 trk_embs.append(self.active_tracks[t].get_emb())
         trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
 
-        if len(trk_embs) > 0:
-            trk_embs = np.vstack(trk_embs)
-        else:
-            trk_embs = np.array(trk_embs)
+        trk_embs = np.vstack(trk_embs) if len(trk_embs) > 0 else np.array(trk_embs)
 
         for t in reversed(to_del):
             self.active_tracks.pop(t)
 
         velocities = np.array(
-            [trk.velocity if trk.velocity is not None else np.array((0, 0)) for trk in self.active_tracks]
+            [trk.velocity if trk.velocity is not None else np.array((0, 0)) for trk in self.active_tracks],
         )
         last_boxes = np.array([trk.last_observation for trk in self.active_tracks])
         k_observations = np.array(
-            [k_previous_obs(trk.observations, trk.age, self.delta_t) for trk in self.active_tracks]
+            [k_previous_obs(trk.observations, trk.age, self.delta_t) for trk in self.active_tracks],
         )
 
         """
@@ -474,10 +465,8 @@ class DeepOcSort(BaseTracker):
             return np.concatenate(ret)
         return np.array([])
 
-    def clear_all_buffers(self):
-        """
-        Clears buffers for all active tracks.
-        """
+    def clear_all_buffers(self) -> None:
+        """Clears buffers for all active tracks."""
         for tracker in self.active_tracks:
             tracker.clear_buffer()
         self.active_tracks = []
@@ -485,18 +474,20 @@ class DeepOcSort(BaseTracker):
     def warmup(
         self,
         dummy_detections: np.ndarray = np.array(
-            [[50, 50, 100, 100, 0.9, 0], [120, 120, 170, 170, 0.85, 0]], dtype=np.float32
+            [[50, 50, 100, 100, 0.9, 0], [120, 120, 170, 170, 0.85, 0]],
+            dtype=np.float32,
         ),
         img_shape: tuple = (640, 640),
         iters: int = 5,
     ) -> None:
-        """
-        Warmup function to initialize Numba JIT-compiled code paths.
+        """Warmup function to initialize Numba JIT-compiled code paths.
 
-        Parameters:
+        Parameters
+        ----------
             dummy_detections (np.ndarray): Dummy detections in the format [[x1, y1, x2, y2, score], ...].
             img_shape (tuple): Image shape as (height, width).
             iterations (int): Number of iterations to run the warmup.
+
         """
         for _ in range(iters):
             # Create dummy image of the specified shape

@@ -1,5 +1,4 @@
-"""
-This module implements the linear Kalman filter in both an object
+"""This module implements the linear Kalman filter in both an object
 oriented and procedural form. The KalmanFilter class implements
 the filter by storing the various matrices in instance variables,
 minimizing the amount of bookkeeping you have to do.
@@ -53,20 +52,20 @@ except TypeError:
         "You are using a version of SciPy that does not support the "
         "allow_singular parameter in scipy.stats.multivariate_normal.logpdf(). "
         "Future versions of FilterPy will require a version of SciPy that "
-        "implements this keyword"
+        "implements this keyword",
     )
     _support_singular = False
 
 
 def reshape_z(z, dim_z, ndim):
-    """ensure z is a (dim_z, 1) shaped vector"""
-
+    """Ensure z is a (dim_z, 1) shaped vector."""
     z = np.atleast_2d(z)
     if z.shape[1] == dim_z:
         z = z.T
 
     if z.shape != (dim_z, 1):
-        raise ValueError(f"z must be convertible to shape ({dim_z}, 1)")
+        msg = f"z must be convertible to shape ({dim_z}, 1)"
+        raise ValueError(msg)
 
     if ndim == 1:
         z = z[:, 0]
@@ -78,8 +77,7 @@ def reshape_z(z, dim_z, ndim):
 
 
 def logpdf(x, mean=None, cov=1, allow_singular=True):
-    """
-    Computes the log of the probability density function of the normal
+    """Computes the log of the probability density function of the normal
     N(mean, cov) for the data x. The normal may be univariate or multivariate.
 
     Wrapper for older versions of scipy.multivariate_normal.logpdf which
@@ -90,11 +88,7 @@ def logpdf(x, mean=None, cov=1, allow_singular=True):
 
     `x` and `mean` may be column vectors, row vectors, or lists.
     """
-
-    if mean is not None:
-        flat_mean = np.asarray(mean).flatten()
-    else:
-        flat_mean = None
+    flat_mean = np.asarray(mean).flatten() if mean is not None else None
 
     flat_x = np.asarray(x).flatten()
 
@@ -111,11 +105,14 @@ class KalmanFilterXYSR:
 
     def __init__(self, dim_x, dim_z, dim_u=0, max_obs=50) -> "KalmanFilterXYSR":
         if dim_x < 1:
-            raise ValueError("dim_x must be 1 or greater")
+            msg = "dim_x must be 1 or greater"
+            raise ValueError(msg)
         if dim_z < 1:
-            raise ValueError("dim_z must be 1 or greater")
+            msg = "dim_z must be 1 or greater"
+            raise ValueError(msg)
         if dim_u < 0:
-            raise ValueError("dim_u must be 0 or greater")
+            msg = "dim_u must be 0 or greater"
+            raise ValueError(msg)
 
         self.dim_x = dim_x
         self.dim_z = dim_z
@@ -166,13 +163,11 @@ class KalmanFilterXYSR:
         self.observed = False
         self.last_measurement = None
 
-    def apply_affine_correction(self, m, t):
-        """
-        Apply to both last state and last observation for OOS smoothing.
+    def apply_affine_correction(self, m, t) -> None:
+        """Apply to both last state and last observation for OOS smoothing.
 
         Messy due to internal logic for kalman filter being messy.
         """
-
         self.x[:2] = m @ self.x[:2] + t
         self.x[4:6] = m @ self.x[4:6]
 
@@ -189,11 +184,11 @@ class KalmanFilterXYSR:
 
             self.attr_saved["last_measurement"][:2] = m @ self.attr_saved["last_measurement"][:2] + t
 
-    def predict(self, u=None, B=None, F=None, Q=None):
-        """
-        Predict next state (prior) using the Kalman filter state propagation
+    def predict(self, u=None, B=None, F=None, Q=None) -> None:
+        """Predict next state (prior) using the Kalman filter state propagation
         equations.
-        Parameters
+
+        Parameters.
         ----------
         u : np.array, default 0
             Optional control vector.
@@ -206,6 +201,7 @@ class KalmanFilterXYSR:
         Q : np.array(dim_x, dim_x), scalar, or None
             Optional process noise matrix; a value of None will cause the
             filter to use `self.Q`.
+
         """
         if B is None:
             B = self.B
@@ -228,13 +224,11 @@ class KalmanFilterXYSR:
         self.x_prior = self.x.copy()
         self.P_prior = self.P.copy()
 
-    def freeze(self):
-        """
-        Save the parameters before non-observation forward
-        """
+    def freeze(self) -> None:
+        """Save the parameters before non-observation forward."""
         self.attr_saved = deepcopy(self.__dict__)
 
-    def unfreeze(self):
+    def unfreeze(self) -> None:
         if self.attr_saved is not None:
             new_history = deepcopy(list(self.history_obs))
             self.__dict__ = self.attr_saved
@@ -257,15 +251,15 @@ class KalmanFilterXYSR:
                 s, r = w * h, w / float(h)
                 new_box = np.array([x, y, s, r]).reshape((4, 1))
                 self.update(new_box)
-                if not i == (index2 - index1 - 1):
+                if i != index2 - index1 - 1:
                     self.predict()
                     self.history_obs.pop()
             self.history_obs.pop()
 
-    def update(self, z, R=None, H=None):
-        """
-        Add a new measurement (z) to the Kalman filter. If z is None, nothing is changed.
-        Parameters
+    def update(self, z, R=None, H=None) -> None:
+        """Add a new measurement (z) to the Kalman filter. If z is None, nothing is changed.
+
+        Parameters.
         ----------
         z : np.array
             Measurement for this update. z can be a scalar if dim_z is 1,
@@ -274,8 +268,8 @@ class KalmanFilterXYSR:
             Measurement noise. If None, the filter's self.R value is used.
         H : np.array, or None
             Measurement function. If None, the filter's self.H value is used.
-        """
 
+        """
         # set to None to force recompute
         self._log_likelihood = None
         self._likelihood = None
@@ -344,7 +338,7 @@ class KalmanFilterXYSR:
         # save history of observations
         self.history_obs.append(z)
 
-    def update_steadystate(self, z, H=None):
+    def update_steadystate(self, z, H=None) -> None:
         """Update Kalman filter using the Kalman gain and state covariance
         matrix as computed for the steady state. Only x is updated, and the
         new value is stored in self.x. P is left unchanged. Must be called
@@ -374,7 +368,6 @@ class KalmanFilterXYSR:
     @property
     def log_likelihood(self):
         """log-likelihood of the last measurement."""
-
         return self._log_likelihood
 
     @log_likelihood.setter
@@ -382,23 +375,20 @@ class KalmanFilterXYSR:
         """log-likelihood of the measurement z. Computed from the
         system uncertainty S.
         """
-
         if z is None:
             z = self.z
         return logpdf(z, dot(self.H, self.x), self.S)
 
     @property
     def likelihood(self):
-        """likelihood of the last measurement."""
-
+        """Likelihood of the last measurement."""
         return self._likelihood
 
     @likelihood.setter
     def likelihood(self, z=None):
-        """likelihood of the measurement z. Computed from the
+        """Likelihood of the measurement z. Computed from the
         system uncertainty S.
         """
-
         if z is None:
             z = self.z
         return exp(self.log_likelihood(z))

@@ -90,7 +90,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Return current health status."""
         with self._healthy.get_lock():
             return self._healthy.value
-    
+
     def status(self) -> bool:
         return self.is_healthy()
 

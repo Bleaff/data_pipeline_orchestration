@@ -29,5 +29,3 @@ pipes:
         mode: "loop"
         frame_delay: 0.5
         outputs: [resize, saver]
-        
-      

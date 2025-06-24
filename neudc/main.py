@@ -9,11 +9,12 @@ Functions:
 """
 
 import logging
+import time
 
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
-import time
+
 
 def main(config_path: str) -> None:
     """Entrypoint for the application. Takes the path to the YAML config as input. Factories nodes and routes messages between them.

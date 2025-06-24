@@ -1,8 +1,15 @@
-import onnxruntime as ort
+from __future__ import annotations
+
 import ast
+from typing import TYPE_CHECKING
+
+import onnxruntime as ort
+
 from neudc.nn.backends import BaseBackend
 from neudc.utils import LOGGER, PROFILE_FREQ, Profile
-from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
+
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
 
 __all__ = ("ONNXRuntimeBackend",)
 
@@ -17,13 +24,14 @@ class ONNXRuntimeBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
-    ) -> "ONNXRuntimeBackend":
-        """
-        Init of ONNX Runtime backend
+    ) -> ONNXRuntimeBackend:
+        """Init of ONNX Runtime backend.
 
         Args:
+        ----
             path (str): Path to ONNX model.
             device_id (int): Device id for the inference. -1 is cpu device.
+
         """
         providers = ["CPUExecutionProvider"]
         if device_id >= 0:
@@ -53,30 +61,31 @@ class ONNXRuntimeBackend(BaseBackend):
 
         # Reading metadata
         self.metadata = self.model.get_modelmeta().custom_metadata_map
-        self.metadata['imgsz'] = ast.literal_eval(self.metadata.get("imgsz", "(640, 640)"))
+        self.metadata["imgsz"] = ast.literal_eval(self.metadata.get("imgsz", "(640, 640)"))
         self.dynamic = isinstance(self.model.get_outputs()[0].shape[0], str)
-        self.fp16 = ast.literal_eval(self.metadata['args']).get('half', False)
+        self.fp16 = ast.literal_eval(self.metadata["args"]).get("half", False)
         self.fp16 = "float16" in self.model.get_inputs()[0].type
-        print(self.model.get_inputs()[0].type)
 
     @Profile(use_cuda=cuda, use_torch=False, logger=LOGGER, freq=PROFILE_FREQ, name="onnx")
     def __call__(
         self,
         input_data: FloatImagesBatch,
     ) -> list[FloatFeaturesBatch]:
-        """
-        Call the backend engine
+        """Call the backend engine.
 
         Args:
+        ----
             input_data (FloatImagesBatch): The input to the model.
+
         Returns:
+        -------
             list[FloatFeaturesBatch]: The output of the model.
+
         """
-        outputs = self.model.run(
+        return self.model.run(
             self.output_names,
             {self.input_name: input_data},
         )
-        return outputs
 
-    def __del__(self):
+    def __del__(self) -> None:
         pass

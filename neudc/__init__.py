@@ -1,5 +1,4 @@
-"""
-(NEUDC) - A distributed system for video and image processing
+"""(NEUDC) - A distributed system for video and image processing.
 
 NEUDC is a Python-based system for distributed video and image processing. It is designed to
 be highly scalable and flexible, allowing you to build complex pipelines for processing
@@ -34,7 +33,6 @@ The system is also designed to be highly flexible, with the ability to build com
 pipelines for processing large datasets.
 
 """
-
 
 __version__ = "0.0.1"
 

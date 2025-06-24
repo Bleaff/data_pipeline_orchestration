@@ -134,11 +134,11 @@ def associate(
         matched_indices = np.empty(shape=(0, 2))
 
     unmatched_detections = []
-    for d, det in enumerate(detections):
+    for d, _det in enumerate(detections):
         if d not in matched_indices[:, 0]:
             unmatched_detections.append(d)
     unmatched_trackers = []
-    for t, trk in enumerate(trackers):
+    for t, _trk in enumerate(trackers):
         if t not in matched_indices[:, 1]:
             unmatched_trackers.append(t)
 
@@ -150,9 +150,6 @@ def associate(
             unmatched_trackers.append(m[1])
         else:
             matches.append(m.reshape(1, 2))
-    if len(matches) == 0:
-        matches = np.empty((0, 2), dtype=int)
-    else:
-        matches = np.concatenate(matches, axis=0)
+    matches = np.empty((0, 2), dtype=int) if len(matches) == 0 else np.concatenate(matches, axis=0)
 
     return matches, np.array(unmatched_detections), np.array(unmatched_trackers)

@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 import os
 import xml.etree.ElementTree as ET
-from typing import Optional
+from typing import TYPE_CHECKING
 from xml.dom import minidom
-
-import numpy as np
 
 from neudc.utils import LOGGER
 
 from .base import BaseAnnotator
+
+if TYPE_CHECKING:
+    import numpy as np
 
 __all__ = ("PascalVOCAnnotator",)
 
@@ -18,14 +21,15 @@ class PascalVOCAnnotator(BaseAnnotator):
     def __init__(
         self,
         save_dir: str,
-        categories: Optional[list[dict]] = None,
-    ) -> "PascalVOCAnnotator":
-        """
-        Initialize the PascalVOCAnnotator.
+        categories: list[dict] | None = None,
+    ) -> PascalVOCAnnotator:
+        """Initialize the PascalVOCAnnotator.
 
         Args:
+        ----
             save_dir (str): Directory to save the annotations.
             categories (Optional[List[Dict]]): List of categories in the format [{"id": int, "name": str}, ...].
+
         """
         super().__init__(save_dir, categories)
         self.id_to_name = {cat["id"]: cat["name"] for cat in self.categories}
@@ -37,14 +41,15 @@ class PascalVOCAnnotator(BaseAnnotator):
         frame: np.ndarray,
         dets: np.ndarray,
     ) -> None:
-        """
-        Add detections to the PascalVOC annotations.
+        """Add detections to the PascalVOC annotations.
 
         Args:
+        ----
             image_id (int): Unique ID of the image.
             image_name (str): Name of the image.
             frame (np.ndarray): Original image.
             dets (np.ndarray): Detections in the format [{"xmin": float, "ymin": float, "xmax": float, "ymax": float, "score": float, "class_id": int}, ...].
+
         """
         height, width = frame.shape[:2]
         depth = frame.shape[2] if len(frame.shape) > 2 else 3
@@ -83,8 +88,6 @@ class PascalVOCAnnotator(BaseAnnotator):
         with open(xml_path, "w") as f:
             f.write(xml_str)
 
-    def finalize(self, _: Optional[str] = None) -> None:
-        """
-        Finalize the PascalVOC annotations.
-        """
+    def finalize(self, _: str | None = None) -> None:
+        """Finalize the PascalVOC annotations."""
         LOGGER.info(f"PascalVOC annotations saved to {self.save_dir}")

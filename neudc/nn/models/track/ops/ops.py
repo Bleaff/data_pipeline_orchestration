@@ -4,16 +4,19 @@ from numba import njit
 
 @njit(fastmath=True)
 def xyxy2xysr(x: np.ndarray, eps: float = 1e-6) -> np.ndarray:
-    """
-    Converts bounding box coordinates from (x1, y1, x2, y2) format to (x, y, s, r) format.
+    """Converts bounding box coordinates from (x1, y1, x2, y2) format to (x, y, s, r) format.
 
     Args:
+    ----
         bbox (np.ndarray) or (torch.Tensor): The input bounding box coordinates in (x1, y1, x2, y2) format.
+
     Returns:
+    -------
         z (np.ndarray) or (torch.Tensor): The bounding box coordinates in (x, y, s, r) format, where
                                           x, y is the center of the box,
                                           s is the scale (area), and
                                           r is the aspect ratio.
+
     """
     # Extract coordinates directly
     x1 = x[0]

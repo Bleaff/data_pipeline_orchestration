@@ -1,7 +1,12 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import cv2
 import numpy as np
 
-from neudc.utils.types import FloatBBoxesWithCls, ImageShape
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatBBoxesWithCls, ImageShape
 
 # from numba import float32, int64, jit, types
 
@@ -37,10 +42,10 @@ def compute_letterbox_params(
     scaleup: bool,
     stride: int,
 ) -> tuple[tuple[float, float], tuple[int, int], float, float]:
-    """
-    Compute letterbox parameters.
+    """Compute letterbox parameters.
 
     Args:
+    ----
         shape (tuple[int, int]): Original shape of the image.
         new_shape (tuple[int, int]): New shape of the image.
         auto (bool): If True, the image will be padded to the nearest multiple of the stride.
@@ -49,7 +54,9 @@ def compute_letterbox_params(
         stride (int): Stride of the image.
 
     Returns:
+    -------
         tuple[tuple[float, float], tuple[int, int], float, float]: Ratio, new unpadded shape, dw, dh.
+
     """
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
     if not scaleup:
@@ -85,10 +92,10 @@ def letterbox(
     scaleup: bool = False,
     stride: int = 32,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Resize + pad image (letterbox) for maintaining proportions.
+    """Resize + pad image (letterbox) for maintaining proportions.
 
     Args:
+    ----
         img (np.ndarray): Image to resize.
         new_shape (ImageShape): New shape of the image.
         color (tuple[int, int, int]): Color of the border.
@@ -98,7 +105,9 @@ def letterbox(
         stride (int): Stride of the image.
 
     Returns:
+    -------
         tuple[np.ndarray, np.ndarray]: Image, letterbox params.
+
     """
     shape = img.shape[:2]  # (height, width)
 
@@ -117,15 +126,17 @@ def letterbox(
 
 # @jit(nopython=True, fastmath=True, inline="always")
 def compute_iou(box: np.ndarray, boxes: np.ndarray) -> np.ndarray:
-    """
-    Compute IoU between a box and a list of boxes.
+    """Compute IoU between a box and a list of boxes.
 
     Args:
+    ----
         box (np.ndarray): Box.
         boxes (np.ndarray): List of boxes.
 
     Returns:
+    -------
         np.ndarray: IoU scores.
+
     """
     x1 = np.maximum(box[0], boxes[:, 0])
     y1 = np.maximum(box[1], boxes[:, 1])
@@ -147,16 +158,18 @@ def apply_nms(
     iou: float = 0.5,
     max_det: int = 100,
 ) -> np.ndarray:
-    """
-    Apply NMS to a list of boxes.
+    """Apply NMS to a list of boxes.
 
     Args:
+    ----
         boxes (np.ndarray): List of boxes.
         scores (np.ndarray): List of scores.
         iou (float): IoU threshold.
 
     Returns:
+    -------
         np.ndarray: Indices of the boxes to keep.
+
     """
     indices = scores.argsort()[::-1]
     keep = []
@@ -197,17 +210,19 @@ def decode_output(
     ratio: tuple[float, float],
     pad: tuple[float, float],
 ) -> np.ndarray:
-    """
-    Decode output.
+    """Decode output.
 
     Args:
+    ----
         predictions (np.ndarray): Predictions.
         conf (float): Confidence threshold.
         ratio (tuple[float, float]): Ratio of the image.
         pad (tuple[float, float]): Padding of the image.
 
     Returns:
+    -------
         np.ndarray: Decoded predictions.
+
     """
     dw, dh = pad
     rw, rh = ratio
@@ -242,10 +257,10 @@ def postprocess_yolo_outputs(
     ratio: tuple[float, float] = (1.0, 1.0),
     pad: tuple[float, float] = (0.0, 0.0),
 ) -> FloatBBoxesWithCls:
-    """
-    Performs decode + NMS
+    """Performs decode + NMS.
 
     Args:
+    ----
         predictions (np.ndarray): Predictions.
         conf (float): Confidence threshold.
         iou (float): IoU threshold.
@@ -253,7 +268,9 @@ def postprocess_yolo_outputs(
         pad (tuple[float, float]): Padding of the image.
 
     Returns:
+    -------
         np.ndarray: Decoded and NMSed predictions with xyxy format.
+
     """
     # Decode
     all_dets = decode_output(
@@ -284,18 +301,20 @@ def make_sahi_slices_batch(
     crop_size: tuple[int, int],
     crop_overlap: tuple[int, int],
 ) -> tuple[list[np.ndarray], list[tuple[int, int, int]]]:
-    """
-    Slice a batch of images (imgs: (B, C, H, W)) into crops.
+    """Slice a batch of images (imgs: (B, C, H, W)) into crops.
     Imgs size is guaranteed to be divisible by crop_size + crop_overlap.
 
     Args:
+    ----
         imgs (np.ndarray): Images in (B, C, H, W) format.
         crop_size (tuple[int, int]): Size of the crops.
         crop_overlap (tuple[int, int]): Overlap of the crops.
 
     Returns:
+    -------
         crops: list of (C, crop_h, crop_w) array.
         origins: list of (3) array with [image_index, x_origin, y_origin].
+
     """
     B, _, H, W = imgs.shape
     crop_h, crop_w = crop_size

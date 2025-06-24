@@ -11,11 +11,12 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from neudc.core.node.broadcast.image_saver import SaveImageNode
-from neudc.core.node.processors.resize_node import ResizeNode
+from neudc.core.node.model.proc_det_inference import ProcessDetInference
 from neudc.core.node.processors.draw_node import DrawNode
+from neudc.core.node.processors.resize_node import ResizeNode
 from neudc.core.node.processors.resize_process_node import ResizeProcessNode
 from neudc.core.node.readers.image_reader import FolderImageNode
-from neudc.core.node.model.proc_det_inference import ProcessDetInference
+
 
 class NodeFactory:
     """Factory to create node instances based on config."""

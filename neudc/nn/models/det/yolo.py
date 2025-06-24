@@ -1,22 +1,26 @@
-from typing import Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
-from neudc.nn.backends import BaseBackend
 from neudc.nn.models.op import letterbox, postprocess_yolo_outputs
 from neudc.utils import LOGGER, PROFILE_FREQ, NoProfile, Profile
 from neudc.utils.checks import check_class_names, default_class_names, to_tuple
-from neudc.utils.types import (
-    FloatBBoxesWithCls,
-    FloatFeaturesBatch,
-    FloatImagesBatch,
-    ImageShape,
-    LetterboxParams,
-    UInt8HWC,
-)
 
 from .base import BaseDetector
+
+if TYPE_CHECKING:
+    from neudc.nn.backends import BaseBackend
+    from neudc.utils.types import (
+        FloatBBoxesWithCls,
+        FloatFeaturesBatch,
+        FloatImagesBatch,
+        ImageShape,
+        LetterboxParams,
+        UInt8HWC,
+    )
 
 # from numba import jit, prange
 
@@ -32,17 +36,17 @@ class YOLOv8(BaseDetector):
         path: str,
         backend: BaseBackend,
         device_id: int = 0,
-        imgsz: Optional[ImageShape] = None,
-        names: Optional[Union[list, dict]] = None,
+        imgsz: ImageShape | None = None,
+        names: list | dict | None = None,
         conf: float = 0.2,
         iou: float = 0.7,
         max_det: int = 100,
         nms: bool = True,
-    ) -> "YOLOv8":
-        """
-        Initialize the YOLOv8 for inference.
+    ) -> YOLOv8:
+        """Initialize the YOLOv8 for inference.
 
         Args:
+        ----
             path (str): Path to the model weights file.
             backend (BaseBackend): Backend for inference the model
             device_id (int): device id, -1 for cpu device
@@ -52,6 +56,7 @@ class YOLOv8(BaseDetector):
             iou (float): Intersection over Union threshold
             max_det (int): Maximum number of detections to return
             nms (bool): Whether to use non-maximum suppression
+
         """
         super().__init__(path=path, backend=backend, device_id=device_id)
         backend = backend(path=path, device_id=device_id)
@@ -66,7 +71,8 @@ class YOLOv8(BaseDetector):
 
         # Check imgsz
         if not imgsz and "imgsz" not in backend.metadata:  # imgsz missing
-            raise NotImplementedError("imgsz is not initialized.")
+            msg = "imgsz is not initialized."
+            raise NotImplementedError(msg)
         elif "imgsz" in backend.metadata:
             LOGGER.warning(f"WARNING ⚠️ Overwrite imgsz from {imgsz} to {backend.metadata['imgsz']}.")
             imgsz = backend.metadata["imgsz"]
@@ -83,6 +89,7 @@ class YOLOv8(BaseDetector):
         self.backend = backend
         self.path = path
         self.device_id = device_id
+
     @staticmethod
     def _pre_transform(
         ims: list[UInt8HWC],
@@ -90,18 +97,19 @@ class YOLOv8(BaseDetector):
         stride: int,
         fp16: bool,
     ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
-        """
-        Pre-transform input image in BGR format before inference.
+        """Pre-transform input image in BGR format before inference.
 
         Args:
+        ----
             ims (List(np.ndarray)): images in [(h, w, 3) x N] format.
             imgsz: (int | tuple[int, int]): Image size for the inference height x width.
             stride: (int): Stride of the model.
 
         Returns:
+        -------
             (tuple): A list of transformed images in (n, 3, h, w) format and letterbox params.
-        """
 
+        """
         letterbox_params, letterbox_images = [], []
 
         for im in ims:
@@ -122,14 +130,16 @@ class YOLOv8(BaseDetector):
         self,
         ims: list[UInt8HWC],
     ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
-        """
-        Pre-transform input image in BGR format before inference.
+        """Pre-transform input image in BGR format before inference.
 
         Args:
+        ----
             im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
 
         Returns:
+        -------
             (tuple): A list of transformed images and letterbox params.
+
         """
         return self._pre_transform(
             ims=ims,
@@ -147,10 +157,10 @@ class YOLOv8(BaseDetector):
         iou: float,
         max_det: int,
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Numba-compiled post-transform input image before inference.
+        """Numba-compiled post-transform input image before inference.
 
         Args:
+        ----
             predictions (Float(np.ndarray)): (B, ...) as output from a network.
             letterbox_params: List(LetterboxParams): Ratio and pad of every image after letterbox
             conf: (float): Confidence threshold
@@ -158,9 +168,10 @@ class YOLOv8(BaseDetector):
             max_det: (int): Maximum number of detections to return
 
         Returns:
+        -------
             (list): Rescaled bboxes.
-        """
 
+        """
         output = []
         b = len(predictions)
         for i in range(b):
@@ -182,17 +193,18 @@ class YOLOv8(BaseDetector):
         predictions: FloatFeaturesBatch,
         letterbox_params: list[LetterboxParams],
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Post-transform input image before inference.
+        """Post-transform input image before inference.
 
         Args:
+        ----
             predictions (Float(np.ndarray)): (B, ...) as output from a network.
             letterbox_params: List(LetterboxParams): Ratio and pad of every image after letterbox
 
         Returns:
+        -------
             (list): Rescaled bboxes.
-        """
 
+        """
         return self._post_transform(
             predictions=predictions,
             letterbox_params=letterbox_params,
@@ -205,35 +217,35 @@ class YOLOv8(BaseDetector):
         self,
         ims: list[UInt8HWC],
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Runs inference on the YOLOv8 model.
+        """Runs inference on the YOLOv8 model.
 
         Args:
+        ----
             ims (List(np.ndarray)): [(H, W, C) x N] for list.
 
         Returns:
+        -------
             (List[Tuple[np.ndarray]]): Tuple containing the bboxes, score, class_id
-        """
 
+        """
         batch_ims, batch_params = self.pre_transform(ims)
         predictions = self.backend(batch_ims)[0]  # yolov8 has only one output
-        output = self.post_transform(
+        return self.post_transform(
             predictions=predictions,
             letterbox_params=batch_params,
         )
-
-        return output
 
     @NoProfile
     def warmup(
         self,
         iters: int = 10,
     ) -> None:
-        """
-        Warm up the model by running one forward pass with a dummy input.
+        """Warm up the model by running one forward pass with a dummy input.
 
         Args:
+        ----
             iters (int): Number of iterations to warm up the model.
+
         """
         im = [
             np.empty(
@@ -249,18 +261,20 @@ class YOLOv8(BaseDetector):
         self,
         image: UInt8HWC,
         bboxes: FloatBBoxesWithCls,
-        save_path: Optional[str] = None,
+        save_path: str | None = None,
     ) -> None:
-        """
-        Plot results from neural network.
+        """Plot results from neural network.
 
         Args:
+        ----
             image (np.ndarray): image to plot the bboxes.
             bboxes (tuple(np.ndarray, ...)): bboxes which consists of (bboxs, scores, cls_id)
-        Returns:
-            None
-        """
 
+        Returns:
+        -------
+            None
+
+        """
         for bbox in bboxes:
             xmin, ymin, xmax, ymax, score, cls_id = bbox
             xmin, ymin, xmax, ymax, score, cls_name = (

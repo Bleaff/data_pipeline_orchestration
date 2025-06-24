@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import multiprocessing as mp
 
 from neudc.engine.filter import BaseFilter, ComposeFilter
@@ -8,8 +10,7 @@ __all__ = ("MPLoader",)
 
 
 class MPLoader(BaseLoader):
-    """
-    This class spawns multiple processes, each reading from its own data loader.
+    """This class spawns multiple processes, each reading from its own data loader.
     Samples are placed on a shared Queue, and the main process forms mini-batches
     as it iterates over the object.
     """
@@ -20,12 +21,13 @@ class MPLoader(BaseLoader):
         filters: list[BaseFilter],
         batch_size: int,
         queue_maxsize: int = 32,
-    ) -> "MPLoader":
-        """
-        Args:
+    ) -> MPLoader:
+        """Args:
+        ----
             data_loaders (list): A list of data loader objects, each with __iter__ returning (image, metadata).
             batch_size (int): Number of samples to combine into a single batch.
             queue_maxsize (int): Max size for the multiprocessing queue.
+
         """
         self.filters = ComposeFilter(filters)
         self.data_loaders = data_loaders
@@ -34,9 +36,8 @@ class MPLoader(BaseLoader):
         self.processes = []
         self.active_workers = []
 
-    def start_workers(self):
-        """
-        Spawn one worker per data loader. Each worker iterates
+    def start_workers(self) -> None:
+        """Spawn one worker per data loader. Each worker iterates
         over its data loader and sends samples to the queue.
         """
 
@@ -60,10 +61,8 @@ class MPLoader(BaseLoader):
             self.processes.append(p)
             self.active_workers.append(True)
 
-    def _stop_workers(self):
-        """
-        Cleanly wait for all worker processes to finish.
-        """
+    def _stop_workers(self) -> None:
+        """Cleanly wait for all worker processes to finish."""
         for p, active in zip(self.processes, self.active_workers):
             if active:
                 p.join()
@@ -71,8 +70,7 @@ class MPLoader(BaseLoader):
         self.active_workers = []
 
     def __iter__(self):
-        """
-        A generator that yields minibatches (images, metas). Once you exhaust
+        """A generator that yields minibatches (images, metas). Once you exhaust
         the queue (workers send sentinel), iteration ends.
         """
         if not self.processes:
@@ -110,9 +108,8 @@ class MPLoader(BaseLoader):
         if len(images) > 0:
             yield images, metas
 
-    def __del__(self):
-        """
-        Destructor to ensure processes are stopped if the object goes out of scope
+    def __del__(self) -> None:
+        """Destructor to ensure processes are stopped if the object goes out of scope
         unexpectedly. It's safer to explicitly call self._stop_workers() in your code.
         """
         if self.processes:

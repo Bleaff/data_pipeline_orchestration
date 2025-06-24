@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 
 import cv2
@@ -18,7 +20,7 @@ class ImageLoader(BaseLoader):
     returns (file_name, frame) when iterated.
     """
 
-    def __init__(self, path: str) -> "ImageLoader":
+    def __init__(self, path: str) -> ImageLoader:
         self.images_dir = path
         self._index = 0  # Tracks the current position in the iteration
         self.image_files = self._find_files(path)
@@ -26,9 +28,7 @@ class ImageLoader(BaseLoader):
         LOGGER.info(f"Added ImageLoader: path={path}, files={len(self.image_files)}")
 
     def _find_files(self, directory: str) -> list[str]:
-        """
-        Recursively finds all image files in the directory with valid extensions.
-        """
+        """Recursively finds all image files in the directory with valid extensions."""
         image_files = []
 
         if not os.path.isdir(directory):

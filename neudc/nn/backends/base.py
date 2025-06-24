@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
 
 __all__ = ("BaseBackend", "BackendType")
 
@@ -21,13 +24,14 @@ class BaseBackend(ABC):
         device_id: int = 0,
         *args,
         **kwargs,
-    ) -> "BaseBackend":
-        """
-        Init of BaseBackend backend.
+    ) -> BaseBackend:
+        """Init of BaseBackend backend.
 
         Args:
+        ----
             path (str): weights path of a model.
             device_id (int): device id for the inference. -1 is cpu device.
+
         """
         self.metadata = {}
 
@@ -40,7 +44,7 @@ class BaseBackend(ABC):
         ...
 
     @abstractmethod
-    def __del__(self):
+    def __del__(self) -> None:
         """Frees the resources allocated in allocate_buffers."""
         ...
 

@@ -5,9 +5,7 @@ __all__ = ("BaseLoader",)
 
 
 class BaseLoader(ABC):
-    """
-    Base Loader with custom iterations
-    """
+    """Base Loader with custom iterations."""
 
     @abstractmethod
     def __init__(self, path: str, *args, **kwargs) -> "BaseLoader": ...

@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 import hashlib
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from neudc.utils.types import BoolMask, UInt8HWC
-
 from .base import BaseFilter
+
+if TYPE_CHECKING:
+    from neudc.utils.types import BoolMask, UInt8HWC
 
 __all__ = ("HashFilter",)
 
@@ -14,21 +18,25 @@ class HashFilter(BaseFilter):
     def __init__(
         self,
         separate_by_loader: bool = False,
-    ) -> "HashFilter":
-        """
-        Args:
+    ) -> HashFilter:
+        """Args:
+        ----
             separate_by_loader (bool): Whether to separate seen hashes by loader.
+
         """
         super().__init__(separate_by_loader)
         self.cache = defaultdict(set) if separate_by_loader else set()
 
     def __call__(self, ims: list[UInt8HWC], loader_ids: list[int]) -> BoolMask:
-        """
-        Args:
+        """Args:
+        ----
             ims (list): List of images.
             loader_ids (list): List of loader IDs.
-        Returns:
+
+        Returns
+        -------
             BoolMask: Boolean mask indicating if the image is unique.
+
         """
         unique_image = np.ones(len(ims), dtype=bool)
         for i, (im, loader_id) in enumerate(zip(ims, loader_ids)):
