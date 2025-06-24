@@ -6,7 +6,6 @@ allowing for parallel execution of node graphs.
 """
 
 from __future__ import annotations
-
 import multiprocessing as mp
 import os
 import threading
@@ -15,7 +14,6 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from neudc.core.base.base_node import BaseNode
-
 
 class BaseProcessNode(BaseNode, mp.Process, ABC):
     """Base node class that runs in a separate process.
@@ -40,7 +38,8 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         """
         # Initialize BaseNode and multiprocessing.Process
-        BaseNode.__init__(self, mailbox, logger)
+        BaseNode.__init__(self, None, logger)
+        self.mailbox_config = mailbox.__getstate__()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
 
@@ -49,23 +48,33 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.logger.info(f"Starting process node {self.id}...")
         mp.Process.start(self)
 
-    def thread_start(self) -> None:
+    def _start_afterwords(self) -> None:
         """Start the base node's thread & initialize health monitoring."""
+        from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox 
+
+        
         self._health_thread = threading.Thread(target=self._health_monitor, daemon=True)
         self._health_thread.start()
         # Call the start method of BaseNode to initialize its thread
+
+        self.mailbox = ZMQMailbox.from_state(ZMQMailbox,self.mailbox_config)
+        BaseNode.mailbox = self.mailbox
         BaseNode.init_runtime(self)
 
+    def init_process_runtime(self) -> None:
+        """Initialize runtime resources for the process node."""
+        pass
+    
     def run(self) -> None:
         """Process entrypoint: start health monitor and processing loop."""
         self.logger.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
-
+        self.init_process_runtime()
         self._healthy = mp.Value("b", self.HEALTH_NORMAL)
         self.stop_event = mp.Event()
         self._last_success_time = mp.Value("d", time.time())
 
-        self.thread_start()  # Start the node's thread
-        self.logger.info("Process node started, entering processing loop...")
+        self._start_afterwords()  # Start the node's thread
+        self.logger.info(f"Process node started, entering processing loop...Mailbox status:{self.mailbox.consume_port}")
 
         while not self.stop_event.is_set():
             try:

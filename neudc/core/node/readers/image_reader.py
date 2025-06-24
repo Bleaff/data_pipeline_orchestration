@@ -91,7 +91,6 @@ class FolderImageNode(BaseThreadedNode):
 
         # Load image from disk
         image_path = self.folder_path / self.image_files[self.current_index]
-        self.logger.debug(f"Loading image: {image_path}")
         image = cv2.imread(str(image_path))
         if image is None:
             self.logger.warning(f"Failed to read image: {image_path}")
@@ -112,5 +111,5 @@ class FolderImageNode(BaseThreadedNode):
         self.frame_id += 1
 
         time.sleep(self.frame_delay)
-        self.logger.debug(f"Sleeping for {self.frame_delay:.2f} seconds")
+        # self.logger.debug(f"Sleeping for {self.frame_delay:.2f} seconds")
         return frame

@@ -159,3 +159,10 @@ class ZMQMailbox(BaseMailbox[dict]):
         self._thread = threading.Thread(target=self._receiver_loop, daemon=True)
         self._join_timeout = 0.5
         self._thread.start()
+    
+    @staticmethod
+    def from_state(cls, state: dict[str, Any]) -> ZMQMailbox:
+        mailbox = cls()
+        mailbox.stop()
+        mailbox.__setstate__(state)
+        return mailbox
