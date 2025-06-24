@@ -32,5 +32,6 @@ class HashNode(HashFilterMixin, BaseThreadedNode):
             mailbox=config["mailbox"],
             logger=config["logger"],
             delta=config["delta"],
+            hash_size=config['hash_size'],
             hash_type=config["hash_type"],
         )

@@ -4,11 +4,12 @@ nodes:
     folder_path: "assets/images"
     mode: "loop"
     frame_delay: 0.1
-    outputs: [model]
+    outputs: [hash]
   
   - id: hash
     type: HashNode
     delta: 5
+    hash_size: 8
     hash_type: 'ahash'
     outputs: [model]
 

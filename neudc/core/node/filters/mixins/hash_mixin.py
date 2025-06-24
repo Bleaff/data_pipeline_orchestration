@@ -16,20 +16,23 @@ class HashFilterMixin:
         delta: Maximum Hamming distance for perceptual hashes to be considered duplicates.
         type_of_hash: One of 'ahash', 'dhash', 'phash', or 'md5'.
         hash_funcs: Mapping from hash_type to the corresponding hashing method.
+        hash_size: Size parameter for aHash/dHash/pHash algorithms.
     """
 
-    def __init__(self, delta: int = 5, hash_type: str = 'ahash', *args, **kwargs) -> None:
+    def __init__(self, delta: int = 5, hash_type: str = 'ahash', hash_size: int = 8, *args, **kwargs) -> None:
         """
         Initialize the mixin.
 
         Args:
             delta: Maximum Hamming distance for perceptual hash comparisons.
             hash_type: Which hash to compute—'ahash', 'dhash', 'phash', or 'md5'.
+            hash_size: size of hash for aHash/dHash/pHash.
         """
         super().__init__(*args, **kwargs)
         self.cache: Dict[str, Dict[int, Union[imagehash.ImageHash, str]]] = defaultdict(dict)
         self.delta: int = delta
         self.type_of_hash: str = hash_type
+        self.hash_size: int = hash_size
         self.hash_funcs = {
             'ahash': self.ahash_lib,
             'dhash': self.dhash_lib,
@@ -42,37 +45,35 @@ class HashFilterMixin:
         """
         return Image.fromarray(img)
     
-    def ahash_lib(self, frame:Frame, hash_size: int = 8) -> imagehash.ImageHash:
+    def ahash_lib(self, frame:Frame) -> imagehash.ImageHash:
         """
         Compute the average hash (aHash) of the frame.
 
         Args:
             frame: Frame object containing .image (np.ndarray).
-            hash_size: Size parameter for the hash algorithm.
-
         Returns:
             An imagehash.ImageHash instance.
         """
         pil_img = self.to_pil(frame.image)
-        return imagehash.average_hash(pil_img, hash_size)
+        return imagehash.average_hash(pil_img, self.hash_size)
     
-    def dhash_lib(self, frame:Frame, hash_size: int = 8) -> imagehash.ImageHash:
+    def dhash_lib(self, frame:Frame) -> imagehash.ImageHash:
         """
         Compute the difference hash (dHash) of the frame.
 
         Args and return as in ahash_lib.
         """
         pil_img = self.to_pil(frame.image)
-        return imagehash.dhash(pil_img, hash_size)
+        return imagehash.dhash(pil_img, self.hash_size)
     
-    def phash_lib(self, frame:Frame, hash_size: int = 8) -> imagehash.ImageHash:
+    def phash_lib(self, frame:Frame) -> imagehash.ImageHash:
         """
         Compute the perceptual hash (pHash) of the frame.
 
         Args and return as in ahash_lib.
         """
         pil_img = self.to_pil(frame.image)
-        return imagehash.phash(pil_img, hash_size)
+        return imagehash.phash(pil_img, self.hash_size)
     
     def md5_lib(self, frame:Frame) -> str:
         """
