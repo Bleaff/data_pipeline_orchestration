@@ -6,11 +6,11 @@ nodes:
     frame_delay: 0.1
     outputs: [model]
   
-  # - id: hash
-  #   type: HashNode
-  #   delta: 5
-  #   hash_type: 'ahash'
-  #   outputs: [model]
+  - id: hash
+    type: HashNode
+    delta: 5
+    hash_type: 'ahash'
+    outputs: [model]
 
   - id: model
     type: ProcessDetInference
