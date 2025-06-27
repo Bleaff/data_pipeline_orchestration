@@ -9,11 +9,12 @@ from neudc.core.node.filters.mixins.hash_mixin import HashFilterMixin
 class HashNode(HashFilterMixin, BaseThreadedNode):
     """A node that resizes incoming Frame objects to a target resolution."""
 
-    def __init__(self, delta: int, hash_type: str, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, delta: int, hash_type: str, hash_size: int, *args: Any, **kwargs: Any) -> None:
         """Initialize the HashNode with delta and type of hash"""
         self.delta: int = delta
         self.type_of_hash: str = hash_type
-        super().__init__(*args, **kwargs)
+        self.hash_size: str = hash_size
+        super().__init__(delta=delta, hash_type=hash_type, hash_size=hash_size, *args, **kwargs)
 
     @staticmethod
     def from_config(config: dict[str, Any]) -> HashNode:
