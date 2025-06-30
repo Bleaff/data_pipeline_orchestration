@@ -83,7 +83,6 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-test.ipynb
 
 # IPython
 profile_default/
@@ -180,3 +179,5 @@ cython_debug/
 
 # Temporary files
 *.tmp
+for_test/
+output_images/

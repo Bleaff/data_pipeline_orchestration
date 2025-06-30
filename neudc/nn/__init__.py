@@ -7,6 +7,7 @@ from neudc.nn.models.cls.base import BaseClsModel
 from neudc.nn.models.track.basetracker import BaseTracker
 
 from neudc.nn.models.det.yolo import YOLOv8
+from neudc.nn.models.cls.blur_model import BlurClassification
 from neudc.nn.models.det.sahi import SAHIDetector
 from neudc.nn.models.track.deepocsort import DeepOcSort
 
@@ -16,6 +17,7 @@ MODEL_REGISTRY: dict[str, type[BaseClsModel | BaseDetector | BaseTracker]] = {
     "YOLOv8": YOLOv8,
     "SAHIDetector": SAHIDetector,
     "DeepOcSort": DeepOcSort,
+    "BlurClassification": BlurClassification
 }
 
 class ModelFactory:
@@ -52,4 +54,4 @@ class ModelFactory:
             **config,
         )
 
-__all__ = ["YOLOv8", "SAHIDetector", "DeepOcSort", "ModelFactory"]
+__all__ = ["YOLOv8", "SAHIDetector", "DeepOcSort", "BlurClassification", "ModelFactory"]
