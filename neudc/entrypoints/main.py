@@ -1,5 +1,40 @@
 """Script serves as the entry point for the application.
 
+running the system from config file:
+nodes:
+  - id: reader
+    type: FolderImageNode
+    folder_path: "assets/images"
+    mode: "loop"
+    frame_delay: 0.1
+    outputs: [hash]
+  
+  - id: hash
+    type: HashNode
+    delta: 5
+    hash_size: 8
+    hash_type: 'ahash'
+    outputs: [model]
+
+  - id: model
+    type: ProcessDetInference
+    model_config:
+      type: YOLOv8
+      path: "/home/user/mkotovanu/neudc/models/yolov8n.torchscript"
+      backend: TorchBackend
+      device_id: 0
+    outputs: [visualizer]
+
+  - id: visualizer
+    type: DrawNode
+    outputs: [saver]
+
+  - id: saver
+    type: SaveImageNode
+    save_dir: "./output_images"
+    outputs: []
+  
+
 It initializes and configures the necessary components for the system to run,
 including the routing and node factories. The configuration is loaded from a specified
 YAML file, which contains the details for setting up the nodes and their connections.

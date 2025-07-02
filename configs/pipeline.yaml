@@ -1,7 +1,7 @@
 nodes:
   - id: reader
     type: FolderImageNode
-    folder_path: "assets/images"
+    folder_path: "assets/images/images_a"
     mode: "loop"
     frame_delay: 0.1
     outputs: [hash]
@@ -17,7 +17,7 @@ nodes:
     type: ProcessDetInference
     model_config:
       type: YOLOv8
-      path: "/home/user/mkotovanu/neudc/models/yolov8n.torchscript"
+      path: "/Users/bleaf/Desktop/Job/neudc/models/yolov8n.torchscript"
       backend: TorchBackend
       device_id: 0
     outputs: [visualizer]
