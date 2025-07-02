@@ -22,10 +22,9 @@ class NodeFactory:
 
     NODE_CLASS_MAP: ClassVar = {
         "FolderImageNode": FolderImageNode,
-        "ResizeNode": ResizeNode,
         "SaveImageNode": SaveImageNode,
         "ResizeProcessNode": ResizeProcessNode,
-        "ResizeNode": ResizeProcessNode,
+        "ResizeNode": ResizeNode,
         "ProcessDetInference": ProcessDetInference,
         "DrawNode": DrawNode,
         "HashNode": HashNode,
