@@ -1,6 +1,6 @@
 
 import abc
-from typing import Any, Dict
+from typing import Any, Optional
 import time
 from neudc.core.base.base_process import BaseProcessNode
 from neudc.core.communication.messaging.types import Frame
@@ -60,7 +60,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         return pp_item
 
     @abc.abstractmethod
-    def postprocess_result(self, result: Any, item: Frame)-> Frame:
+    def postprocess_result(self, result: Any, item: Frame)-> Optional[Frame]:
         """
         Postprocess the inference result.
 

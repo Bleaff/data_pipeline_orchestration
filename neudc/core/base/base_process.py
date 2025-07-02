@@ -82,7 +82,8 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                 if data is None:
                     continue
                 result = self.process(data)
-                self.mailbox.send(result)
+                if result:
+                    self.mailbox.send(result)
                 with self._last_success_time.get_lock():
                     self._last_success_time.value = time.time()
             except Exception:

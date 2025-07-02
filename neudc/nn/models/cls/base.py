@@ -14,7 +14,7 @@ class BaseClsModel(ABC):
     def __init__(
         self,
         path: str,
-        backend: BaseBackend,
+        backend: type[BaseBackend],
         device_id: int = 0,
         imgsz: Optional[ImageShape] = None,
         names: Optional[Union[list, dict]] = None,
