@@ -5,22 +5,33 @@ nodes:
     mode: "loop"
     frame_delay: 0.1
     outputs: [hash]
-  
+
   - id: hash
     type: HashNode
     delta: 5
     hash_size: 8
     hash_type: 'ahash'
-    outputs: [model]
-
-  - id: model
-    type: ProcessDetInference
+    outputs: [blur]
+  
+  - id: blur
+    type: ProcessBlurInference
     model_config:
-      type: YOLOv8
-      path: "/Users/bleaf/Desktop/Job/neudc/models/yolov8n.torchscript"
+      type: BlurClassification
+      path: "/home/user/mkotovanu/neudc/models/trained_model-Kaggle_dataset_ts.pt"
       backend: TorchBackend
       device_id: 0
-    outputs: [visualizer]
+      conf: 0.6
+    outputs: [saver]
+  
+
+  # - id: model
+  #   type: ProcessDetInference
+  #   model_config:
+  #     type: YOLOv8
+  #     path: "/home/user/mkotovanu/neudc/models/yolov8n.torchscript"
+  #     backend: TorchBackend
+  #     device_id: 0
+  #   outputs: [visualizer]
 
   - id: visualizer
     type: DrawNode
