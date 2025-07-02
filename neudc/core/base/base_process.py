@@ -42,6 +42,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.mailbox_config = mailbox.__getstate__()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
+        self.stop_event = mp.Event()
 
     def start(self) -> None:
         """Start the process node."""
@@ -70,7 +71,6 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.logger.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
         self.init_process_runtime()
         self._healthy = mp.Value("b", self.HEALTH_NORMAL)
-        self.stop_event = mp.Event()
         self._last_success_time = mp.Value("d", time.time())
 
         self._start_afterwords()  # Start the node's thread
@@ -93,8 +93,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Signal the process to stop and wait for the health thread."""
         self.logger.info("Stopping process node...")
         self.stop_event.set()
-        if self._health_thread:
-            self._health_thread.join(timeout=2)
+
 
     def is_healthy(self) -> bool:
         """Return current health status."""
