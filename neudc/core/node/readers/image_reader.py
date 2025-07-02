@@ -16,6 +16,7 @@ import cv2
 
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.messaging.types import Frame  # Frame class as given
+from neudc.core.node.readers import ImageReaderMode
 
 
 class FolderImageNode(BaseThreadedNode):
@@ -26,7 +27,7 @@ class FolderImageNode(BaseThreadedNode):
         folder_path: str,
         mailbox: Any,
         logger: Any,
-        mode: str = "loop",
+        mode: ImageReaderMode = ImageReaderMode.LOOP,
         frame_delay: float = 0.01,
     ) -> None:
         """Initialize FolderImageNode.
@@ -44,6 +45,7 @@ class FolderImageNode(BaseThreadedNode):
         self.mode = mode
         self.frame_delay = frame_delay
         self.image_files = sorted(f.name for f in self.folder_path.iterdir() if f.is_file())
+        self.last_image_index = len(self.image_files)
         self.current_index = 0
         self.frame_id = 0
         super().__init__(mailbox, logger)
@@ -83,8 +85,8 @@ class FolderImageNode(BaseThreadedNode):
         del args, kwargs
 
         if self.current_index >= len(self.image_files):
-            if self.mode == "only_one":
-                self.logger.info("All images processed in 'only_one' mode.")
+            if self.mode == ImageReaderMode.ONLY_ONE:
+                self.logger.info("All images processed in 'ONLY_ONE' mode.")
                 self.stop()
                 return None
             self.current_index = 0
@@ -102,8 +104,9 @@ class FolderImageNode(BaseThreadedNode):
             image=image,
             timestamp=timestamp,
             source_frame=str(image_path),
-            frame_id=self.frame_id,
+            frame_id=self.frame_id % self.last_image_index,
             boxes=[],
+            frame_id_last=self.last_image_index,
         )
 
         self.logger.debug(f"PID#({os.getpid()}) Sending Frame(id={self.frame_id}) from {image_path}")
@@ -111,5 +114,4 @@ class FolderImageNode(BaseThreadedNode):
         self.frame_id += 1
 
         time.sleep(self.frame_delay)
-        # self.logger.debug(f"Sleeping for {self.frame_delay:.2f} seconds")
         return frame
