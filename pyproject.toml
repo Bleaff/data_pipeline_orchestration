@@ -66,6 +66,7 @@ pyzmq = "==27.0.0"
 click = "==8.1.7"
 tqdm = "*"
 scipy = "*"
+imagehash = "*"
 pydantic = "*"
 torch = [
     {version = "^2.2.1", source="pypi", markers = "sys_platform == 'darwin'"},
