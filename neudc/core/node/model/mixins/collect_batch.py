@@ -13,7 +13,6 @@ class CollectBatchMixin:
     """Mixin class for collecting data from mailbox."""
 
     def __init__(self, batch_size: int, batch_queue_size: int = 20, batch_collect_timeout: float = 0.1, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
         self.batch_size = batch_size
         self.batch_collect_timeout = batch_collect_timeout  # max wait time in seconds
         self.batch_queue: Queue[Batch] = Queue(maxsize=batch_queue_size)
@@ -22,7 +21,7 @@ class CollectBatchMixin:
     def _collect_batch(self) -> None:
         """Collects data from mailbox and puts batches into a queue."""
         while not self.stop_event.is_set():
-            batch = Batch()
+            batch = Batch(frames=list())
             start_time = time.time()
 
             while len(batch.frames) < self.batch_size:

@@ -60,4 +60,5 @@ class NodeFactory:
         config = config.copy()  # make a copy
         config["mailbox"] = mailbox
         config["logger"] = logger
+        del config["type"], config["id"], config["outputs"]
         return node_class.from_config(config)
