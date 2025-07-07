@@ -12,17 +12,16 @@ from neudc.core.communication.messaging.types import Batch
 class CollectBatchMixin:
     """Mixin class for collecting data from mailbox."""
 
-    def __init__(self, batch_size: int, batch_queue_size: int = 20, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, batch_size: int, batch_queue_size: int = 20, batch_collect_timeout: float = 0.1, *args: Any, **kwargs: Any) -> None:
         self.batch_size = batch_size
-        self.batch_collect_timeout = 0.1  # max wait time in seconds
+        self.batch_collect_timeout = batch_collect_timeout  # max wait time in seconds
         self.batch_queue: Queue[Batch] = Queue(maxsize=batch_queue_size)
         self.stop_event = multiprocessing.Event()
 
     def _collect_batch(self) -> None:
         """Collects data from mailbox and puts batches into a queue."""
         while not self.stop_event.is_set():
-            batch = Batch()
+            batch = Batch(frames=list())
             start_time = time.time()
 
             while len(batch.frames) < self.batch_size:
@@ -38,9 +37,13 @@ class CollectBatchMixin:
 
             if batch.frames:
                 try:
-                    self.batch_queue.put(batch.copy(), timeout=0.1)
+                    self.batch_queue.put(batch.model_copy(), timeout=0.1)
                 except Full:
-                    self.logger.warning("Batch queue full, dropping batch.")
+                    while self.batch_queue.full():
+                        time.sleep(0.1)
+                        if self.stop_event.is_set():
+                            return
+                    self.batch_queue.put(batch.model_copy(), timeout=0.1)
 
     def _collect_data(self) -> Batch | None:
         """Retrieves collected batch from the queue."""
