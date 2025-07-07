@@ -16,6 +16,7 @@ from neudc.core.node.processors.draw_node import DrawNode
 from neudc.core.node.processors.resize_process_node import ResizeProcessNode
 from neudc.core.node.readers.image_reader import FolderImageNode
 from neudc.core.node.model.proc_det_inference import ProcessDetInference
+from neudc.core.node.model.proc_det_batch_inference import ProcessDetBatchInference
 from neudc.core.node.filters.hash_node import HashNode
 from neudc.core.node.model.proc_blur_inference import ProcessBlurInference
 
@@ -31,6 +32,7 @@ class NodeFactory:
         "DrawNode": DrawNode,
         "HashNode": HashNode,
         "ProcessBlurInference": ProcessBlurInference,
+        "ProcessDetBatchInference": ProcessDetBatchInference
     }
 
     @staticmethod
@@ -55,7 +57,7 @@ class NodeFactory:
             msg = f"Unknown node type: {node_type}"
             raise ValueError(msg)
 
-        config = dict(config)  # make a copy
+        config = config.copy()  # make a copy
         config["mailbox"] = mailbox
         config["logger"] = logger
         return node_class.from_config(config)

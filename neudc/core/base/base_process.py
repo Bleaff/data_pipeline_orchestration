@@ -11,6 +11,7 @@ import os
 import threading
 import time
 from abc import ABC, abstractmethod
+from neudc.core.communication.messaging.types import Frame, Batch
 from typing import Any
 
 from neudc.core.base.base_node import BaseNode
@@ -78,12 +79,16 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         while not self.stop_event.is_set():
             try:
-                data = self.mailbox.receive()
+                data = self._collect_data()
                 if data is None:
                     continue
                 result = self.process(data)
                 if result:
-                    self.mailbox.send(result)
+                    if isinstance(result, Frame):  # Check if result is a Frame or Batch result
+                        self.mailbox.send(result)
+                    elif isinstance(result, Batch):
+                        for item in result:
+                            self.mailbox.send(item)
                 with self._last_success_time.get_lock():
                     self._last_success_time.value = time.time()
             except Exception:
