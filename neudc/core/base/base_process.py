@@ -83,12 +83,10 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                 if data is None:
                     continue
                 result = self.process(data)
+                # check result is not None
                 if result:
-                    if isinstance(result, Frame):  # Check if result is a Frame or Batch result
-                        self.mailbox.send(result)
-                    elif isinstance(result, Batch):
-                        for item in result:
-                            self.mailbox.send(item)
+                    self.mailbox.send(result)
+                # update last success time
                 with self._last_success_time.get_lock():
                     self._last_success_time.value = time.time()
             except Exception:

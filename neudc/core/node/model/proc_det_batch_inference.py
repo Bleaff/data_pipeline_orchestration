@@ -4,7 +4,6 @@ from neudc.core.communication.messaging.types import Batch, Frame, Box
 
 class ProcessDetBatchInference(BaseBatchProcessInference):
     def __init__(self, *args, **kwargs) -> None:
-        print(f'{args=}, {kwargs=}')
         super().__init__(*args, **kwargs)
 
     def postprocess_result(self, result:Any, item:Batch):
@@ -12,7 +11,7 @@ class ProcessDetBatchInference(BaseBatchProcessInference):
         # self.logger.info(f'Model detection result: {result}')
         for res, frame in zip(result, item.frames):
             boxes = []
-            for box_ in res[0]:
+            for box_ in res:
                 x, y, x2, y2, score, class_id = box_
                 box = Box(x1=int(x), y1=int(y), x2=int(x2), y2=int(y2), score=score, class_id=self.model.names[int(class_id)])
                 boxes.append(box)
