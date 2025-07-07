@@ -1,11 +1,16 @@
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 import torch
 
 from neudc.nn.backends import BaseBackend
 from neudc.utils import LOGGER, PROFILE_FREQ, Profile
 from neudc.utils.checks import torch_compile
-from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
+
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
 
 __all__ = ("TorchBackend",)
 
@@ -22,17 +27,17 @@ class TorchBackend(BaseBackend):
         device_id: int = 0,
         compile: bool = True,
         fp16: int = False,
-    ) -> "TorchBackend":
-        """
-        Initialize the TorchBackend class.
+    ) -> TorchBackend:
+        """Initialize the TorchBackend class.
 
         Args:
+        ----
             path (str): The path to the model file.
             device_id (int): The device ID to use for the inference.
             compile (bool): Whether to compile the model.
             fp16 (int): Whether to use half-precision floating point for the inference.
-        """
 
+        """
         if device_id >= 0 and not torch.cuda.is_available():
             LOGGER.warning("WARNING ⚠️ CUDA is not available, switching to cpu.")
             device_id = -1
@@ -57,20 +62,22 @@ class TorchBackend(BaseBackend):
         self.model = model
         self.fp16 = fp16
 
-    @Profile(use_cuda=cuda, use_torch=True, logger=LOGGER, freq=PROFILE_FREQ, name="torch")
+    @Profile(use_cuda=cuda, use_torch=True, freq=PROFILE_FREQ, name="torch")
     @torch.inference_mode()
     def __call__(
         self,
         input: FloatImagesBatch,
     ) -> list[FloatFeaturesBatch]:
-        """
-        Call the model with the given input.
+        """Call the model with the given input.
 
         Args:
+        ----
             input (FloatImagesBatch): The input to the model.
 
         Returns:
+        -------
             list[FloatFeaturesBatch]: The output of the model.
+
         """
         torch_input = torch.from_numpy(input).to(self.device, non_blocking=True)
         # Run the model on the GPU.
@@ -83,6 +90,3 @@ class TorchBackend(BaseBackend):
             numpy_output = [numpy_output]
 
         return numpy_output
-
-    def __del__(self) -> None:
-        self.model = None

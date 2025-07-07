@@ -5,7 +5,7 @@ nodes:
     mode: "loop"
     frame_delay: 0.1
     outputs: [hash]
-  
+
   - id: hash
     type: HashNode
     delta: 5
@@ -17,7 +17,7 @@ nodes:
     type: ProcessDetInference
     model_config:
       type: YOLOv8
-      path: "/home/user/mkotovanu/neudc/models/yolov8n.torchscript"
+      path: "assets/models/yolov8n.torchscript"
       backend: TorchBackend
       device_id: 0
     outputs: [visualizer]
@@ -30,6 +30,3 @@ nodes:
     type: SaveImageNode
     save_dir: "./output_images"
     outputs: []
-  
-  
-

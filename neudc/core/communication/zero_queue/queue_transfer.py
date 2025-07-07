@@ -27,7 +27,7 @@ class ZeroQueue(QueueLike):
     Suitable for inter-process message passing on a single machine.
     """
 
-    def __init__(self, port: int | None = None) -> None:
+    def __init__(self, port: int | None = None) -> ZeroQueue:
         """Initialize the ZeroQueue.
 
         Args:
@@ -120,7 +120,7 @@ class ZeroQueueConsumer(QueueLike):
     This class is used to receive messages from a producer.
     """
 
-    def __init__(self, port: int | None = None) -> None:
+    def __init__(self, port: int | None = None) -> ZeroQueueConsumer:
         """Initialize the ZeroQueueConsumer.
 
         This class is used to receive messages from a producer using the REQ/REP pattern.
@@ -213,7 +213,7 @@ class ZeroQueueProducer(QueueLike):
     TIMEOUT_MS = 100
     TMP_N = 40
 
-    def __init__(self, port: int | None = None, deque_len: int | None = None) -> None:
+    def __init__(self, port: int | None = None, deque_len: int | None = None) -> ZeroQueueProducer:
         """Initialize the ZeroQueueProducer.
 
         Args:
