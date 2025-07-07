@@ -5,7 +5,7 @@ This class defines the base attributes for a box, including the source node ID.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
@@ -99,6 +99,7 @@ class Frame(BaseModel):
     source_frame: str
     frame_id: int
     boxes: list[Box]
+    frame_id_last: int
 
     class Config:
         """Pydantic config for Frame class."""
@@ -110,6 +111,15 @@ class Batch(BaseModel):
     """Batch of frames."""
 
     frames: list[Frame]
+
+    def __iter__(self):
+        return iter(self.frames)
+
+    def __len__(self):
+        return len(self.frames) 
+
+    def __getitem__(self, index):
+        return self.frames[index]
 
 
 # === Pipeline Configuration ===

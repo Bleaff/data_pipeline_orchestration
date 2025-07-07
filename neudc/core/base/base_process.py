@@ -11,6 +11,7 @@ import os
 import threading
 import time
 from abc import ABC, abstractmethod
+from neudc.core.communication.messaging.types import Frame, Batch
 from typing import Any
 
 from neudc.core.base.base_node import BaseNode
@@ -42,6 +43,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.mailbox_config = mailbox.__getstate__()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
+        self.stop_event = mp.Event()
 
     def start(self) -> None:
         """Start the process node."""
@@ -70,7 +72,6 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.logger.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
         self.init_process_runtime()
         self._healthy = mp.Value("b", self.HEALTH_NORMAL)
-        self.stop_event = mp.Event()
         self._last_success_time = mp.Value("d", time.time())
 
         self._start_afterwords()  # Start the node's thread
@@ -78,12 +79,14 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         while not self.stop_event.is_set():
             try:
-                data = self.mailbox.receive()
+                data = self._collect_data()
                 if data is None:
                     continue
                 result = self.process(data)
+                # check result is not None
                 if result:
                     self.mailbox.send(result)
+                # update last success time
                 with self._last_success_time.get_lock():
                     self._last_success_time.value = time.time()
             except Exception:
@@ -93,8 +96,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Signal the process to stop and wait for the health thread."""
         self.logger.info("Stopping process node...")
         self.stop_event.set()
-        if self._health_thread:
-            self._health_thread.join(timeout=2)
+
 
     def is_healthy(self) -> bool:
         """Return current health status."""

@@ -1,7 +1,7 @@
 nodes:
   - id: reader
     type: FolderImageNode
-    folder_path: "assets/images"
+    folder_path: "assets/images/images_a"
     mode: "loop"
     frame_delay: 0.1
     outputs: [hash]
