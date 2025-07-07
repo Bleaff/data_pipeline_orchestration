@@ -1,46 +1,141 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import cv2
 import numpy as np
+from numba import float32, int64, jit, types
 
-from neudc.utils.types import FloatBBoxesWithCls, ImageShape
+from neudc.utils import USE_NUMBA, conditional_jit
 
-# from numba import float32, int64, jit, types
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatBBoxesWithCls, ImageShape
+
+__all__ = ("letterbox", "postprocess_yolo_outputs", "calculate_slices_coordinates")
 
 
-__all__ = "letterbox", "postprocess_yolo_outputs"
+@conditional_jit(
+    types.Tuple(
+        (
+            int64[:, :],  # x: 2D int64 array
+            int64[:, :],  # y: 2D int64 array
+        ),
+    )(
+        int64[:],  # x: 1D int64 array
+        int64[:],  # y: 1D int64 array
+    ),
+    nopython=True,
+    fastmath=True,
+    parallel=False,
+    inline="always",
+    turn_on=USE_NUMBA,
+)
+def meshgrid2d_ij(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Numba-compiled meshgrid2d."""
+    shape = (x.size, y.size)  # Matrix dimensions: rows=x, columns=y
+    xx = np.empty(shape, dtype=x.dtype)
+    yy = np.empty(shape, dtype=y.dtype)
+
+    # Broadcast x along columns (axis=1)
+    xx[...] = x[:, np.newaxis]  # Reshape x to (x.size, 1)
+
+    # Broadcast y along rows (axis=0)
+    yy[...] = y[np.newaxis, :]  # Reshape y to (1, y.size)
+
+    return xx, yy
 
 
-# @jit(
-#     types.Tuple(
-#         (
-#             types.UniTuple(float32, 2),  # ratio: (float32, float32)
-#             types.UniTuple(int64, 2),  # new_unpad: (int64, int64)
-#             float32,  # dwf: float32
-#             float32,  # dhf: float32
-#         )
-#     )(
-#         types.UniTuple(int64, 2),  # shape: (int64, int64)
-#         types.UniTuple(int64, 2),  # new_shape: (int64, int64)
-#         types.boolean,  # auto: bool
-#         types.boolean,  # scale_fill: bool
-#         types.boolean,  # scaleup: bool
-#         int64,  # stride: int64
-#     ),
-#     nopython=True,
-#     fastmath=True,
-#     inline="always",
-# )
+@conditional_jit(
+    nopython=True,
+    fastmath=True,
+    parallel=False,
+    inline="always",
+    turn_on=USE_NUMBA,
+)
+def calculate_slices_coordinates(
+    imgsz: tuple[int, int],
+    crop_size: tuple[int, int],
+    crop_overlap: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Adjust the image size to be divisible by crop size and overlap.
+    Image size should be more than crop_overlap!.
+
+    Args:
+    ----
+        imgsz (tuple[int, int]): Image size - (height, width).
+        crop_size (tuple[int, int]): Crop size - (height, width).
+        crop_overlap (tuple[int, int]): Overlap size - (height, width).
+
+    Returns:
+    -------
+        (tuple[int, int]): Adjusted image size.
+
+    """
+    img_h, img_w = imgsz
+    crop_h, crop_w = crop_size
+    overlap_h, overlap_w = crop_overlap
+
+    step_h = crop_h - overlap_h
+    step_w = crop_w - overlap_w
+
+    # Calculate number of steps using integer arithmetic
+    n_steps_h = 1 if img_h <= crop_h else (img_h - crop_h + step_h - 1) // step_h + 1
+    n_steps_w = 1 if img_w <= crop_w else (img_w - crop_w + step_w - 1) // step_w + 1
+
+    # Generate starting positions
+    y1_base = np.arange(0, n_steps_h) * step_h
+    x1_base = np.arange(0, n_steps_w) * step_w
+
+    # Adjust last row/column
+    if img_h > crop_h and n_steps_h > 1:
+        y1_base[-1] = img_h - crop_h
+    if img_w > crop_w and n_steps_w > 1:
+        x1_base[-1] = img_w - crop_w
+
+    # Create meshgrid and flatten
+    y1_grid, x1_grid = meshgrid2d_ij(y1_base, x1_base)
+    y1_flat, x1_flat = y1_grid.flatten(), x1_grid.flatten()
+
+    # Calculate end positions
+    y2_flat = np.minimum(y1_flat + crop_h, img_h)
+    x2_flat = np.minimum(x1_flat + crop_w, img_w)
+
+    return y1_flat, x1_flat, y2_flat, x2_flat
+
+
+@conditional_jit(
+    types.Tuple(
+        (
+            types.UniTuple(float32, 2),  # ratio: (float32, float32)
+            types.UniTuple(int64, 2),  # new_unpad: (int64, int64)
+            float32,  # dwf: float32
+            float32,  # dhf: float32
+        ),
+    )(
+        types.UniTuple(int64, 2),  # shape: (int64, int64)
+        types.UniTuple(int64, 2),  # new_shape: (int64, int64)
+        types.boolean,  # auto: bool
+        types.boolean,  # scale_fill: bool
+        types.boolean,  # scaleup: bool
+        int64,  # stride: int64
+    ),
+    nopython=True,
+    fastmath=True,
+    inline="always",
+    turn_on=USE_NUMBA,
+)
 def compute_letterbox_params(
     shape: tuple[int, int],
     new_shape: tuple[int, int],
     auto: bool,
     scale_fill: bool,
     scaleup: bool,
-    stride: int,
+    stride: int = 32,
 ) -> tuple[tuple[float, float], tuple[int, int], float, float]:
-    """
-    Compute letterbox parameters.
+    """Compute letterbox parameters.
 
     Args:
+    ----
         shape (tuple[int, int]): Original shape of the image.
         new_shape (tuple[int, int]): New shape of the image.
         auto (bool): If True, the image will be padded to the nearest multiple of the stride.
@@ -49,16 +144,18 @@ def compute_letterbox_params(
         stride (int): Stride of the image.
 
     Returns:
+    -------
         tuple[tuple[float, float], tuple[int, int], float, float]: Ratio, new unpadded shape, dw, dh.
+
     """
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
     if not scaleup:
         r = min(r, 1.0)
 
-    new_unpad = (int(round(shape[1] * r)), int(round(shape[0] * r)))
+    new_unpad = (int(round(shape[0] * r)), int(round(shape[1] * r)))
 
-    dw = new_shape[1] - new_unpad[0]
-    dh = new_shape[0] - new_unpad[1]
+    dw = new_shape[1] - new_unpad[1]
+    dh = new_shape[0] - new_unpad[0]
 
     ratio = (r, r)
     if auto:
@@ -66,14 +163,13 @@ def compute_letterbox_params(
         dh = dh % stride
     elif scale_fill:
         dw, dh = 0.0, 0.0
-        new_unpad = (new_shape[1], new_shape[0])
-        r = (new_shape[1] / shape[1], new_shape[0] / shape[0])
-        ratio = r
+        new_unpad = new_shape
+        ratio = (new_shape[0] / shape[0], new_shape[1] / shape[1])
 
     dw /= 2
     dh /= 2
 
-    return ratio, new_unpad, dw, dh
+    return ratio, new_unpad, dh, dw
 
 
 def letterbox(
@@ -85,10 +181,10 @@ def letterbox(
     scaleup: bool = False,
     stride: int = 32,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Resize + pad image (letterbox) for maintaining proportions.
+    """Resize + pad image (letterbox) for maintaining proportions.
 
     Args:
+    ----
         img (np.ndarray): Image to resize.
         new_shape (ImageShape): New shape of the image.
         color (tuple[int, int, int]): Color of the border.
@@ -98,35 +194,61 @@ def letterbox(
         stride (int): Stride of the image.
 
     Returns:
+    -------
         tuple[np.ndarray, np.ndarray]: Image, letterbox params.
+
     """
     shape = img.shape[:2]  # (height, width)
 
-    ratio, new_unpad, dw, dh = compute_letterbox_params(shape, new_shape, auto, scale_fill, scaleup, stride)
+    ratio, new_unpad, dh, dw = compute_letterbox_params(
+        shape=shape,
+        new_shape=new_shape,
+        auto=auto,
+        scale_fill=scale_fill,
+        scaleup=scaleup,
+        stride=stride,
+    )
 
-    if (shape[1], shape[0]) != new_unpad:
-        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+    if shape != new_unpad:
+        img = cv2.resize(
+            src=img,
+            dsize=(new_unpad[1], new_unpad[0]),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
 
-    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
+    img = cv2.copyMakeBorder(
+        src=img,
+        top=top,
+        bottom=bottom,
+        left=left,
+        right=right,
+        borderType=cv2.BORDER_CONSTANT,
+        value=color,
+    )
 
-    return img, np.array([*ratio, dw, dh], dtype=np.float32)
+    return img, np.array([*ratio, dh, dw], dtype=np.float32)
 
 
-# @jit(nopython=True, fastmath=True, inline="always")
+@conditional_jit(nopython=True, fastmath=True, inline="always", turn_on=USE_NUMBA)
 def compute_iou(box: np.ndarray, boxes: np.ndarray) -> np.ndarray:
-    """
-    Compute IoU between a box and a list of boxes.
+    """Compute IoU between a box and a list of boxes.
 
     Args:
+    ----
         box (np.ndarray): Box.
         boxes (np.ndarray): List of boxes.
 
     Returns:
+    -------
         np.ndarray: IoU scores.
+
     """
+    box = box.astype(np.float32)
+    boxes = boxes.astype(np.float32)
+
     x1 = np.maximum(box[0], boxes[:, 0])
     y1 = np.maximum(box[1], boxes[:, 1])
     x2 = np.minimum(box[2], boxes[:, 2])
@@ -140,23 +262,25 @@ def compute_iou(box: np.ndarray, boxes: np.ndarray) -> np.ndarray:
     return inter_area / union_area
 
 
-# @jit(nopython=True, fastmath=True, inline="always")
+@conditional_jit(nopython=True, fastmath=True, inline="always", turn_on=USE_NUMBA)
 def apply_nms(
     boxes: np.ndarray,
     scores: np.ndarray,
     iou: float = 0.5,
     max_det: int = 100,
 ) -> np.ndarray:
-    """
-    Apply NMS to a list of boxes.
+    """Apply NMS to a list of boxes.
 
     Args:
+    ----
         boxes (np.ndarray): List of boxes.
         scores (np.ndarray): List of scores.
         iou (float): IoU threshold.
 
     Returns:
+    -------
         np.ndarray: Indices of the boxes to keep.
+
     """
     indices = scores.argsort()[::-1]
     keep = []
@@ -180,41 +304,44 @@ def apply_nms(
     return np.array(keep, dtype=np.int64)
 
 
-# @jit(
-#     float32[:, :](  # all_boxes: 2D float32 array
-#         float32[:, :],  # predictions: 3D float32 array
-#         float32,  # conf: float32
-#         types.UniTuple(float32, 2),  # image_shape: Tuple[int, int]
-#         types.UniTuple(float32, 2),  # original_image_shape: Tuple[int, int]
-#     ),
-#     nopython=True,
-#     fastmath=True,
-#     inline="always",
-# )
+@conditional_jit(
+    float32[:, :](  # all_boxes: 2D float32 array
+        float32[:, :],  # predictions: 3D float32 array
+        float32,  # conf: float32
+        types.UniTuple(float32, 2),  # image_shape: Tuple[int, int]
+        types.UniTuple(float32, 2),  # original_image_shape: Tuple[int, int]
+    ),
+    nopython=True,
+    fastmath=True,
+    inline="always",
+    turn_on=USE_NUMBA,
+)
 def decode_output(
     predictions: np.ndarray,
     conf: float,
     ratio: tuple[float, float],
     pad: tuple[float, float],
 ) -> np.ndarray:
-    """
-    Decode output.
+    """Decode output.
 
     Args:
+    ----
         predictions (np.ndarray): Predictions.
         conf (float): Confidence threshold.
         ratio (tuple[float, float]): Ratio of the image.
         pad (tuple[float, float]): Padding of the image.
 
     Returns:
+    -------
         np.ndarray: Decoded predictions.
+
     """
     dw, dh = pad
     rw, rh = ratio
 
     pos = np.where(predictions[4:, :] >= conf)
 
-    all_dets = np.empty((len(pos[1]), 6), dtype=np.float32)
+    all_dets = np.empty((len(pos[1]), 6), dtype=predictions.dtype)
 
     for j in range(len(pos[0])):
         px = pos[0][j]
@@ -233,7 +360,7 @@ def decode_output(
     return all_dets
 
 
-# @jit(nopython=True, fastmath=True, inline="always")
+@jit(nopython=True, fastmath=True, inline="always")
 def postprocess_yolo_outputs(
     predictions: np.ndarray,
     conf: float = 0.2,
@@ -242,10 +369,10 @@ def postprocess_yolo_outputs(
     ratio: tuple[float, float] = (1.0, 1.0),
     pad: tuple[float, float] = (0.0, 0.0),
 ) -> FloatBBoxesWithCls:
-    """
-    Performs decode + NMS
+    """Performs decode + NMS.
 
     Args:
+    ----
         predictions (np.ndarray): Predictions.
         conf (float): Confidence threshold.
         iou (float): IoU threshold.
@@ -253,7 +380,9 @@ def postprocess_yolo_outputs(
         pad (tuple[float, float]): Padding of the image.
 
     Returns:
+    -------
         np.ndarray: Decoded and NMSed predictions with xyxy format.
+
     """
     # Decode
     all_dets = decode_output(
@@ -272,49 +401,3 @@ def postprocess_yolo_outputs(
     )
 
     return all_dets[keep_indices]
-
-
-# @jit(
-#     nopython=True,
-#     fastmath=True,
-#     inline="always",
-# )
-def make_sahi_slices_batch(
-    imgs: np.ndarray,
-    crop_size: tuple[int, int],
-    crop_overlap: tuple[int, int],
-) -> tuple[list[np.ndarray], list[tuple[int, int, int]]]:
-    """
-    Slice a batch of images (imgs: (B, C, H, W)) into crops.
-    Imgs size is guaranteed to be divisible by crop_size + crop_overlap.
-
-    Args:
-        imgs (np.ndarray): Images in (B, C, H, W) format.
-        crop_size (tuple[int, int]): Size of the crops.
-        crop_overlap (tuple[int, int]): Overlap of the crops.
-
-    Returns:
-        crops: list of (C, crop_h, crop_w) array.
-        origins: list of (3) array with [image_index, x_origin, y_origin].
-    """
-    B, _, H, W = imgs.shape
-    crop_h, crop_w = crop_size
-    overlap_h, overlap_w = crop_overlap
-    step_h = crop_h - overlap_h
-    step_w = crop_w - overlap_w
-    n_y = (H - overlap_h) // step_h
-    n_x = (W - overlap_w) // step_w
-    crops, origins = [], []
-    for b in range(B):
-        for i in range(n_y):
-            y = i * step_h
-            if y > H - crop_h:
-                y = H - crop_h
-            for j in range(n_x):
-                x = j * step_w
-                if x > W - crop_w:
-                    x = W - crop_w
-                crops.append(imgs[b, :, y : y + crop_h, x : x + crop_w])
-                origins.append([b, x, y])
-
-    return crops, origins

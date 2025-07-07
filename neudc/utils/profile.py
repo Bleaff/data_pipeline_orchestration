@@ -8,16 +8,14 @@ This module defines two context managers/decorators:
 from __future__ import annotations
 
 import contextlib
+import sys
 import time
-from typing import TYPE_CHECKING, Any, Callable, Self
+from typing import Any, Callable, Self
 
 import torch
+from numba import jit
 
-from .logger import LOGGER
-
-if TYPE_CHECKING:
-    import logging
-
+from .logger import LOGGER, USE_NUMBA
 
 try:
     import cuda
@@ -27,10 +25,11 @@ except ImportError:
     CUDA_PROFILE_ENABLE = False
     LOGGER.info("Cuda library is not installed. Check your installation carefully.")
 
+
 if CUDA_PROFILE_ENABLE:
     from cuda import cuda, cudart
 
-__all__ = ("Profile", "NoProfile")
+__all__ = ("Profile", "NoProfile", "get_profile", "conditional_jit", "toggle_jit")
 
 
 class Profile(contextlib.ContextDecorator):
@@ -39,12 +38,12 @@ class Profile(contextlib.ContextDecorator):
     Can also log the average execution time after a specified number of calls, including the function name.
 
     Usage as a decorator:
-        @Profile(logger=my_logger, freq=10, use_cuda=True)
+        @Profile(freq=10, use_cuda=True)
         def my_func():
             # code to profile
 
     Usage as a context manager:
-        with Profile(logger=my_logger, freq=10, use_cuda=True, name="my_block") as p:
+        with Profile(freq=10, use_cuda=True, name="my_block") as p:
             # code to profile
     """
 
@@ -56,11 +55,10 @@ class Profile(contextlib.ContextDecorator):
         t: float = 0.0,
         use_cuda: bool = True,
         use_torch: bool = False,
-        logger: logging.Logger | None = None,
         freq: int | None = None,
         max_calls: int = 100_000,
         name: str | None = None,
-    ) -> None:
+    ) -> Profile:
         """Initialize the Profile class.
 
         Args:
@@ -68,7 +66,6 @@ class Profile(contextlib.ContextDecorator):
             t (float): Initial accumulated time. Defaults to 0.0.
             use_cuda (bool): Whether to synchronize with CUDA device. Defaults to True.
             use_torch (bool): Whether to use torch.cuda for sync if CUDA_PROFILE_ENABLE is False.
-            logger (Logger, optional): Logger to log profile results.
             freq (int, optional): Log frequency (calls). None means no logging.
             max_calls (int): Maximum calls before reset. Defaults to 100_000.
             name (str, optional): Name of the profiling scope. Defaults to None.
@@ -77,7 +74,6 @@ class Profile(contextlib.ContextDecorator):
         self.t = t
         self.use_cuda = use_cuda
         self.use_torch = use_torch
-        self.logger = logger
         self.freq = freq
         self.max_calls = max_calls
         self.call_count = 0
@@ -110,12 +106,12 @@ class Profile(contextlib.ContextDecorator):
             self.t += self.dt
             self.call_count += 1
 
-            if self.logger and self.freq and (self.call_count % self.freq == 0):
+            if self.freq and (self.call_count % self.freq == 0):
                 avg_time = self.t / self.call_count
-                self.logger.info(f"Average execution time for '{self.func_name}': {avg_time:.6f} s")
+                LOGGER.info(f"Average execution time for '{self.func_name}': {avg_time:.6f} s")
 
                 if self.call_count > self.max_calls:
-                    self.logger.info(f"Stats for '{self.func_name}' has been reset.")
+                    LOGGER.info(f"Stats for '{self.func_name}' has been reset.")
                     self.call_count = 0
                     self.t = 0.0
 
@@ -135,11 +131,10 @@ class Profile(contextlib.ContextDecorator):
                     torch.cuda.synchronize()
                     sync_success = True
                 except (ImportError, AttributeError, RuntimeError) as e:
-                    if self.logger:
-                        self.logger.exception("Torch CUDA sync failed.", exc_info=e)
+                    LOGGER.exception("Torch CUDA sync failed.", exc_info=e)
 
-            if not sync_success and self.logger:
-                self.logger.error("CUDA device synchronization failed.")
+            if not sync_success:
+                LOGGER.error("CUDA device synchronization failed.")
 
         return time.time()
 
@@ -187,3 +182,75 @@ class NoProfile(contextlib.ContextDecorator):
 
 
 NoProfile = NoProfile()  # type: ignore[assignment, misc]
+
+# Registry to track toggleable functions
+_JIT_REGISTRY = {}
+
+
+def toggle_jit(enable: bool) -> None:
+    """Globally enable/disable JIT compilation at runtime."""
+    global USE_NUMBA
+    old_setting = USE_NUMBA
+    USE_NUMBA = enable
+
+    # Re-register all tracked functions
+    for func_info in _JIT_REGISTRY.values():
+        module = func_info["module"]
+        func_name = func_info["name"]
+        original_func = func_info["original"]
+        jit_args = func_info["jit_args"]
+        jit_kwargs = func_info["jit_kwargs"]
+
+        # Create new implementation
+        if enable:
+            new_func = jit(*jit_args, **jit_kwargs)(original_func)
+            LOGGER.info(f"JIT ENABLED for {func_name}")
+        else:
+            new_func = original_func
+            LOGGER.info(f"JIT DISABLED for {func_name}")
+
+        # Replace function in module
+        setattr(module, func_name, new_func)
+
+    LOGGER.info(
+        f"JIT globally {'ENABLED' if enable else 'DISABLED'} "
+        f"(previously {'enabled' if old_setting else 'disabled'})",
+    )
+
+
+def conditional_jit(*args, **kwargs) -> Callable:
+    """Decorator that allows runtime JIT toggling."""
+    turn_on = kwargs.pop("turn_on", USE_NUMBA)
+
+    def decorator(func: Callable) -> Callable:
+        # Store original function and parameters
+        module = sys.modules[func.__module__]
+        func_id = id(func)
+        _JIT_REGISTRY[func_id] = {
+            "module": module,
+            "name": func.__name__,
+            "original": func,
+            "jit_args": args,
+            "jit_kwargs": kwargs,
+            "turn_on": turn_on,
+        }
+
+        # Apply initial JIT setting
+        if turn_on:
+            LOGGER.info(f"JIT ENABLED for {func.__name__}")
+            return jit(*args, **kwargs)(func)
+        else:
+            LOGGER.info(f"JIT DISABLED for {func.__name__}")
+            return func
+
+    return decorator
+
+
+_PROFILE_REGISTRY = {}
+
+
+def get_profile(name, **kwargs) -> Profile:
+    """Get a named Profile instance, create if missing."""
+    if name not in _PROFILE_REGISTRY:
+        _PROFILE_REGISTRY[name] = Profile(**kwargs, name=name)
+    return _PROFILE_REGISTRY[name]

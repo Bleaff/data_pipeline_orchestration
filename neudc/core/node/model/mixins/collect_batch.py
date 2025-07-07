@@ -12,7 +12,7 @@ from neudc.core.communication.messaging.types import Batch
 class CollectBatchMixin:
     """Mixin class for collecting data from mailbox."""
 
-    def __init__(self, batch_size: int, batch_queue_size: int = 20, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, batch_size: int, batch_queue_size: int = 20, *args: Any, **kwargs: Any) -> CollectBatchMixin:
         super().__init__(*args, **kwargs)
         self.batch_size = batch_size
         self.batch_collect_timeout = 0.1  # max wait time in seconds

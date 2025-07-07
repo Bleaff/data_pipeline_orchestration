@@ -1,8 +1,15 @@
-import onnxruntime as ort
+from __future__ import annotations
+
 import ast
+from typing import TYPE_CHECKING
+
+import onnxruntime as ort
+
 from neudc.nn.backends import BaseBackend
 from neudc.utils import LOGGER, PROFILE_FREQ, Profile
-from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
+
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
 
 __all__ = ("ONNXRuntimeBackend",)
 
@@ -17,13 +24,14 @@ class ONNXRuntimeBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
-    ) -> "ONNXRuntimeBackend":
-        """
-        Init of ONNX Runtime backend
+    ) -> ONNXRuntimeBackend:
+        """Init of ONNX Runtime backend.
 
         Args:
+        ----
             path (str): Path to ONNX model.
             device_id (int): Device id for the inference. -1 is cpu device.
+
         """
         providers = ["CPUExecutionProvider"]
         if device_id >= 0:
@@ -31,9 +39,9 @@ class ONNXRuntimeBackend(BaseBackend):
                 LOGGER.warning("WARNING ⚠️ CUDA is not available, switching to cpu.")
                 device_id = -1
             else:
-                providers.append(
+                providers = [
                     ("CUDAExecutionProvider", {"device_id": device_id}),
-                )
+                ]
 
         ONNXRuntimeBackend.cuda = device_id >= 0
         ONNXRuntimeBackend.cpu = not ONNXRuntimeBackend.cuda
@@ -51,32 +59,39 @@ class ONNXRuntimeBackend(BaseBackend):
         self.input_name = self.model.get_inputs()[0].name
         self.output_names = [output.name for output in self.model.get_outputs()]
 
-        # Reading metadata
-        self.metadata = self.model.get_modelmeta().custom_metadata_map
-        self.metadata['imgsz'] = ast.literal_eval(self.metadata.get("imgsz", "(640, 640)"))
-        self.dynamic = isinstance(self.model.get_outputs()[0].shape[0], str)
-        self.fp16 = ast.literal_eval(self.metadata['args']).get('half', False)
-        self.fp16 = "float16" in self.model.get_inputs()[0].type
-        print(self.model.get_inputs()[0].type)
+        # Parse metadata values into Python objects
+        parsed_metadata = {}
+        for key, value_str in self.model.get_modelmeta().custom_metadata_map.items():
+            try:
+                # Attempt to convert string to Python object
+                parsed_value = ast.literal_eval(value_str)
+            except (ValueError, SyntaxError):
+                # Keep as string if conversion fails
+                parsed_value = value_str
+            parsed_metadata[key] = parsed_value
 
-    @Profile(use_cuda=cuda, use_torch=False, logger=LOGGER, freq=PROFILE_FREQ, name="onnx")
+        self.metadata = parsed_metadata
+
+        self.dynamic = isinstance(self.model.get_outputs()[0].shape[0], str)
+        self.fp16 = "float16" in self.model.get_inputs()[0].type
+
+    @Profile(use_cuda=cuda, use_torch=False, freq=PROFILE_FREQ, name="onnx")
     def __call__(
         self,
         input_data: FloatImagesBatch,
     ) -> list[FloatFeaturesBatch]:
-        """
-        Call the backend engine
+        """Call the backend engine.
 
         Args:
+        ----
             input_data (FloatImagesBatch): The input to the model.
+
         Returns:
+        -------
             list[FloatFeaturesBatch]: The output of the model.
+
         """
-        outputs = self.model.run(
+        return self.model.run(
             self.output_names,
             {self.input_name: input_data},
         )
-        return outputs
-
-    def __del__(self):
-        pass

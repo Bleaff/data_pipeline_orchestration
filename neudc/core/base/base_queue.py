@@ -25,7 +25,6 @@ class QueueLike(ABC):
             NotImplementedError: If the method is not implemented.
 
         """
-        raise NotImplementedError
 
     @abstractmethod
     def put_nowait(self, message: Any) -> None:
@@ -40,7 +39,6 @@ class QueueLike(ABC):
             NotImplementedError: If the method is not implemented.
 
         """
-        raise NotImplementedError
 
     @abstractmethod
     def get(self, timeout: float | None) -> Any:
@@ -59,7 +57,6 @@ class QueueLike(ABC):
             NotImplementedError: If the method is not implemented.
 
         """
-        raise NotImplementedError
 
     @abstractmethod
     def get_nowait(self) -> Any:
@@ -74,4 +71,3 @@ class QueueLike(ABC):
             NotImplementedError: If the method is not implemented.
 
         """
-        raise NotImplementedError

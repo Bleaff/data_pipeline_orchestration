@@ -1,16 +1,21 @@
+from __future__ import annotations
 
-import abc
-from typing import Any, Dict
-import time
-from neudc.core.base.base_process import BaseProcessNode
-from neudc.core.communication.messaging.types import Frame
-from multiprocessing import Event
-from neudc.nn import ModelFactory
 import copy
+import time
+from abc import ABCMeta, abstractmethod
+from multiprocessing import Event
+from typing import TYPE_CHECKING, Any
 
-class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
-    """
-    Base class for inference nodes.
+from neudc.core.base.base_process import BaseProcessNode
+from neudc.nn import ModelFactory
+from neudc.utils import LOGGER
+
+if TYPE_CHECKING:
+    from neudc.core.communication.messaging.types import Frame
+
+
+class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
+    """Base class for inference nodes.
 
     This class provides a basic implementation for inference nodes. It includes
     model initialization and the process method.
@@ -20,24 +25,23 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
 
     """
 
-    def __init__(self, model_config, mailbox: Any, logger: Any) -> None:
-        """
-        Initialize the base inference node.
+    def __init__(self, model_config: dict, mailbox: Any) -> BaseProcessInference:
+        """Initialize the base inference node.
 
         Args:
         ----
             mailbox: Mailbox for inter-process communication.
             logger: Logger instance for logging messages.
+
         """
-        super().__init__(mailbox, logger)
+        super().__init__(mailbox)
         self.model = None
         self.model_config = model_config
         self._model_initialized = Event()
         self.model_initialization_status = Event()
 
     def process(self, item: Frame) -> Any:
-        """
-        Process the input data.
+        """Process the input data.
 
         This method is called for each input data. It initializes the model on the
         first call and then runs the model on the input data.
@@ -49,20 +53,22 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         Returns:
         -------
             Any: Processed data.
-        """
 
+        """
         # Run the model on the input data
         while self.model is None:
             time.sleep(0.1)
 
-        result = self.model([item.image,])
-        pp_item = self.postprocess_result(result, item)
-        return pp_item
+        result = self.model(
+            [
+                item.image,
+            ],
+        )
+        return self.postprocess_result(result, item)
 
-    @abc.abstractmethod
-    def postprocess_result(self, result: Any, item: Frame)-> Frame:
-        """
-        Postprocess the inference result.
+    @abstractmethod
+    def postprocess_result(self, result: Any, item: Frame) -> Frame:
+        """Postprocess the inference result.
 
         Args:
         ----
@@ -72,13 +78,12 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         Returns:
         -------
             Any: Processed data.
+
         """
-        raise NotImplementedError("postprocess_result not implemented")
 
     @classmethod
     def from_config(cls: type[BaseProcessNode], config: dict[str, Any]) -> BaseProcessNode:
-        """
-        From config-based constructor for building node with specified config.
+        """From config-based constructor for building node with specified config.
 
         Args:
         ----
@@ -87,23 +92,23 @@ class BaseProcessInference(BaseProcessNode, metaclass=abc.ABCMeta):
         Returns:
         -------
             BaseProcessNode: Node instance created from the configuration.
+
         """
-        return cls(config["model_config"], config["mailbox"], config["logger"])
+        return cls(config["model_config"], config["mailbox"])
 
     def init_process_runtime(self) -> None:
-        """
-        Initialize the model.
+        """Initialize the model.
 
         This method should be implemented by subclasses to initialize the model.
 
-        Returns:
+        Returns
         -------
             Any: Initialized model.
+
         """
         if self._model_initialized.is_set():
             return
         self._model_initialized.set()
-        self.logger.info(f"Created model at {id(self)}")
-        self.logger.info(f"Initializing model...🙈\nModel config is{self.model_config}")
+        LOGGER.info(f"Created model at {id(self)}")
+        LOGGER.info(f"Initializing model...🙈\nModel config is{self.model_config}")
         self.model = ModelFactory.create(copy.copy(self.model_config))
-
