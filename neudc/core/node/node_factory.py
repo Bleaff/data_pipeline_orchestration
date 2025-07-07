@@ -18,6 +18,7 @@ from neudc.core.node.readers.image_reader import FolderImageNode
 from neudc.core.node.model.proc_det_inference import ProcessDetInference
 from neudc.core.node.filters.hash_node import HashNode
 from neudc.core.node.model.proc_blur_inference import ProcessBlurInference
+from neudc.core.node.model.proc_embedding_inference import ProcessEmbeddingInference
 
 class NodeFactory:
     """Factory to create node instances based on config."""
@@ -32,6 +33,7 @@ class NodeFactory:
         "DrawNode": DrawNode,
         "HashNode": HashNode,
         "ProcessBlurInference": ProcessBlurInference,
+        "ProcessEmbeddingInference": ProcessEmbeddingInference
     }
 
     @staticmethod
