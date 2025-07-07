@@ -1,6 +1,5 @@
 """Mixin class for drawing boxes on Frame objects."""
 from __future__ import annotations
-import os
 from typing import Any
 import cv2
 from neudc.core.communication.messaging.types import Frame
