@@ -26,6 +26,7 @@ from typing import Any
 from neudc.core.base.base_mailbox import BaseMailbox
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType
+from neudc.core.communication.messaging.types import Batch, Frame
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -94,19 +95,23 @@ class ZMQMailbox(BaseMailbox[dict]):
         for pub_socket in self.pub_sockets.values():
             pub_socket.stop()
 
-    def send(self, message: Any) -> None:
+    def send(self, message: Batch|Frame) -> None:
         """Send a message to the mailbox."""
         for pub_socket in self.pub_sockets.values():
             if self.logger:
                 self.logger.debug(f"[{self.name}][START SENDING] → {time.time()}")
-            pub_socket.put(message)
+            if isinstance(message, Batch):
+                for frame in message:
+                    pub_socket.put(frame)
+            else:
+                pub_socket.put(message)
             if self.logger:
                 self.logger.debug(f"[{self.name}][END SENDING] → {time.time()}")
 
-    def receive(self) -> dict:
+    def receive(self, timeout: float | None = None) -> dict:
         """Receive a message from the mailbox."""
         try:
-            message = self._message_queue.get(timeout=0.1)
+            message = self._message_queue.get(timeout=timeout if timeout else 0.1)
             if self.logger:
                 self.logger.debug(f"[{self.name}][RECV][{time.time()}] ← {type(message)}")
         except Empty:
