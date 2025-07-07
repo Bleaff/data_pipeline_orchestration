@@ -112,6 +112,15 @@ class Batch(BaseModel):
 
     frames: list[Frame]
 
+    def __iter__(self):
+        return iter(self.frames)
+
+    def __len__(self):
+        return len(self.frames) 
+
+    def __getitem__(self, index):
+        return self.frames[index]
+
 
 # === Pipeline Configuration ===
 
