@@ -23,12 +23,14 @@ version = "0.1.0"  # Update as appropriate or use dynamic versioning
 description = "Premarkup framework for object detection tasks."
 readme = "README.md"
 authors = [
-    "Aleksander Dulebo", 
     "Ilya Basharov",
+    "Marius Kotovanu",
+    "Sergey Sysoev",
 ]
 maintainers = [
-    "Aleksander Dulebo",
     "Ilya Basharov",
+    "Marius Kotovanu",
+    "Sergey Sysoev",
 ]
 license = "AGPL-3.0"
 keywords = ["machine-learning", "deep-learning", "computer-vision", "cvat"]
@@ -97,7 +99,7 @@ onnx = [
 
 # Project URLs --------------------------------------------------------------------------------------------------------
 [tool.poetry.urls]
-"Source" = "https://gitflic.ru/project/adulebo/stratim.git"
+"Source" = "https://gitlab.ai.cloud.ru/ivbasharov/neudc.git"
 
 # Tools settings -------------------------------------------------------------------------------------------------------
 [tool.isort]

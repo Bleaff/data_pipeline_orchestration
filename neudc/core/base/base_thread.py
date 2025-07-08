@@ -24,7 +24,7 @@ class BaseThreadedNode(BaseNode):
     regardless of the specific functionality they provide.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> "BaseThreadedNode":
         """Initialize the threaded node with a mailbox and a logger."""
         super().__init__(*args, **kwargs)
 

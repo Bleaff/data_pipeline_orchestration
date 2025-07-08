@@ -37,6 +37,7 @@ from logging import Logger
 MACOS, LINUX, WINDOWS = (platform.system() == x for x in ["Darwin", "Linux", "Windows"])
 LOGGING_NAME = "neudc"
 VERBOSE = True
+USE_NUMBA = True
 
 
 def emojis(string: str = "") -> str:

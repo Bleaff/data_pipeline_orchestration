@@ -6,8 +6,8 @@ Using mocking, NotImplementedError is raised for put, put_nowait, get, and get_n
 from unittest.mock import MagicMock
 
 import pytest
-
 import zmq
+
 from neudc.core.communication.zero_queue.zero_pub import ZeroQueuePub
 from neudc.core.communication.zero_queue.zero_queue import ZeroQueue
 from neudc.core.communication.zero_queue.zero_sub import ZeroQueueSub
@@ -66,7 +66,6 @@ def test_zeroqueue_get_nowait_receives_object(mock_zmq) -> None:
     result = sub.get_nowait()
 
     assert result == test_msg
-
 
 
 def test_zeroqueue_get_timeout_returns_none(mock_zmq) -> None:
