@@ -15,7 +15,7 @@ class ZeroQueuePub(ZeroQueue):
     Extends the ZeroQueue class to publish data to a ZeroQueueSubscriber.
     """
 
-    def __init__(self, port=-1, contype=ZeroQueueConnectionType.CONNECT) -> None:
+    def __init__(self, port=-1, contype=ZeroQueueConnectionType.CONNECT) -> "ZeroQueuePub":
         """Initialize the ZeroQueuePub.
 
         Args:

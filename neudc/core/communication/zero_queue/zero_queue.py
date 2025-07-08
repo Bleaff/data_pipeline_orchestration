@@ -19,15 +19,13 @@ concurrently without worrying about race conditions.
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
 import zmq
 
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
-
-logger = logging.getLogger(__name__)
+from neudc.utils import LOGGER
 
 
 class ZeroQueue:
@@ -41,7 +39,7 @@ class ZeroQueue:
         port: int = -1,
         mode: ZeroQueueMode = ZeroQueueMode.SUB,
         contype: ZeroQueueConnectionType = ZeroQueueConnectionType.CONNECT,
-    ) -> None:
+    ) -> ZeroQueue:
         """Initialize the ZeroQueue.
 
         Args:
@@ -100,10 +98,10 @@ class ZeroQueue:
         """Bind the socket to a random port and return the port number."""
         if port != -1:
             socket.bind(f"tcp://*:{port}")
-            logger.info(f"ZeroQueue bound to port {port}")
+            LOGGER.info(f"ZeroQueue bound to port {port}")
             return port
         port = socket.bind_to_random_port("tcp://*")
-        logger.info(f"ZeroQueue bound to random port {port}")
+        LOGGER.info(f"ZeroQueue bound to random port {port}")
         return port
 
     def _set_connection(self, socket: zmq.Context.socket, contype: ZeroQueueConnectionType) -> None:
@@ -117,7 +115,7 @@ class ZeroQueue:
         if contype == ZeroQueueConnectionType.CONNECT:
             if self.port != -1:
                 socket.connect(f"tcp://localhost:{self.port}")
-                logger.debug(f"ZeroQueue connected to port {self.port}")
+                LOGGER.debug(f"ZeroQueue connected to port {self.port}")
             else:
                 msg = "Port is not set"
                 raise ValueError(msg)

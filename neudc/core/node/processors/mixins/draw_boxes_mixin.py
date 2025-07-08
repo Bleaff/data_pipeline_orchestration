@@ -1,12 +1,18 @@
 """Mixin class for drawing boxes on Frame objects."""
+
 from __future__ import annotations
-from typing import Any
+
+from typing import TYPE_CHECKING, Any
+
 import cv2
-from neudc.core.communication.messaging.types import Frame
+
+if TYPE_CHECKING:
+    from neudc.core.communication.messaging.types import Frame
 
 
 class DrawBoxesLogicMixin:
     """Mixin class for drawing boxes on Frame objects."""
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 

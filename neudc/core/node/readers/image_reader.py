@@ -15,8 +15,9 @@ from typing import Any
 import cv2
 
 from neudc.core.base.base_thread import BaseThreadedNode
-from neudc.core.communication.messaging.types import Frame  # Frame class as given
 from neudc.core.node.readers import ImageReaderMode
+from neudc.core.communication.messaging.types import Frame  # Frame class as given
+from neudc.utils import LOGGER
 
 
 class FolderImageNode(BaseThreadedNode):
@@ -26,10 +27,9 @@ class FolderImageNode(BaseThreadedNode):
         self,
         folder_path: str,
         mailbox: Any,
-        logger: Any,
-        mode: ImageReaderMode = ImageReaderMode.LOOP,
+        mode: str = ImageReaderMode.LOOP,
         frame_delay: float = 0.01,
-    ) -> None:
+    ) -> FolderImageNode:
         """Initialize FolderImageNode.
 
         Args:
@@ -48,7 +48,7 @@ class FolderImageNode(BaseThreadedNode):
         self.last_image_index = len(self.image_files)
         self.current_index = 0
         self.frame_id = 0
-        super().__init__(mailbox, logger)
+        super().__init__(mailbox)
 
     @staticmethod
     def from_config(config: dict[str, Any]) -> FolderImageNode:
@@ -66,7 +66,6 @@ class FolderImageNode(BaseThreadedNode):
         return FolderImageNode(
             folder_path=config["folder_path"],
             mailbox=config["mailbox"],
-            logger=config["logger"],
             mode=config.get("mode", "loop"),
             frame_delay=config.get("frame_delay", 0.01),
         )
@@ -94,7 +93,7 @@ class FolderImageNode(BaseThreadedNode):
         image_path = self.folder_path / self.image_files[self.frame_id % len(self.image_files)]
         image = cv2.imread(str(image_path))
         if image is None:
-            self.logger.warning(f"Failed to read image: {image_path}")
+            LOGGER.warning(f"Failed to read image: {image_path}")
             return None
 
         # Create Frame object
@@ -108,7 +107,7 @@ class FolderImageNode(BaseThreadedNode):
             frame_id_last=self.last_image_index,
         )
 
-        self.logger.debug(f"PID#({os.getpid()}) Sending Frame(id={self.frame_id}) from {image_path}")
+        LOGGER.debug(f"PID#({os.getpid()}) Sending Frame(id={self.frame_id}) from {image_path}")
         self.current_index += 1
         self.frame_id += 1
 

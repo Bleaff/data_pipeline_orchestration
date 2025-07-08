@@ -21,7 +21,11 @@ class ZeroQueueSub(ZeroQueue):
 
     """
 
-    def __init__(self, port: int = -1, contype: ZeroQueueConnectionType = ZeroQueueConnectionType.BIND) -> None:
+    def __init__(
+        self,
+        port: int = -1,
+        contype: ZeroQueueConnectionType = ZeroQueueConnectionType.BIND,
+    ) -> "ZeroQueueSub":
         """Initialize the ZeroQueueSub.
 
         This class is used to receive data from a ZeroQueuePublisher. It always binds to a random port.

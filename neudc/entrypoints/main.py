@@ -43,12 +43,10 @@ Functions:
 - main(config_path: str) -> None: Initiates the application with the given configuration file path.
 """
 
-import logging
-
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
-import time
+
 
 def main(config_path: str) -> None:
     """Entrypoint for the application. Takes the path to the YAML config as input. Factories nodes and routes messages between them.
@@ -59,7 +57,6 @@ def main(config_path: str) -> None:
 
     """
     is_running = True
-    logging.basicConfig(level=logging.DEBUG)
 
     # Load pipeline configuration from YAML
     config = load_config(config_path)
@@ -73,15 +70,9 @@ def main(config_path: str) -> None:
     for node_config in config["nodes"]:
         node_id = node_config["id"]
         mailbox = mailbox_map[node_id]
-        logger = logging.getLogger(node_id)
-        node = NodeFactory.create(node_config, mailbox=mailbox, logger=logger)
+        node = NodeFactory.create(node_config, mailbox=mailbox)
         node.start()
         nodes.append(node)
-
-    # # Wait for all nodes to be ready
-    # for node in nodes:
-    #     while not node.status():
-    #         time.sleep(1)
 
     # 3. Keep the main thread alive while nodes are working
     try:

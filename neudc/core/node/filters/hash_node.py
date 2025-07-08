@@ -9,14 +9,20 @@ from neudc.core.node.filters.mixins.hash_mixin import HashFilterMixin
 class HashNode(HashFilterMixin, BaseThreadedNode):
     """A node that resizes incoming Frame objects to a target resolution."""
 
-    def __init__(self, delta: int, hash_type: str, *args: Any, **kwargs: Any) -> None:
-        """Initialize the HashNode with delta and type of hash"""
-        self.delta: int = delta
-        self.type_of_hash: str = hash_type
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        delta: int,
+        hash_type: str,
+        hash_size: int,
+        *args: Any,
+        **kwargs: Any,
+    ) -> HashNode:
+        """Initialize the HashNode with delta and type of hash."""
+        HashFilterMixin.__init__(self, delta=delta, hash_type=hash_type, hash_size=hash_size)
+        BaseThreadedNode.__init__(self, *args, **kwargs)
 
-    @staticmethod
-    def from_config(config: dict[str, Any]) -> HashNode:
+    @classmethod
+    def from_config(cls: type[HashNode], config: dict[str, Any]) -> HashNode:
         """Create HashNode from configuration dictionary.
 
         Args:
@@ -30,8 +36,7 @@ class HashNode(HashFilterMixin, BaseThreadedNode):
         """
         return HashNode(
             mailbox=config["mailbox"],
-            logger=config["logger"],
             delta=config["delta"],
-            hash_size=config['hash_size'],
+            hash_size=config["hash_size"],
             hash_type=config["hash_type"],
         )

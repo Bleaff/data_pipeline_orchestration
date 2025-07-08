@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 from typing import Any
@@ -9,9 +7,9 @@ from neudc.core.node.processors.mixins.draw_boxes_mixin import DrawBoxesLogicMix
 
 
 class DrawNode(DrawBoxesLogicMixin, BaseThreadedNode):
-    """A node that draws boxes on incoming Frame objects"""
+    """A node that draws boxes on incoming Frame objects."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> DrawNode:
         """Initialize the DrawNode with target dimensions."""
         super().__init__(*args, **kwargs)
 
@@ -20,5 +18,4 @@ class DrawNode(DrawBoxesLogicMixin, BaseThreadedNode):
         """Create ResizeNode from configuration dictionary."""
         return DrawNode(
             mailbox=config["mailbox"],
-            logger=config["logger"]
         )
