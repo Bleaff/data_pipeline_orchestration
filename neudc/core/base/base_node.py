@@ -129,7 +129,8 @@ class BaseNode(ABC):
         self.is_ready = False
         self._stop_event.set()
         self.mailbox.stop()
-        if self.thread and self.thread.is_alive():
+        # prevent joining current thread
+        if threading.current_thread() != self.thread and self.thread.is_alive():
             self.thread.join(timeout=self._join_timeout)
         LOGGER.info("Node stopped.")
 

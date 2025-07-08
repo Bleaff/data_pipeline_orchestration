@@ -44,6 +44,7 @@ class FolderImageNode(BaseThreadedNode):
         self.mode = mode
         self.frame_delay = frame_delay
         self.image_files = sorted(f.name for f in self.folder_path.iterdir() if f.is_file())
+        self.last_image_index = len(self.image_files)
         self.current_index = 0
         self.frame_id = 0
         super().__init__(mailbox)
@@ -101,8 +102,9 @@ class FolderImageNode(BaseThreadedNode):
             image=image,
             timestamp=timestamp,
             source_frame=str(image_path),
-            frame_id=self.frame_id,
+            frame_id=self.frame_id % self.last_image_index,
             boxes=[],
+            frame_id_last=self.last_image_index,
         )
 
         LOGGER.debug(f"PID#({os.getpid()}) Sending Frame(id={self.frame_id}) from {image_path}")
