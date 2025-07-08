@@ -3,11 +3,11 @@ from sklearn.cluster import DBSCAN
 import numpy as np
 from pathlib import Path
 
-from neudc.core.communication.messaging.types import Frame
-from neudc.core.node.model.base_process_inference import BaseProcessInference
+from neudc.core.communication.messaging.types import Frame, Batch
+from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
 
 
-class ProcessEmbeddingInference(BaseProcessInference):
+class ProcessEmbeddingInference(BaseBatchProcessInference):
     """
     Post-processes embedding vectors to select non-duplicate frames.
 
@@ -31,7 +31,7 @@ class ProcessEmbeddingInference(BaseProcessInference):
         super().__init__(*args, **kwargs)
 
 
-    def postprocess_result(self, result: Any, item: Frame) -> Optional[List[Frame]]:
+    def postprocess_result(self, result: Any, item: Batch) -> Optional[Batch] | Frame | None:
         """
         Accumulates embeddings and Frame metadata by source folder.
         As soon as a frame with frame_id == frame_id_last is seen for a source,
@@ -52,13 +52,13 @@ class ProcessEmbeddingInference(BaseProcessInference):
 
             self.emb_cache.setdefault(src, {})[frame_id] = emb
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
-
+            self.logger.debug(f'{frame_id=}/{last_id=}')
             if frame_id == last_id:
                 unique = self.cluster_and_select(src)
                 return unique
         return
 
-    def cluster_and_select(self, source: str) -> List[Frame]:
+    def cluster_and_select(self, source: str) -> Optional[Batch] | Frame | None:
         """
         1) Runs DBSCAN (cosine metric) on all cached embeddings for the source.
         2) For each cluster label >= 0:
@@ -78,12 +78,12 @@ class ProcessEmbeddingInference(BaseProcessInference):
 
         labels = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric="cosine").fit_predict(all_embds)
 
-        unique: List[Frame] = []
+        unique: Batch[Frame] = Batch(frames=list())
         for cluster_label in sorted(set(labels)):
             idxs = [i for i, lbl in zip(frame_ids, labels) if lbl == cluster_label]
 
             if cluster_label == -1:
-                unique.extend(frame_dict[i] for i in idxs)
+                unique.frames.extend(frame_dict[i] for i in idxs)
                 continue
 
             embs = np.stack([emb_dict[i] for i in idxs], axis=0)
@@ -91,14 +91,14 @@ class ProcessEmbeddingInference(BaseProcessInference):
 
             dists = np.linalg.norm(embs - centroid[None, :], axis=1)
             medoid_loc = int(np.argmin(dists))
-            unique.append(frame_dict[idxs[medoid_loc]])
+            unique.frames.append(frame_dict[idxs[medoid_loc]])
 
             sorted_locs = np.argsort(-dists)
             count = 0
             for loc in sorted_locs:
                 if loc == medoid_loc:
                     continue
-                unique.append(frame_dict[idxs[loc]])
+                unique.frames.append(frame_dict[idxs[loc]])
                 count += 1
                 if count >= self.num_extremes:
                     break
@@ -107,11 +107,11 @@ class ProcessEmbeddingInference(BaseProcessInference):
         del self.frame_cache[source]
 
         seen = set()
-        filtered: List[Frame] = []
+        filtered: Batch[Frame] = Batch(frames=list())
         for f in unique:
             key = (f.source_frame, f.frame_id)
             if key not in seen:
                 seen.add(key)
-                filtered.append(f)
+                filtered.frames.append(f)
 
         return filtered

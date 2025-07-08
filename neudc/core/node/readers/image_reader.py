@@ -84,15 +84,14 @@ class FolderImageNode(BaseThreadedNode):
         """
         del args, kwargs
 
-        if self.current_index >= len(self.image_files):
+        if self.frame_id >= len(self.image_files):
             if self.mode == ImageReaderMode.ONLY_ONE:
                 self.logger.info("All images processed in 'ONLY_ONE' mode.")
                 self.stop()
                 return None
-            self.current_index = 0
 
         # Load image from disk
-        image_path = self.folder_path / self.image_files[self.current_index]
+        image_path = self.folder_path / self.image_files[self.frame_id % len(self.image_files)]
         image = cv2.imread(str(image_path))
         if image is None:
             self.logger.warning(f"Failed to read image: {image_path}")
@@ -104,7 +103,7 @@ class FolderImageNode(BaseThreadedNode):
             image=image,
             timestamp=timestamp,
             source_frame=str(image_path),
-            frame_id=self.frame_id % self.last_image_index,
+            frame_id=self.frame_id,
             boxes=[],
             frame_id_last=self.last_image_index,
         )
