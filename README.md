@@ -25,7 +25,7 @@ python3 neudc/main.py assets/images
 ```
 
 ### Run pytest
-> Automatically runs all written tests for core module
+Automatically runs all written tests for core module
 ```bash
 python3 -m pytest test
 ```

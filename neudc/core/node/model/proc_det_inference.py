@@ -10,7 +10,6 @@ class ProcessDetInference(BaseProcessInference):
 
     def postprocess_result(self, result: Any, item: Frame):
         """Put the result to the item."""
-        # self.logger.info(f'Model detection result: {result}')
         boxes = []
         for box_ in result[0]:
             x, y, x2, y2, score, class_id = box_

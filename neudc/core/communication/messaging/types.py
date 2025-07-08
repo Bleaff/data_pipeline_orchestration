@@ -5,12 +5,10 @@ This class defines the base attributes for a box, including the source node ID.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import numpy as np  # noqa
 from pydantic import BaseModel
-
-if TYPE_CHECKING:
-    import numpy as np
 
 # === Base Attribute ===
 

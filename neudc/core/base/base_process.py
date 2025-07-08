@@ -108,7 +108,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
             with self._last_success_time.get_lock():
                 delta = time.time() - self._last_success_time.value
             if delta > self.HEALTH_TIMEOUT:
-                LOGGER.warning("Health timeout exceeded!")
+                LOGGER.warning(f"Health {self.__class__.__name__} timeout exceeded!")
                 with self._healthy.get_lock():
                     self._healthy.value = False
 
