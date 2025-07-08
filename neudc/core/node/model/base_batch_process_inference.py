@@ -26,7 +26,6 @@ class BaseBatchProcessInference(BaseProcessInference):
             while len(batch.frames) < self.batch_size:
                 remaining_time = self.batch_collect_timeout - (time.time() - start_time)
                 if remaining_time <= 0:
-                    self.logger.debug(f"-------------------->[COLLECTED BATCH SIZE OF {len(batch.frames)}] TIMEOUT HIT")
                     break
                 if self.mailbox is None:
                     continue
