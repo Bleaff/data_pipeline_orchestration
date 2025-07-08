@@ -34,14 +34,13 @@ class NodeFactory:
     }
 
     @staticmethod
-    def create(config: dict[str, Any], mailbox: Any, logger: Any) -> Any:
+    def create(config: dict[str, Any], mailbox: Any) -> Any:
         """Create a node instance from its config.
 
         Args:
         ----
             config (dict): Node config.
             mailbox (Any): Precreated mailbox for this node.
-            logger (Any): Logger for this node.
 
         Returns:
         -------
@@ -57,5 +56,4 @@ class NodeFactory:
 
         config = dict(config)  # make a copy
         config["mailbox"] = mailbox
-        config["logger"] = logger
         return node_class.from_config(config)

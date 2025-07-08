@@ -31,8 +31,6 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
         Args:
         ----
             mailbox: Mailbox for inter-process communication.
-            logger: Logger instance for logging messages.
-
         """
         super().__init__(mailbox)
         self.model = None
@@ -110,5 +108,5 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
             return
         self._model_initialized.set()
         LOGGER.info(f"Created model at {id(self)}")
-        LOGGER.info(f"Initializing model...🙈\nModel config is{self.model_config}")
+        LOGGER.info(f"Initializing model...\nModel config is{self.model_config}")
         self.model = ModelFactory.create(copy.copy(self.model_config))

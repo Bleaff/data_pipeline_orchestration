@@ -26,18 +26,21 @@ PROFILE_FREQ = 10
 
 
 try:
+    import tensorrt as trt  # noqa
 
     TENSORRT_ENABLE = True
 except ImportError:
     TENSORRT_ENABLE = False
     LOGGER.info("TensorRT library is not installed. Check your installation carefully.")
 try:
+    import onnxruntime as ort  # noqa
 
     ONNX_PROFILE_ENABLE = True
 except ImportError:
     ONNX_PROFILE_ENABLE = False
     LOGGER.info("ONNX library is not installed. Check your installation carefully.")
 try:
+    from cuda import cuda  # noqa
 
     CUDA_PROFILE_ENABLE = True
 except ImportError:
