@@ -33,7 +33,7 @@ class NodeFactory:
         "DrawNode": DrawNode,
         "HashNode": HashNode,
         "ProcessBlurInference": ProcessBlurInference,
-        "ProcessEmbeddingInference": ProcessEmbeddingInference
+        "ProcessEmbeddingInference": ProcessEmbeddingInference,
         "ProcessDetBatchInference": ProcessDetBatchInference
     }
 
