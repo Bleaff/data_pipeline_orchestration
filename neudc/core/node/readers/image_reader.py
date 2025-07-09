@@ -84,7 +84,7 @@ class FolderImageNode(BaseThreadedNode):
         """
         del args, kwargs
 
-        if self.frame_id >= len(self.image_files):
+        if self.frame_id > len(self.image_files):
             if self.mode == ImageReaderMode.ONLY_ONE:
                 self.logger.info("All images processed in 'ONLY_ONE' mode.")
                 self.stop()
