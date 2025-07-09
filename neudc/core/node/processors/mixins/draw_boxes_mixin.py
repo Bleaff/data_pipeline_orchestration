@@ -16,7 +16,7 @@ class DrawBoxesLogicMixin:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-    def draw_boxes(self, frame: Frame) -> Frame:
+    def drawa_boxes(self, frame: Frame) -> Frame:
         """Draw boxes on the image in the Frame object."""
         for box in frame.boxes:
             cv2.rectangle(frame.image, (box.x1, box.y1), (box.x2, box.y2), (0, 255, 0), 2)
