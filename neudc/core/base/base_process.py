@@ -12,7 +12,6 @@ import os
 import threading
 import time
 from abc import ABC, abstractmethod
-from neudc.core.communication.messaging.types import Frame, Batch
 from typing import Any
 
 from neudc.core.base.base_node import BaseNode
@@ -97,7 +96,6 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Signal the process to stop and wait for the health thread."""
         LOGGER.info("Stopping process node...")
         self.stop_event.set()
-
 
     def status(self) -> bool:
         """Return current health status."""

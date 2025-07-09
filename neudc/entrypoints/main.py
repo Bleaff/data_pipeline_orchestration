@@ -8,7 +8,7 @@ nodes:
     mode: "loop"
     frame_delay: 0.1
     outputs: [hash]
-  
+
   - id: hash
     type: HashNode
     delta: 5
@@ -33,7 +33,7 @@ nodes:
     type: SaveImageNode
     save_dir: "./output_images"
     outputs: []
-  
+
 
 It initializes and configures the necessary components for the system to run,
 including the routing and node factories. The configuration is loaded from a specified

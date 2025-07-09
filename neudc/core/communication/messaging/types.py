@@ -115,7 +115,7 @@ class Batch(BaseModel):
         return iter(self.frames)
 
     def __len__(self):
-        return len(self.frames) 
+        return len(self.frames)
 
     def __getitem__(self, index):
         return self.frames[index]

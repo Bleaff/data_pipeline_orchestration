@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+import copy
 import time
-from neudc.core.base.base_process import BaseProcessNode
-from neudc.core.communication.messaging.types import Frame
-from multiprocessing import Event
-from neudc.nn import ModelFactory
 from abc import ABCMeta, abstractmethod
 from multiprocessing import Event
 from typing import TYPE_CHECKING, Any
-import copy
+
 from neudc.core.base.base_process import BaseProcessNode
+from neudc.core.communication.messaging.types import Frame
+from neudc.nn import ModelFactory
 from neudc.utils import LOGGER
 
 if TYPE_CHECKING:
