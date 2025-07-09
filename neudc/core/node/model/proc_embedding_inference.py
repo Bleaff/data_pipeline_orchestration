@@ -22,12 +22,10 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
         self.emb_cache: dict[str, dict[int, np.ndarray]] = {}
         self.frame_cache: Dict[str, Dict[int, Frame]] = {}
-        cfg = {}
-        if args and isinstance(args[0], dict):
-            cfg = args[0]
-        self.eps = cfg.get("eps", 0.015)
-        self.min_samples = cfg.get("min_samples", 10)
-        self.num_extremes= cfg.get("num_extremes", 2)
+
+        self.eps = kwargs['model_config'].get("eps", 0.015)
+        self.min_samples = kwargs['model_config'].get("min_samples", 2)
+        self.num_extremes= kwargs['model_config'].get("num_extremes", 1)
         super().__init__(*args, **kwargs)
 
 
@@ -52,10 +50,9 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
             self.emb_cache.setdefault(src, {})[frame_id] = emb
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
-            self.logger.debug(f'{frame_id=}/{last_id=}')
-            if frame_id == last_id:
-                unique = self.cluster_and_select(src)
-                return unique
+            if len(self.emb_cache[src]) == last_id:
+                unique_frames = self.cluster_and_select(src)
+                return unique_frames
         return
 
     def cluster_and_select(self, source: str) -> Optional[Batch] | Frame | None:
@@ -86,21 +83,37 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
                 unique.frames.extend(frame_dict[i] for i in idxs)
                 continue
 
-            embs = np.stack([emb_dict[i] for i in idxs], axis=0)
+            embs = all_embds[[frame_ids.index(fid) for fid in idxs]]
             centroid = embs.mean(axis=0)
 
             dists = np.linalg.norm(embs - centroid[None, :], axis=1)
             medoid_loc = int(np.argmin(dists))
             unique.frames.append(frame_dict[idxs[medoid_loc]])
 
-            sorted_locs = np.argsort(-dists)
-            count = 0
-            for loc in sorted_locs:
-                if loc == medoid_loc:
-                    continue
-                unique.frames.append(frame_dict[idxs[loc]])
-                count += 1
-                if count >= self.num_extremes:
+            if np.allclose(dists, 0):
+                continue
+
+            k = embs.shape[0]
+            diffs = embs[:, None, :] - embs[None, :, :]   
+            pdist = np.linalg.norm(diffs, axis=2)         
+
+            pairs = [
+                (i, j, pdist[i, j])
+                for i in range(k) for j in range(i + 1, k)
+            ]
+            pairs.sort(key=lambda x: x[2], reverse=True)
+
+            selected = {medoid_loc}
+            cnt = 0
+            for i, j, _ in pairs:
+                for idx in (i, j):
+                    if idx not in selected:
+                        selected.add(idx)
+                        unique.frames.append(frame_dict[idxs[idx]])
+                        cnt += 1
+                        if cnt >= self.num_extremes:
+                            break
+                if cnt >= self.num_extremes:
                     break
 
         del self.emb_cache[source]
@@ -108,7 +121,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
         seen = set()
         filtered: Batch[Frame] = Batch(frames=list())
-        for f in unique:
+        for f in unique.frames:
             key = (f.source_frame, f.frame_id)
             if key not in seen:
                 seen.add(key)
