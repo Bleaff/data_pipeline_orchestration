@@ -1,9 +1,10 @@
-from typing import Any, List, Optional, Dict, Union
-from sklearn.cluster import DBSCAN
-import numpy as np
 from pathlib import Path
+from typing import Any, Optional
 
-from neudc.core.communication.messaging.types import Frame, Batch
+import numpy as np
+from sklearn.cluster import DBSCAN
+
+from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
 
 
@@ -14,22 +15,21 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
     Expects a configuration dict in args[0] with keys:
       - eps (float): DBSCAN epsilon parameter (cosine distance). Default: 0.015.
       - min_samples (int): minimum cluster size for DBSCAN. Default: 10.
-      - num_extremes (int): number of points farthest from the cluster medoid 
+      - num_extremes (int): number of points farthest from the cluster medoid
                             to include per cluster. Default: 2.
     """
 
     def __init__(self, *args, **kwargs) -> None:
 
         self.emb_cache: dict[str, dict[int, np.ndarray]] = {}
-        self.frame_cache: Dict[str, Dict[int, Frame]] = {}
+        self.frame_cache: dict[str, dict[int, Frame]] = {}
         cfg = {}
         if args and isinstance(args[0], dict):
             cfg = args[0]
         self.eps = cfg.get("eps", 0.015)
         self.min_samples = cfg.get("min_samples", 10)
-        self.num_extremes= cfg.get("num_extremes", 2)
+        self.num_extremes = cfg.get("num_extremes", 2)
         super().__init__(*args, **kwargs)
-
 
     def postprocess_result(self, result: Any, item: Batch) -> Optional[Batch] | Frame | None:
         """
@@ -52,7 +52,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
             self.emb_cache.setdefault(src, {})[frame_id] = emb
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
-            self.logger.debug(f'{frame_id=}/{last_id=}')
+            self.logger.debug(f"{frame_id=}/{last_id=}")
             if frame_id == last_id:
                 unique = self.cluster_and_select(src)
                 return unique
@@ -74,7 +74,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
         emb_dict = self.emb_cache[source]
         frame_dict = self.frame_cache[source]
         frame_ids = sorted(emb_dict.keys())
-        all_embds = np.stack([emb_dict[id] for id in frame_ids], axis=0) 
+        all_embds = np.stack([emb_dict[id] for id in frame_ids], axis=0)
 
         labels = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric="cosine").fit_predict(all_embds)
 

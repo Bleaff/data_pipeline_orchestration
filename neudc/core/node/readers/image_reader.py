@@ -15,8 +15,8 @@ from typing import Any
 import cv2
 
 from neudc.core.base.base_thread import BaseThreadedNode
-from neudc.core.node.readers import ImageReaderMode
 from neudc.core.communication.messaging.types import Frame  # Frame class as given
+from neudc.core.node.readers import ImageReaderMode
 from neudc.utils import LOGGER
 
 

@@ -3,12 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from neudc.nn.backends import get_backend
-from neudc.nn.models.det.base import BaseDetector
 from neudc.nn.models.cls.base import BaseClsModel
-
-from neudc.nn.models.det.yolo import YOLOv8
 from neudc.nn.models.cls.blur_model import BlurClassification
 from neudc.nn.models.cls.embedding_model import EmbeddingFilter
+from neudc.nn.models.det.base import BaseDetector
 from neudc.nn.models.det.sahi import SAHIDetector
 from neudc.nn.models.det.yolo import YOLOv8
 from neudc.utils import LOGGER
@@ -21,7 +19,7 @@ MODEL_REGISTRY: dict[str, type[BaseClsModel | BaseDetector]] = {
     "YOLOv8": YOLOv8,
     "SAHIDetector": SAHIDetector,
     "BlurClassification": BlurClassification,
-    "EmbeddingFilter": EmbeddingFilter
+    "EmbeddingFilter": EmbeddingFilter,
 }
 
 
@@ -63,4 +61,5 @@ class ModelFactory:
             **config,
         )
 
-__all__ = ["YOLOv8", "SAHIDetector", "DeepOcSort", "BlurClassification", "EmbeddingFilter","ModelFactory"]
+
+__all__ = ["YOLOv8", "SAHIDetector", "DeepOcSort", "BlurClassification", "EmbeddingFilter", "ModelFactory"]

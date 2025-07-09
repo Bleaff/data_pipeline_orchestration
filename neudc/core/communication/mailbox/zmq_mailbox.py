@@ -29,7 +29,6 @@ from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionTyp
 from neudc.utils import LOGGER
 
 
-
 class ZMQMailbox(BaseMailbox[dict]):
     """ZeroMQ-based mailbox implementation."""
 
@@ -88,7 +87,7 @@ class ZMQMailbox(BaseMailbox[dict]):
         for pub_socket in self.pub_sockets.values():
             pub_socket.stop()
 
-    def send(self, message: Batch|Frame) -> None:
+    def send(self, message: Batch | Frame) -> None:
         """Send a message to the mailbox."""
         for pub_socket in self.pub_sockets.values():
             if isinstance(message, Batch):
@@ -96,7 +95,6 @@ class ZMQMailbox(BaseMailbox[dict]):
                     pub_socket.put(frame)
             else:
                 pub_socket.put(message)
-
 
     def receive(self, timeout: float | None = None) -> dict:
         """Receive a message from the mailbox."""

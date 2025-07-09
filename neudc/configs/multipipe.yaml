@@ -22,7 +22,7 @@ pipes:
         target_width: 320
         target_height: 240
         outputs: [visualizer]
-      
+
       - id: visualizer
         type: DrawNode
         outputs: [saver]

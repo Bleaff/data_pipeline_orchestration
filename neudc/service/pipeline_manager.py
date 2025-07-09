@@ -15,7 +15,9 @@ Methods:
 """
 
 import multiprocessing as mp
+
 from neudc.core.base.base_pipeline import BasePipeline
+
 
 class PipelineServiceManager:
     """Manager for handling pipelines in a multiprocessing environment.
@@ -23,6 +25,7 @@ class PipelineServiceManager:
     is run in a separate process, allowing for parallel execution. The manager maintains a dictionary
     of currently running pipelines, each associated with a stop event for graceful termination.
     """
+
     def __init__(self):
         """Initialize the PipelineServiceManager."""
         self.pipelines: dict[str, tuple[BasePipeline, mp.Event]] = {}
@@ -41,7 +44,7 @@ class PipelineServiceManager:
         """Stops the specified pipeline if it is currently running."""
         if name not in self.pipelines:
             raise ValueError(f"Pipeline '{name}' not found")
-        
+
         pipeline, stop_event = self.pipelines.pop(name)
         stop_event.set()
         pipeline.join(timeout=5)
@@ -50,7 +53,4 @@ class PipelineServiceManager:
 
     def status(self):
         """Returns the current status (running or stopped) of all managed pipelines."""
-        return {
-            name: ("running" if pipe.is_alive() else "stopped")
-            for name, (pipe, _) in self.pipelines.items()
-        }
+        return {name: ("running" if pipe.is_alive() else "stopped") for name, (pipe, _) in self.pipelines.items()}
