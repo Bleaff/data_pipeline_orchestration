@@ -69,7 +69,7 @@ def set_logging(
         - Adds both stream and rotating file handlers.
 
     """
-    level = logging.INFO if verbose else logging.ERROR
+    level = logging.DEBUG if verbose else logging.ERROR
     formatter = logging.Formatter("%(message)s")
 
     if WINDOWS and hasattr(sys.stdout, "encoding") and sys.stdout.encoding != "utf-8":
