@@ -100,7 +100,7 @@ class ZMQMailbox(BaseMailbox[dict]):
         """Receive a message from the mailbox."""
         try:
             message = self._message_queue.get(timeout=timeout if timeout else 0.1)
-            LOGGER.debug(f"[{self.name}][RECV][{time.time()}] ← Frame with {message.id=}")
+            LOGGER.debug(f"[{self.name}][RECV][{time.time()}] ← Frame with {message.frame_id=}")
         except Empty:
             message = None
         return message

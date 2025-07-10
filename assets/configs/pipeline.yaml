@@ -1,7 +1,7 @@
 nodes:
   - id: reader
     type: FolderImageNode
-    folder_path: "assets/images/images_a"
+    folder_path: "assets/images/"
     mode: "loop"
     frame_delay: 0.1
     outputs: [hash]
@@ -10,14 +10,14 @@ nodes:
     type: HashNode
     delta: 5
     hash_size: 8
-    hash_type: 'ahash'
+    hash_type: 'dhash'
     outputs: [blur]
 
   - id: blur
     type: ProcessBlurInference
     model_config:
       type: BlurClassification
-      path: "/home/user/mkotovanu/neudc/models/trained_model-Kaggle_dataset_ts.pt"
+      path: "/home/work/Desktop/Job/neudc/assets/models/trained_model-Kaggle_dataset_ts.pt"
       backend: TorchBackend
       device_id: 0
       conf: 0.6

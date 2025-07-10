@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from torchvision import transforms
 
-from neudc.utils import LOGGER, PROFILE_FREQ, Profile
+from neudc.utils import PROFILE_FREQ, Profile
 
 from .base import BaseClsModel
 
@@ -58,7 +58,7 @@ class EmbeddingFilter(BaseClsModel):
         self.path = path
         self.device_id = device_id
 
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def get_transform(self) -> transforms.Compose:
         """Build and return a torchvision transform pipeline.
 
@@ -82,7 +82,7 @@ class EmbeddingFilter(BaseClsModel):
             ],
         )
 
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def pre_transform(
         self,
         ims: list[UInt8HWC],
@@ -107,7 +107,7 @@ class EmbeddingFilter(BaseClsModel):
 
         return np.stack(transformed_imgs, axis=0)
 
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def post_transform(
         self,
         predictions: np.ndarray,
