@@ -2,36 +2,37 @@ nodes:
   - id: reader
     type: FolderImageNode
     folder_path: "assets/images/"
-    mode: "loop"
-    frame_delay: 0.1
-    outputs: [hash]
+    mode: "only_one"
+    frame_delay: 0.0001
+    outputs: [model]
 
-  - id: hash
-    type: HashNode
-    delta: 5
-    hash_size: 8
-    hash_type: 'dhash'
-    outputs: [blur]
+  # - id: hash
+  #   type: HashNode
+  #   delta: 5
+  #   hash_size: 8
+  #   hash_type: 'dhash'
+  #   outputs: [blur]
 
-  - id: blur
-    type: ProcessBlurInference
-    model_config:
-      type: BlurClassification
-      path: "/home/work/Desktop/Job/neudc/assets/models/trained_model-Kaggle_dataset_ts.pt"
-      backend: TorchBackend
-      device_id: 0
-      conf: 0.6
-    outputs: [saver]
-
-
-  # - id: model
-  #   type: ProcessDetInference
+  # - id: blur
+  #   type: ProcessBlurInference
   #   model_config:
-  #     type: YOLOv8
-  #     path: "/home/user/mkotovanu/neudc/models/yolov8n.torchscript"
+  #     type: BlurClassification
+  #     path: "/home/work/Desktop/Job/neudc/assets/models/trained_model-Kaggle_dataset_ts.pt"
   #     backend: TorchBackend
   #     device_id: 0
-  #   outputs: [visualizer]
+  #     conf: 0.6
+  #   outputs: [saver]
+
+
+  - id: model
+    type: ProcessDetBatchInference
+    model_config:
+      type: YOLOv8
+      path: "assets/models/yolov8n.torchscript"
+      backend: TorchBackend
+      device_id: 0
+    batch_size: 4
+    outputs: [visualizer]
 
   - id: visualizer
     type: DrawNode
