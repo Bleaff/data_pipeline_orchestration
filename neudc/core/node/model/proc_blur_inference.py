@@ -11,7 +11,7 @@ class ProcessBlurInference(BaseProcessInference):
     results and deciding whether to pass frames through the pipeline based on blur detection.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the ProcessBlurInference node.
 
         Args:

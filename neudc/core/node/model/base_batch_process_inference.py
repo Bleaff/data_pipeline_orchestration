@@ -9,7 +9,7 @@ from typing import Any, Optional
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.node.model.base_process_inference import BaseProcessInference
 from neudc.nn import ModelFactory
-
+from neudc.utils import LOGGER
 
 class BaseBatchProcessInference(BaseProcessInference):
     def __init__(
@@ -17,11 +17,10 @@ class BaseBatchProcessInference(BaseProcessInference):
         batch_size: int,
         model_config,
         mailbox: Any,
-        logger: Any,
         batch_queue_size: int = 20,
         batch_collect_timeout: float = 0.1,
     ) -> None:
-        super().__init__(model_config, mailbox, logger)
+        super().__init__(model_config, mailbox)
         self.batch_size = batch_size
         self.batch_queue_size = batch_queue_size
         self.batch_collect_timeout = batch_collect_timeout
@@ -47,7 +46,7 @@ class BaseBatchProcessInference(BaseProcessInference):
             if batch.frames:
                 try:
                     self.batch_queue.put(batch.model_copy(), timeout=0.1)
-                    self.logger.debug(f"-------------------->[COLLECTED BATCH SIZE OF {len(batch.frames)}]")
+                    LOGGER.debug(f"-------------------->[COLLECTED BATCH SIZE OF {len(batch.frames)}]")
                 except Full:
                     while self.batch_queue.full():
                         time.sleep(0.1)
@@ -92,8 +91,8 @@ class BaseBatchProcessInference(BaseProcessInference):
         if self._model_initialized.is_set():
             return
         self._model_initialized.set()
-        self.logger.info(f"Created model at {id(self)}")
-        self.logger.info(f"Initializing model...🙈\nModel config is{self.model_config}")
+        LOGGER.info(f"Created model at {id(self)}")
+        LOGGER.info(f"Initializing model...🙈\nModel config is{self.model_config}")
         self.model = ModelFactory.create(copy(self.model_config))
         self.batch_collect_thread = Thread(target=self._collect_batch, daemon=True)
         self.batch_queue: Queue[Batch] = Queue(maxsize=self.batch_queue_size)
