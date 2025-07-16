@@ -6,6 +6,7 @@ from sklearn.cluster import DBSCAN
 
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
+from neudc.utils import LOGGER
 
 
 class ProcessEmbeddingInference(BaseBatchProcessInference):
@@ -52,7 +53,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
             self.emb_cache.setdefault(src, {})[frame_id] = emb
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
-            self.logger.debug(f"{frame_id=}/{last_id=}")
+            LOGGER.debug(f"{frame_id=}/{last_id=}")
             if frame_id == last_id:
                 unique = self.cluster_and_select(src)
                 return unique

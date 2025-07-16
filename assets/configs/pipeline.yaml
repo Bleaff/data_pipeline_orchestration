@@ -5,6 +5,19 @@ nodes:
     mode: "only_one"
     frame_delay: 0.0001
     outputs: [model]
+  
+  # - id: embedding
+  #   type: ProcessEmbeddingInference
+  #   model_config:
+  #     type: EmbeddingFilter
+  #     path: "assets/models/resnet18_truncated.torchscript"
+  #     backend: TorchBackend
+  #     device_id: 0
+  #     eps: 0.01
+  #     min_samples: 10
+  #     num_extremes: 2
+  #   batch_size: 4
+  #   outputs: [saver]
 
   # - id: hash
   #   type: HashNode
@@ -28,11 +41,23 @@ nodes:
     type: ProcessDetBatchInference
     model_config:
       type: YOLOv8
-      path: "assets/models/yolov8n.torchscript"
+      path: "/home/user/mkotovanu/neudc/assets/models/yolov8n.pt"
+      extract_embeddings: True
+      embed_layer_idx: -2
       backend: TorchBackend
       device_id: 0
     batch_size: 4
+    outputs: [active_learning]
+  
+  - id: active_learning
+    type: ActiveLearning
+    num_to_select: 20
+    conf_strategy: sum
+    conf_weight: 1.0
+    device_id: 0
+    backend: TorchBackend
     outputs: [visualizer]
+
 
   - id: visualizer
     type: DrawNode
