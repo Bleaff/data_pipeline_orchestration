@@ -1,7 +1,11 @@
+from decorate_me import DetectorProfiler
+
+
 class A:
     def __init__(self, name: str) -> None:
         self.name = name
-    
+        self.count_fibonacci = DetectorProfiler(name=self.name)(self.count_fibonacci)
+
     def count_fibonacci(self, n: int) -> int:
         """Calculate the nth Fibonacci number."""
         self.fib_line = [0, 1, 1]
@@ -16,9 +20,8 @@ class A:
                 next_fib = self.fib_line[-1] + self.fib_line[-2]
                 self.fib_line.append(next_fib)
         return self.fib_line[n]
-    
+
 
 if __name__ == "__main__":
     a = A("Fibonacci Calculator")
-    print(f"The 11th Fibonacci number is: {a.count_fibonacci(11)}")
-    print(f"Fibonacci sequence up to 11: {a.fib_line}")
+    print(f"The 11th Fibonacci number is: {a.count_fibonacci(n=11)}")
