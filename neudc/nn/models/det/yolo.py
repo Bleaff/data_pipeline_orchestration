@@ -34,6 +34,8 @@ class YOLOv8(BaseDetector):
         self,
         path: str,
         backend: BaseBackend,
+        extract_embeddings: bool = False, 
+        embed_layer_idx: int = -2,
         device_id: int = 0,
         imgsz: ImageShape | None = None,
         names: list | dict | None = None,
@@ -56,7 +58,7 @@ class YOLOv8(BaseDetector):
 
         """
         super().__init__(path=path, backend=backend, device_id=device_id)
-        backend = backend(path=path, device_id=device_id)
+        backend = backend(path=path, device_id=device_id, extract_embeddings=extract_embeddings, embed_layer_idx=embed_layer_idx)
         # Check names
         if not names and "names" not in backend.metadata:  # names missing
             names = default_class_names()
@@ -85,6 +87,7 @@ class YOLOv8(BaseDetector):
         self.backend = backend
         self.path = path
         self.device_id = device_id
+        self.extract_embeddings = extract_embeddings
 
     @staticmethod
     def _pre_transform_normalize(
@@ -238,11 +241,18 @@ class YOLOv8(BaseDetector):
 
         """
         batch_ims, batch_params = self.pre_transform(ims)
-        predictions = self.backend(batch_ims)[0]  # yolov8 has only one output
-        return self.post_transform(
-            predictions=predictions,
-            letterbox_params=batch_params,
-        )
+        if self.extract_embeddings:
+            predictions, embs = self.backend(batch_ims)
+            return self.post_transform(
+                predictions=predictions[0],
+                letterbox_params=batch_params,
+            ), embs
+        else:
+            predictions = self.backend(batch_ims)
+            return self.post_transform(
+                predictions=predictions[0],
+                letterbox_params=batch_params,
+            )
 
     @NoProfile
     def warmup(

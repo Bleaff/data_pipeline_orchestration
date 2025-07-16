@@ -25,6 +25,8 @@ class TorchBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
+        extract_embeddings: bool = False,
+        embed_layer_idx: int = -2,
         compile: bool = False,
         fp16: int = False,
     ) -> TorchBackend:
@@ -46,6 +48,8 @@ class TorchBackend(BaseBackend):
         TorchBackend.cpu = not TorchBackend.cuda
 
         self.device = torch.device(f"cuda:{device_id}" if device_id >= 0 else "cpu")
+        self.extract_embeddings = extract_embeddings
+        self.embed_layer_idx = embed_layer_idx
         model, metadata = self._load_model(path, self.device)
 
         self.metadata = metadata
@@ -62,7 +66,7 @@ class TorchBackend(BaseBackend):
             except Exception as e:
                 LOGGER.warning(f"WARNING ⚠️ torch.compile failed: {e}, running without compilation")
                 compile = False
-
+        model = model.float() # delete then
         self.model = model
         self.fp16 = fp16
         self.compile = compile
@@ -161,11 +165,34 @@ class TorchBackend(BaseBackend):
             torch_input = torch_input.half()
         else:
             torch_input = torch_input.float()
+        torch_input = torch_input.float()  #delete then
+        handle, emb_holder = None, {}
+        if self.extract_embeddings:
+            moduls = list(getattr(self.model, "model", self.model))
+            target = moduls[self.embed_layer_idx]
+            def _hook(_, __, out):
+                if out.ndim > 2:
+                    out = out.mean(dim=list(range(2, out.ndim)))  # GAP
+                emb_holder["feat"] = out.detach()
 
-        # Run the model on the GPU.
+            handle = target.register_forward_hook(_hook)
+
         torch_output = self.model(torch_input)
 
-        return postprocess_output(torch_output)
+        if handle is not None:
+            handle.remove()  
+        
+        torch_output_post = postprocess_output(torch_output)
+        
+        if not self.extract_embeddings:
+            return torch_output_post
+        
+        if "feat" not in emb_holder:
+            raise RuntimeError("hook не сработал - проверь embed_layer_idx")
+        
+        emb = emb_holder["feat"].cpu().numpy()
+
+        return torch_output_post, emb
 
     def __del__(self) -> None:
         self.model = None

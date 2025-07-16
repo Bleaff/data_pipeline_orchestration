@@ -20,6 +20,7 @@ from neudc.core.node.processors.draw_node import DrawNode
 from neudc.core.node.processors.resize_node import ResizeNode
 from neudc.core.node.processors.resize_process_node import ResizeProcessNode
 from neudc.core.node.readers.image_reader import FolderImageNode
+from neudc.core.node.model.active_learning_node import ActiveLearning
 
 
 class NodeFactory:
@@ -36,6 +37,7 @@ class NodeFactory:
         "ProcessBlurInference": ProcessBlurInference,
         "ProcessEmbeddingInference": ProcessEmbeddingInference,
         "ProcessDetBatchInference": ProcessDetBatchInference,
+        "ActiveLearning": ActiveLearning,
     }
 
     @staticmethod
