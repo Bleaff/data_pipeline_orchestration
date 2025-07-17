@@ -1,13 +1,12 @@
-from decorate_me import DetectorProfiler
+from dynamic_profiler import dynamic_profiler
 
 
 class A:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str):
         self.name = name
-        self.count_fibonacci = DetectorProfiler(name=self.name)(self.count_fibonacci)
 
+    @dynamic_profiler
     def count_fibonacci(self, n: int) -> int:
-        """Calculate the nth Fibonacci number."""
         self.fib_line = [0, 1, 1]
         if n <= 0:
             return 0
