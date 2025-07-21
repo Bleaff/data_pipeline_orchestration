@@ -1,11 +1,7 @@
-from dynamic_profiler import dynamic_profiler
-
-
 class A:
     def __init__(self, name: str):
         self.name = name
 
-    @dynamic_profiler
     def count_fibonacci(self, n: int) -> int:
         self.fib_line = [0, 1, 1]
         if n <= 0:
@@ -24,3 +20,5 @@ class A:
 if __name__ == "__main__":
     a = A("Fibonacci Calculator")
     print(f"The 11th Fibonacci number is: {a.count_fibonacci(n=11)}")
+    print(f"The 50th Fibonacci number is: {a.count_fibonacci(n=50)}")
+    print(f"The 100th Fibonacci number is: {a.count_fibonacci(n=100)}")

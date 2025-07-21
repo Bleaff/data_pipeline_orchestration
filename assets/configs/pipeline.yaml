@@ -4,25 +4,24 @@ nodes:
     folder_path: "assets/images/"
     mode: "loop"
     frame_delay: 0.01
+    outputs: [hash]
+
+  - id: hash
+    type: HashNode
+    delta: 5
+    hash_size: 8
+    hash_type: 'dhash'
+    outputs: [blur]
+
+  - id: blur
+    type: ProcessBlurInference
+    model_config:
+      type: BlurClassification
+      path: "/home/work/Desktop/Job/neudc/assets/models/trained_model-Kaggle_dataset_ts.pt"
+      backend: TorchBackend
+      device_id: 0
+      conf: 0.6
     outputs: [model]
-
-  # - id: hash
-  #   type: HashNode
-  #   delta: 5
-  #   hash_size: 8
-  #   hash_type: 'dhash'
-  #   outputs: [blur]
-
-  # - id: blur
-  #   type: ProcessBlurInference
-  #   model_config:
-  #     type: BlurClassification
-  #     path: "/home/work/Desktop/Job/neudc/assets/models/trained_model-Kaggle_dataset_ts.pt"
-  #     backend: TorchBackend
-  #     device_id: 0
-  #     conf: 0.6
-  #   outputs: [saver]
-
 
   - id: model
     type: ProcessDetBatchInference
@@ -33,13 +32,13 @@ nodes:
       device_id: 0
     batch_size: 4
     batch_collect_timeout: 0.4
-    outputs: [visualizer]
-
-  - id: visualizer
-    type: DrawNode
-    outputs: [saver]
-
-  - id: saver
-    type: SaveImageNode
-    save_dir: "./output_images"
     outputs: []
+
+  # - id: visualizer
+  #   type: DrawNode
+  #   outputs: [saver]
+
+  # - id: saver
+  #   type: SaveImageNode
+  #   save_dir: "./output_images"
+  #   outputs: []

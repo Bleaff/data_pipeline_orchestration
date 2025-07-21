@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar
 import imagehash
 from PIL import Image
 
+from neudc.profilers.decorate_me import FilterProcessProfiler
 from neudc.utils import LOGGER
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class HashFilterMixin:
 
         self.hash_func = getattr(imagehash, hash_type)
 
+    @FilterProcessProfiler()
     def process(self, frame: Frame) -> Frame | None:
         """Filter out near-duplicate frames.
 
