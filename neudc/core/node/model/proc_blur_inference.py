@@ -2,6 +2,7 @@ from typing import Any, Optional
 
 from neudc.core.communication.messaging.types import Frame
 from neudc.core.node.model.base_process_inference import BaseProcessInference
+from neudc.profilers.decorate_me import FilterProcessProfiler
 
 
 class ProcessBlurInference(BaseProcessInference):
@@ -22,6 +23,7 @@ class ProcessBlurInference(BaseProcessInference):
         """
         super().__init__(*args, **kwargs)
 
+    @FilterProcessProfiler()
     def postprocess_result(self, result: Any, item: Frame) -> Optional[Frame]:
         """Post-process blur detection results and determine frame filtering.
 

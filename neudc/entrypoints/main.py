@@ -43,6 +43,8 @@ Functions:
 - main(config_path: str) -> None: Initiates the application with the given configuration file path.
 """
 
+from prometheus_client import start_http_server
+
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
@@ -60,6 +62,11 @@ def main(config_path: str) -> None:
 
     # Load pipeline configuration from YAML
     config = load_config(config_path)
+
+    # Load metrics
+    prometheus_config = config.get("Prometheus")
+    if prometheus_config and prometheus_config.get("port") and prometheus_config["enable"]:
+        start_http_server(prometheus_config["port"])
 
     # 1. Create routing factory and initialize mailboxes
     router = RoutingFactory(config)
