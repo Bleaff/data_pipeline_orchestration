@@ -64,7 +64,7 @@ def main(config_path: str) -> None:
     config = load_config(config_path)
 
     # Load metrics
-    prometheus_config = config.get("Prometheus")
+    prometheus_config = config.get("prometheus")
     if prometheus_config and prometheus_config.get("port") and prometheus_config["enable"]:
         start_http_server(prometheus_config["port"])
 

@@ -1,3 +1,7 @@
+prometheus:
+  port: 8080
+  enable: true
+
 nodes:
   - id: reader
     type: FolderImageNode

@@ -19,12 +19,14 @@ Example of usage:
 
 from __future__ import annotations
 
+import time
 from functools import wraps
 from typing import Self
 
 import torch
 from prometheus_client import Counter, Gauge
 
+from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.profilers.profiler_metrics import (
     EXEC_TIME_GAUGE,
     FILTERED_FRAMES_COUNTER,
@@ -143,42 +145,51 @@ class FilterProcessProfiler:
                 The result of the function call.
             """
             if self.node_name is None:
-                self.node_name = method_self.name
+                self.node_name = method_self.id
             inside_argument = args[0] if len(args) else next(iter(kwargs.values()))
             func_result = None
             with self:
                 func_result = func(method_self, inside_argument)
-            LOGGER.debug(
-                f"[{self.node_name}] Function: {func.__name__}, result: {func_result}, argument: {inside_argument}"
-            )
+            # LOGGER.debug(
+            #     f"[{self.node_name}] Function: {func.__name__}, result: {func_result}, argument: {inside_argument}"
+            # )
             return func_result
 
         return wrapper
 
+    def _process_frame(self, frame_in, frame_out) -> None:
+        if isinstance(frame_out, Frame):
+            if frame_out is not None:
+                self.cache["go_through"] += 1
+                GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
+            else:
+                self.cache["filtered"] += 1
+                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
-def _process_frame(self, frame_in, frame_out) -> None:
-    if frame_out is not None:
-        self.cache["go_through"] += 1
-        GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
-    else:
-        self.cache["filtered"] += 1
-        FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
+            self.cache["total"] += 1
+            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
+        elif isinstance(frame_out, Batch):
+            if frame_out is not None:
+                self.cache["go_through"] += len(frame_out.frames)
+                GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
+            else:
+                self.cache["filtered"] += len(frame_in.frames) - len(frame_out.frames)
+                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
-    self.cache["total"] += 1
-    TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
+            self.cache["total"] += len(frame_in.frames)
+            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
     def __enter__(self) -> Self:
         """Start timing."""
         self.start = self.time()
         return self
 
-
-def __exit__(self, *_):
-    if self.start:
-        self.dt = self.time() - self.start
-        self.t += self.dt
-        self.call_count += 1
-        EXEC_TIME_GAUGE.labels(node=self.node_name).set(self.dt)
+    def __exit__(self, *_):
+        if self.start:
+            self.dt = self.time() - self.start
+            self.t += self.dt
+            self.call_count += 1
+            EXEC_TIME_GAUGE.labels(node=self.node_name).set(self.dt)
 
     def __str__(self) -> str:
         """Return a human-readable string of the accumulated elapsed time."""
@@ -197,8 +208,6 @@ def __exit__(self, *_):
                     sync_success = True
                 except (ImportError, AttributeError, RuntimeError) as e:
                     LOGGER.exception("Torch CUDA sync failed.", exc_info=e)
-
             if not sync_success:
                 LOGGER.error("CUDA device synchronization failed.")
-
         return time.time()
