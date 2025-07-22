@@ -11,6 +11,7 @@ from neudc.core.node.model.base_process_inference import BaseProcessInference
 from neudc.nn import ModelFactory
 from neudc.utils import LOGGER
 
+
 class BaseBatchProcessInference(BaseProcessInference):
     def __init__(
         self,
