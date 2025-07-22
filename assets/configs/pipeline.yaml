@@ -5,7 +5,6 @@ nodes:
     mode: "only_one"
     frame_delay: 0.0001
     outputs: [model]
-  
   # - id: embedding
   #   type: ProcessEmbeddingInference
   #   model_config:
@@ -48,14 +47,11 @@ nodes:
       device_id: 0
     batch_size: 4
     outputs: [active_learning]
-  
   - id: active_learning
     type: ActiveLearning
-    num_to_select: 20
+    num_to_select: 2
     conf_strategy: sum
     conf_weight: 1.0
-    device_id: 0
-    backend: TorchBackend
     outputs: [visualizer]
 
 
