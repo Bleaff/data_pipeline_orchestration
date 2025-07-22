@@ -21,6 +21,7 @@ from neudc.core.node.processors.resize_node import ResizeNode
 from neudc.core.node.processors.resize_process_node import ResizeProcessNode
 from neudc.core.node.readers.image_reader import FolderImageNode
 from neudc.core.node.model.active_learning_node import ActiveLearning
+from neudc.core.node.processors.create_dataset_node import CreateDataset
 
 
 class NodeFactory:
@@ -38,6 +39,7 @@ class NodeFactory:
         "ProcessEmbeddingInference": ProcessEmbeddingInference,
         "ProcessDetBatchInference": ProcessDetBatchInference,
         "ActiveLearning": ActiveLearning,
+        "CreateDataset": CreateDataset, 
     }
 
     @staticmethod
