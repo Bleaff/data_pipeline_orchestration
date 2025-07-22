@@ -20,8 +20,9 @@ class BaseBatchProcessInference(BaseProcessInference):
         mailbox: Any,
         batch_queue_size: int = 20,
         batch_collect_timeout: float = 0.1,
+        id="BaseBatchProcessInference",
     ) -> None:
-        super().__init__(model_config, mailbox)
+        super().__init__(model_config, mailbox, id=id)
         self.batch_size = batch_size
         self.batch_queue_size = batch_queue_size
         self.batch_collect_timeout = batch_collect_timeout

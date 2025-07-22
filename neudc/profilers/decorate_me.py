@@ -24,9 +24,9 @@ from functools import wraps
 from typing import Self
 
 import torch
-from prometheus_client import Counter, Gauge
 
 from neudc.core.communication.messaging.types import Batch, Frame
+from neudc.profilers.base import BaseProfiler
 from neudc.profilers.profiler_metrics import (
     EXEC_TIME_GAUGE,
     FILTERED_FRAMES_COUNTER,
@@ -55,7 +55,7 @@ logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
 
-class FilterProcessProfiler:
+class FilterProcessProfiler(BaseProfiler):
     """
     Profiler for functions and methods.
 
@@ -119,17 +119,9 @@ class FilterProcessProfiler:
         self.call_count = 0
         self.start = 0.0
         self.dt = 0.0
-        self.enable_metrics = True  # new flag
+        self.enable_metrics = enable_metrics  # new flag
         if self.enable_metrics and self.node_name:
             self._init_metrics()
-
-    def _init_metrics(self):
-        """Initialize Prometheus metrics."""
-        metric_prefix = f"{self.node_name}".replace(" ", "_")
-        self.exec_time_gauge = Gauge(f"{metric_prefix}_execution_time_seconds", "Execution time of the function")
-        self.total_frames_counter = Counter(f"{metric_prefix}_frames_total", "Total number of frames")
-        self.filtered_frames_counter = Counter(f"{metric_prefix}_frames_filtered", "Number of filtered frames")
-        self.go_through_counter = Counter(f"{metric_prefix}_frames_passed", "Number of passed frames")
 
     def __call__(self, func):
         @wraps(func)
@@ -146,6 +138,7 @@ class FilterProcessProfiler:
             """
             if self.node_name is None:
                 self.node_name = method_self.id
+                self._init_metrics()
             inside_argument = args[0] if len(args) else next(iter(kwargs.values()))
             func_result = None
             with self:
@@ -171,13 +164,13 @@ class FilterProcessProfiler:
         elif isinstance(frame_out, Batch):
             if frame_out is not None:
                 self.cache["go_through"] += len(frame_out.frames)
-                GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
+                GO_THROUGH_COUNTER.labels(node=self.node_name).inc(amount=len(frame_out.frames))
             else:
                 self.cache["filtered"] += len(frame_in.frames) - len(frame_out.frames)
-                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
+                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc(len(frame_in.frames) - len(frame_out.frames))
 
             self.cache["total"] += len(frame_in.frames)
-            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
+            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc(len(frame_in.frames))
 
     def __enter__(self) -> Self:
         """Start timing."""
@@ -190,6 +183,7 @@ class FilterProcessProfiler:
             self.t += self.dt
             self.call_count += 1
             EXEC_TIME_GAUGE.labels(node=self.node_name).set(self.dt)
+        LOGGER.debug(f"Elapsed time for '{self.node_name}' is {self.t} s")
 
     def __str__(self) -> str:
         """Return a human-readable string of the accumulated elapsed time."""
