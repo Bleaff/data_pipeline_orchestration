@@ -1,7 +1,7 @@
 nodes:
   - id: reader
     type: FolderImageNode
-    folder_path: "assets/images/"
+    folder_path: "/home/user/mkotovanu/neudc/assets/images"
     mode: "only_one"
     frame_delay: 0.0001
     outputs: [model]
@@ -40,16 +40,17 @@ nodes:
     type: ProcessDetBatchInference
     model_config:
       type: YOLOv8
-      path: "/home/user/mkotovanu/neudc/assets/models/yolov8n.pt"
+      imgsz: 640
+      path: "/home/user/mkotovanu/neudc/assets/models/yolo_emb.onnx"
       extract_embeddings: True
-      embed_layer_idx: -2
-      backend: TorchBackend
+      backend: ONNXRuntimeBackend
       device_id: 0
     batch_size: 4
     outputs: [active_learning]
+
   - id: active_learning
     type: ActiveLearning
-    num_to_select: 2
+    num_to_select: 5
     conf_strategy: sum
     conf_weight: 1.0
     outputs: [visualizer]

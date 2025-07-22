@@ -67,7 +67,6 @@ class TorchBackend(BaseBackend):
             except Exception as e:
                 LOGGER.warning(f"WARNING ⚠️ torch.compile failed: {e}, running without compilation")
                 compile = False
-        model = model.float()  # delete then
         self.model = model
         self.fp16 = fp16
         self.compile = compile
@@ -166,34 +165,12 @@ class TorchBackend(BaseBackend):
             torch_input = torch_input.half()
         else:
             torch_input = torch_input.float()
-        torch_input = torch_input.float()  # delete then
-        handle = None
-        embed_vec: np.ndarray | None = None
-        if self.extract_embeddings:
-            modules = list(getattr(self.model, "model", self.model))
-            target = modules[self.embed_layer_idx]
-
-            def _hook(module, inputs, output):
-                nonlocal embed_vec
-                out = output
-                if isinstance(out, torch.Tensor):
-                    if out.ndim > 2:
-                        out = out.mean(dim=list(range(2, out.ndim)))
-                    embed_vec = out.cpu().numpy()
-
-            handle = target.register_forward_hook(_hook)
 
         torch_output = self.model(torch_input)
 
-        if handle is not None:
-            handle.remove()
-
         torch_output_post = postprocess_output(torch_output)
 
-        if not self.extract_embeddings:
-            return torch_output_post
-
-        return torch_output_post, embed_vec
+        return torch_output_post
 
     def __del__(self) -> None:
         self.model = None
