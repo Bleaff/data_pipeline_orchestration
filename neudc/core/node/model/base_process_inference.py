@@ -26,14 +26,14 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
 
     """
 
-    def __init__(self, model_config: dict, mailbox: Any) -> BaseProcessInference:
+    def __init__(self, model_config: dict, mailbox: Any, id="BaseProcessInference") -> BaseProcessInference:
         """Initialize the base inference node.
 
         Args:
         ----
             mailbox: Mailbox for inter-process communication.
         """
-        super().__init__(mailbox)
+        super().__init__(mailbox, id=id)
         self.model = None
         self.model_config = model_config
         self._model_initialized = Event()

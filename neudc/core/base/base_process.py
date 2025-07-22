@@ -30,7 +30,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     HEALTH_CHECK_INTERVAL = 5  # seconds
     HEALTH_TIMEOUT = 15  # seconds
 
-    def __init__(self, mailbox: Any) -> BaseProcessNode:
+    def __init__(self, mailbox: Any, id="BaseProcessNode") -> BaseProcessNode:
         """Initialize the base process node.
 
         Args:
@@ -41,7 +41,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         """
         # Initialize BaseNode and multiprocessing.Process
-        BaseNode.__init__(self, mailbox=None)
+        BaseNode.__init__(self, mailbox=None, _id=id)
         self.mailbox_config = mailbox.__getstate__()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
