@@ -106,7 +106,7 @@ class FolderImageNode(BaseThreadedNode):
             frame_id=self.frame_id,
             boxes=[],
             frame_id_last=self.last_image_index,
-            drop=self.drop
+            drop=self.drop,
         )
 
         LOGGER.debug(f"PID#({os.getpid()}) Sending Frame(id={self.frame_id}) from {image_path}")
