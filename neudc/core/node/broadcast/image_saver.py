@@ -58,7 +58,6 @@ class SaveImageNode(BaseThreadedNode):
         """
         filename = self.save_dir / f"frame_{frame.frame_id}.jpg"
         success = cv2.imwrite(str(filename), frame.image)
-
         if success:
             LOGGER.debug(f"Saved frame {frame.frame_id} to {filename}")
         else:
