@@ -17,6 +17,8 @@ from typing import Any
 from neudc.core.base.base_node import BaseNode
 from neudc.utils import LOGGER
 
+mp.set_start_method("spawn", force=True)
+
 
 class BaseProcessNode(BaseNode, mp.Process, ABC):
     """Base node class that runs in a separate process.
@@ -41,7 +43,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         """
         # Initialize BaseNode and multiprocessing.Process
-        BaseNode.__init__(self, mailbox=None, _id=id)
+        BaseNode.__init__(self, mailbox=None, id=id)
         self.mailbox_config = mailbox.__getstate__()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
