@@ -68,8 +68,10 @@ class CreateDatasetMixin:
         save_dir_images = self.save_dir / folder_name / "images"
         save_dir_labels = self.save_dir / folder_name / "labels"
 
-        save_dir_images.mkdir(parents=True, exist_ok=True)
-        save_dir_labels.mkdir(parents=True, exist_ok=True)
+        if not save_dir_images.exists():
+            save_dir_images.mkdir(parents=True, exist_ok=True)
+        if not save_dir_labels.exists():
+            save_dir_labels.mkdir(parents=True, exist_ok=True)
 
         return save_dir_images, save_dir_labels
 
