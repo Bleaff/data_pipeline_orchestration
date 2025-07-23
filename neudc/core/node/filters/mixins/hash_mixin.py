@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 import imagehash
@@ -76,11 +77,11 @@ class HashFilterMixin:
         pil_image = Image.fromarray(frame.image)
         current_hash = self.hash_func(pil_image, hash_size=self.hash_size)
 
-        key_folder = frame.source_frame
+        key_folder = Path(frame.source_frame).parent.name
 
         for old_hash in self.cache[key_folder].values():
             if (current_hash - old_hash) <= self.delta:
-                return None
-
+                frame.drop = True
+                return frame
         self.cache[key_folder][frame.frame_id] = current_hash
         return frame
