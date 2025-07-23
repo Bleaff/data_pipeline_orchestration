@@ -48,6 +48,6 @@ class ProcessBlurInference(BaseProcessInference):
         """
         for res in result:
             if res[0]:
-                return None
+                item.drop = True
             return item
         return None
