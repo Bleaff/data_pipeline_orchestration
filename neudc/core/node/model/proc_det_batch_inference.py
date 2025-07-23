@@ -2,12 +2,14 @@ from typing import Any
 
 from neudc.core.communication.messaging.types import Batch, Box
 from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
+from neudc.profilers.postprocess_detector_profiler import PostprocessProfiler
 
 
 class ProcessDetBatchInference(BaseBatchProcessInference):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+    @PostprocessProfiler()
     def postprocess_result(self, result: Any, item: Batch):
         """Put the result to the item"""
         # self.logger.info(f'Model detection result: {result}')

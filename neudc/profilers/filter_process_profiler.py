@@ -23,7 +23,7 @@ import time
 from functools import wraps
 from typing import Self
 
-import torch
+from prometheus_client import Counter, Gauge
 
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.profilers.base import BaseProfiler
@@ -36,7 +36,7 @@ from neudc.profilers.profiler_metrics import (
 from neudc.utils import LOGGER
 
 try:
-    import cuda
+    pass
 
     CUDA_PROFILE_ENABLE = True
 except ImportError:
@@ -45,7 +45,7 @@ except ImportError:
 
 
 if CUDA_PROFILE_ENABLE:
-    from cuda import cuda, cudart
+    pass
 
 import logging
 from functools import wraps
@@ -84,7 +84,6 @@ class FilterProcessProfiler(BaseProfiler):
     def __init__(
         self,
         *,
-        node_name=None,
         t: float = 0.0,
         use_cuda: bool = True,
         use_torch: bool = False,
@@ -108,7 +107,6 @@ class FilterProcessProfiler(BaseProfiler):
             max_calls (int, optional): Maximum calls before reset. Defaults to 100_000.
         """
         self
-        self.node_name = node_name
         self.start = None
         self.cache = {"filtered": 0, "go_through": 0, "total": 0, "total_time": 0}
         self.t = t
@@ -119,9 +117,15 @@ class FilterProcessProfiler(BaseProfiler):
         self.call_count = 0
         self.start = 0.0
         self.dt = 0.0
-        self.enable_metrics = enable_metrics  # new flag
-        if self.enable_metrics and self.node_name:
-            self._init_metrics()
+        self.enable_metrics = enable_metrics
+
+    def _init_metrics(self):
+        """Initialize Prometheus metrics."""
+        metric_prefix = f"{self.node_name}".replace(" ", "_")
+        self.exec_time_gauge = Gauge(f"{metric_prefix}_execution_time_seconds", "Execution time of the function")
+        self.total_frames_counter = Counter(f"{metric_prefix}_frames_total", "Total number of frames")
+        self.filtered_frames_counter = Counter(f"{metric_prefix}_frames_filtered", "Number of filtered frames")
+        self.go_through_counter = Counter(f"{metric_prefix}_frames_passed", "Number of passed frames")
 
     def __call__(self, func):
         @wraps(func)
@@ -136,13 +140,15 @@ class FilterProcessProfiler(BaseProfiler):
             Returns:
                 The result of the function call.
             """
-            if self.node_name is None:
+            if not hasattr(self, "node_name"):
                 self.node_name = method_self.id
+                LOGGER.info(f"Node name is {self.node_name}")
                 self._init_metrics()
             inside_argument = args[0] if len(args) else next(iter(kwargs.values()))
             func_result = None
             with self:
                 func_result = func(method_self, inside_argument)
+            self._process_frame(inside_argument, func_result)
             # LOGGER.debug(
             #     f"[{self.node_name}] Function: {func.__name__}, result: {func_result}, argument: {inside_argument}"
             # )
@@ -151,7 +157,11 @@ class FilterProcessProfiler(BaseProfiler):
         return wrapper
 
     def _process_frame(self, frame_in, frame_out) -> None:
+        """Update statistics for processed frames or batches."""
         if isinstance(frame_out, Frame):
+            self.cache["total"] += 1
+            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
+
             if frame_out is not None:
                 self.cache["go_through"] += 1
                 GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
@@ -159,18 +169,36 @@ class FilterProcessProfiler(BaseProfiler):
                 self.cache["filtered"] += 1
                 FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
-            self.cache["total"] += 1
-            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
         elif isinstance(frame_out, Batch):
-            if frame_out is not None:
-                self.cache["go_through"] += len(frame_out.frames)
-                GO_THROUGH_COUNTER.labels(node=self.node_name).inc(amount=len(frame_out.frames))
-            else:
-                self.cache["filtered"] += len(frame_in.frames) - len(frame_out.frames)
-                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc(len(frame_in.frames) - len(frame_out.frames))
+            total_in = len(frame_in.frames)
+            self.cache["total"] += total_in
+            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc(total_in)
 
-            self.cache["total"] += len(frame_in.frames)
-            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc(len(frame_in.frames))
+            if frame_out is not None:
+                total_out = len(frame_out.frames)
+                self.cache["go_through"] += total_out
+                GO_THROUGH_COUNTER.labels(node=self.node_name).inc(total_out)
+
+                filtered = total_in - total_out
+                if filtered > 0:
+                    self.cache["filtered"] += filtered
+                    FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc(filtered)
+            else:
+                # Вся пачка была отфильтрована
+                self.cache["filtered"] += total_in
+                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc(total_in)
+
+        elif isinstance(frame_in, Frame) and frame_out is None:
+            self.cache["filtered"] += 1
+            self.cache["total"] += 1
+            FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
+            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
+
+        else:
+            LOGGER.warning(f"[{self.node_name}] Unknown frame_out type: {type(frame_out)}")
+            return
+
+        LOGGER.debug(f"[{self.node_name}] cache: {self.cache}")
 
     def __enter__(self) -> Self:
         """Start timing."""
@@ -191,17 +219,4 @@ class FilterProcessProfiler(BaseProfiler):
 
     def time(self) -> float:
         """Get the current time, synchronizing with CUDA if needed."""
-        if self.use_cuda:
-            sync_success = False
-            if CUDA_PROFILE_ENABLE:
-                (err,) = cudart.cudaDeviceSynchronize()
-                sync_success = err == cuda.CUresult.CUDA_SUCCESS
-            elif self.use_torch:
-                try:
-                    torch.cuda.synchronize()
-                    sync_success = True
-                except (ImportError, AttributeError, RuntimeError) as e:
-                    LOGGER.exception("Torch CUDA sync failed.", exc_info=e)
-            if not sync_success:
-                LOGGER.error("CUDA device synchronization failed.")
         return time.time()

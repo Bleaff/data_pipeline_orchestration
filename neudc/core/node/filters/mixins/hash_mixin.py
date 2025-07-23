@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, ClassVar
 import imagehash
 from PIL import Image
 
-from neudc.profilers.decorate_me import FilterProcessProfiler
+from neudc.profilers.filter_process_profiler import FilterProcessProfiler
 from neudc.utils import LOGGER
 
 if TYPE_CHECKING:

@@ -26,7 +26,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
 
     """
 
-    def __init__(self, model_config: dict, mailbox: Any, id="BaseProcessInference") -> BaseProcessInference:
+    def __init__(self, model_config: dict, mailbox: Any, id: str = "BaseProcessInference") -> BaseProcessInference:
         """Initialize the base inference node.
 
         Args:
@@ -93,7 +93,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
             BaseProcessNode: Node instance created from the configuration.
 
         """
-        return cls(config["model_config"], config["mailbox"])
+        return cls(config["model_config"], config["mailbox"], id=config["id"])
 
     def init_process_runtime(self) -> None:
         """Initialize the model.
