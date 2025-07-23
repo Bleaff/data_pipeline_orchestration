@@ -100,6 +100,7 @@ class Frame(BaseModel):
     boxes: list[Box]
     embedding: Optional[np.ndarray] = None
     frame_id_last: int
+    drop: bool
 
     class Config:
         """Pydantic config for Frame class."""
