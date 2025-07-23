@@ -1,5 +1,4 @@
-"""
-Broadcasting nodes for NEUDC.
+"""Broadcasting nodes for NEUDC.
 
 This module provides nodes that can be used to broadcast or save data streams
 in a NEUDC pipeline. The nodes are designed to be used as a sink for data streams
@@ -14,7 +13,9 @@ The provided nodes are:
 - `SaveImageNode`: A node that saves individual images to a file.
 
 Example:
+-------
     >>> from neudc.node.broadcast import StreamNode
     >>> node = StreamNode("rtmp://example.com/stream")
     >>> node.start()
+
 """

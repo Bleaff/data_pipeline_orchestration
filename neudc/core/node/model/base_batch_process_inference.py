@@ -1,18 +1,27 @@
-from neudc.core.node.model.base_process_inference import BaseProcessInference
-from neudc.core.node.model.mixins.collect_batch import CollectBatchMixin
-from neudc.core.communication.messaging.types import Batch, Frame
-from typing import Any, List, Optional
-from abc import ABC, abstractmethod
-from neudc.nn import ModelFactory
-from queue import Full, Queue
-from threading import Thread
-from copy import copy
 import queue
 import time
+from abc import abstractmethod
+from copy import copy
+from queue import Full, Queue
+from threading import Thread
+from typing import Any, Optional
+
+from neudc.core.communication.messaging.types import Batch, Frame
+from neudc.core.node.model.base_process_inference import BaseProcessInference
+from neudc.nn import ModelFactory
+from neudc.utils import LOGGER
+
 
 class BaseBatchProcessInference(BaseProcessInference):
-    def __init__(self, batch_size:int, model_config, mailbox: Any, logger: Any, batch_queue_size: int = 20, batch_collect_timeout: float = 0.1) -> None:
-        super().__init__(model_config, mailbox, logger)
+    def __init__(
+        self,
+        batch_size: int,
+        model_config,
+        mailbox: Any,
+        batch_queue_size: int = 20,
+        batch_collect_timeout: float = 0.1,
+    ) -> None:
+        super().__init__(model_config, mailbox)
         self.batch_size = batch_size
         self.batch_queue_size = batch_queue_size
         self.batch_collect_timeout = batch_collect_timeout
@@ -38,7 +47,7 @@ class BaseBatchProcessInference(BaseProcessInference):
             if batch.frames:
                 try:
                     self.batch_queue.put(batch.model_copy(), timeout=0.1)
-                    self.logger.debug(f"-------------------->[COLLECTED BATCH SIZE OF {len(batch.frames)}]")
+                    LOGGER.debug(f"-------------------->[COLLECTED BATCH SIZE OF {len(batch.frames)}]")
                 except Full:
                     while self.batch_queue.full():
                         time.sleep(0.1)
@@ -53,9 +62,8 @@ class BaseBatchProcessInference(BaseProcessInference):
         except queue.Empty:
             return None
 
-
     @abstractmethod
-    def postprocess_result(self, result: Any, item: Batch)-> Optional[Batch] | Frame | None:
+    def postprocess_result(self, result: Any, item: Batch) -> Optional[Batch] | Frame | None:
         """
         Postprocess the inference result.
 
@@ -67,7 +75,7 @@ class BaseBatchProcessInference(BaseProcessInference):
         Returns:
         -------
             Any: Processed data.
-            If it is multiple output, return a Batch with saved frames. Could return Batch with 1 Frame. Could return Frame. Coudl return None
+            If it is multiple output, return a Batch with saved frames. Could return Batch with 1 Frame. Could return Frame. Could return None
         """
         raise NotImplementedError("postprocess_result not implemented")
 
@@ -84,8 +92,8 @@ class BaseBatchProcessInference(BaseProcessInference):
         if self._model_initialized.is_set():
             return
         self._model_initialized.set()
-        self.logger.info(f"Created model at {id(self)}")
-        self.logger.info(f"Initializing model...🙈\nModel config is{self.model_config}")
+        LOGGER.info(f"Created model at {id(self)}")
+        LOGGER.info(f"Initializing model...🙈\nModel config is{self.model_config}")
         self.model = ModelFactory.create(copy(self.model_config))
         self.batch_collect_thread = Thread(target=self._collect_batch, daemon=True)
         self.batch_queue: Queue[Batch] = Queue(maxsize=self.batch_queue_size)
@@ -114,7 +122,7 @@ class BaseBatchProcessInference(BaseProcessInference):
         result = self.model(batch)
         pp_item = self.postprocess_result(result, item)
         return pp_item
-    
+
     @classmethod
     def from_config(cls: type["BaseBatchProcessInference"], config: dict[str, Any]) -> "BaseBatchProcessInference":
         """
