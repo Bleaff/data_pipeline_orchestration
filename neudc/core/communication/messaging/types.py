@@ -99,6 +99,7 @@ class Frame(BaseModel):
     frame_id: int
     boxes: list[Box]
     frame_id_last: int
+    drop: bool
 
     class Config:
         """Pydantic config for Frame class."""
