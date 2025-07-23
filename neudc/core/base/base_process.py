@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from neudc.core.base.base_node import BaseNode
-from neudc.core.communication.messaging.types import Frame, Batch
+from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.utils import LOGGER
 
 
@@ -96,10 +96,10 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                     # for idx in rm_index:
                     #     skip_batch.frames.append(data.frames.pop(idx))
                     # self.mailbox.send(skip_batch)
-                    drop_frames  = [frame for frame in data.frames if frame.drop]
+                    drop_frames = [frame for frame in data.frames if frame.drop]
                     keep_frames = [frame for frame in data.frames if not frame.drop]
                     if drop_frames:
-                        self.mailbox.send(Batch(frames=drop_frames))    
+                        self.mailbox.send(Batch(frames=drop_frames))
                     data.frames = keep_frames
                     if not len(data.frames):
                         continue

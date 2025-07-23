@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 import imagehash
 from PIL import Image
-from pathlib import Path
 
 from neudc.utils import LOGGER
 
