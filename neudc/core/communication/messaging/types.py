@@ -5,7 +5,7 @@ This class defines the base attributes for a box, including the source node ID.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np  # noqa
 from pydantic import BaseModel
@@ -98,7 +98,7 @@ class Frame(BaseModel):
     source_frame: str
     frame_id: int
     boxes: list[Box]
-    embedding: Optional[np.ndarray] = None
+    embedding: np.ndarray | None = None
     frame_id_last: int
     drop: bool
 
