@@ -9,15 +9,18 @@ in a separate process. It also supports a task configuration that can be used to
 configuration to the pipeline.
 
 """
-import multiprocessing as mp
-from multiprocessing import Process, Event
+
 import logging
+import multiprocessing as mp
 import time
+from multiprocessing import Process
+
 
 class BasePipeline(Process):
     """Base class for a pipeline.
     This class extends the Process class to allow for parallel execution of node graphs.
     """
+
     def __init__(self, name: str, stop_event: mp.Event, nodes_config: list[dict], task_config: dict | None = None):
         super().__init__()
         self.name = name
@@ -66,4 +69,3 @@ class BasePipeline(Process):
             for node in self.nodes:
                 node.stop()
             logger.info("Pipeline stopped.")
-

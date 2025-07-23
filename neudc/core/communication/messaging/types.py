@@ -5,11 +5,10 @@ This class defines the base attributes for a box, including the source node ID.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import numpy as np  # noqa
 from pydantic import BaseModel
-
-import numpy as np
 
 # === Base Attribute ===
 
@@ -116,7 +115,7 @@ class Batch(BaseModel):
         return iter(self.frames)
 
     def __len__(self):
-        return len(self.frames) 
+        return len(self.frames)
 
     def __getitem__(self, index):
         return self.frames[index]

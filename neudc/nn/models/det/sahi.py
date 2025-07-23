@@ -1,21 +1,27 @@
+"""SAHI model."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import cv2
 import numpy as np
 
-from neudc.nn.models.op import apply_nms, make_sahi_slices_batch, postprocess_yolo_outputs
-from neudc.utils import LOGGER, PROFILE_FREQ, NoProfile, Profile
+from neudc.nn.models.op import apply_nms, calculate_slices_coordinates, letterbox, postprocess_yolo_outputs
+from neudc.utils import LOGGER, PROFILE_FREQ, USE_NUMBA, NoProfile, Profile, conditional_jit, get_profile
 from neudc.utils.checks import to_tuple
-from neudc.utils.types import (
-    FloatBBoxesWithCls,
-    FloatFeaturesBatch,
-    FloatImagesBatch,
-    ImageShape,
-    LetterboxParams,
-    UInt8HWC,
-)
 
 from .base import BaseDetector
 
-# from numba import jit, prange
-
+if TYPE_CHECKING:
+    from neudc.utils.types import (
+        FloatBBoxesWithCls,
+        FloatFeaturesBatch,
+        FloatImagesBatch,
+        ImageShape,
+        LetterboxParams,
+        UInt8HWC,
+    )
 
 __all__ = ("SAHIDetector",)
 
@@ -26,24 +32,25 @@ class SAHIDetector(BaseDetector):
     def __init__(
         self,
         detector: BaseDetector,
-        imgsz: ImageShape,
         crop_size: ImageShape = (640, 640),
         crop_overlap: ImageShape = (100, 100),
-    ) -> "SAHIDetector":
-        """
-        Initialize the SAHI detector.
+        batch: int = 16,
+    ) -> SAHIDetector:
+        """Initialize the SAHI detector.
 
         Args:
+        ----
             detector (BaseDetector): Detector for inference the model
-            imgsz: (int | tuple[int, int]): Full image size for the inference (height, width).
             crop_size: (int | tuple[int, int]): Image size for the inference (height, width).
             crop_overlap: (int | tuple[int, int]): Overlap for the inference (height, width).
-        """
+            batch: (int): Batch data. Use -1 to put all.
 
+        """
         self.detector = detector
+        self.batch = batch
 
         # convert to tuple
-        imgsz, crop_size, crop_overlap = to_tuple(imgsz), to_tuple(crop_size), to_tuple(crop_overlap)
+        crop_size, crop_overlap = to_tuple(crop_size), to_tuple(crop_overlap)
 
         # validate imgsz from detector
         if self.detector.imgsz[0] != crop_size[0] or self.detector.imgsz[1] != crop_size[1]:
@@ -51,16 +58,6 @@ class SAHIDetector(BaseDetector):
             self.crop_size = self.detector.imgsz
         else:
             self.crop_size = crop_size
-
-        # validate crop size
-        if imgsz[0] < crop_size[0] or imgsz[1] < crop_size[1]:
-            LOGGER.warning(f"WARNING ⚠️ Crop size {crop_size} is larger than the image size {self.imgsz}.")
-            if imgsz[0] < crop_size[0]:
-                self.imgsz = (crop_size[0], imgsz[1])
-            if imgsz[1] < crop_size[1]:
-                self.imgsz = (imgsz[0], crop_size[1])
-        else:
-            self.imgsz = imgsz
 
         # validate crop overlap
         if crop_overlap[0] >= crop_size[0] or crop_overlap[1] >= crop_size[1]:
@@ -72,113 +69,113 @@ class SAHIDetector(BaseDetector):
         else:
             self.crop_overlap = crop_overlap
 
-        # Increase the image size to be divisible by crop size and overlap
-        adjusted_imgsz = self._adjust_imgsz_to_crop_overlap(self.imgsz, self.crop_size, self.crop_overlap)
-        if adjusted_imgsz != self.imgsz:
-            LOGGER.warning(
-                f"WARNING ⚠️ Adjusted inference image size from {self.imgsz} to {adjusted_imgsz} "
-                f"to ensure integer number of crops with crop size {self.crop_size} and overlap {self.crop_overlap}."
-            )
-            self.imgsz = adjusted_imgsz
-
-        # Calculate the number of crops
-        self.ncrops = (
-            (self.imgsz[0] - self.crop_overlap[0])
-            // (self.crop_size[0] - self.crop_overlap[0])
-            * (self.imgsz[1] - self.crop_overlap[1])
-            // (self.crop_size[1] - self.crop_overlap[1])
-        )
-
     @staticmethod
-    def _adjust_imgsz_to_crop_overlap(
-        imgsz: tuple[int, int], crop_size: tuple[int, int], overlap: tuple[int, int]
-    ) -> tuple[int, int]:
-        """
-        Adjust the image size to be divisible by crop size and overlap.
+    @conditional_jit(nopython=True, fastmath=True, parallel=False, inline="always", turn_on=USE_NUMBA)
+    def make_slices(
+        im: UInt8HWC,
+        crop_size: ImageShape,
+        crop_overlap: ImageShape,
+        im_id: int = 0,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """Make slices from the image."""
+        crop_images, crop_params = [], []
+        slice_indexes = calculate_slices_coordinates(
+            imgsz=im.shape[:2],
+            crop_size=crop_size,
+            crop_overlap=crop_overlap,
+        )
+        for y1, x1, y2, x2 in zip(*slice_indexes):
+            crop = im[y1:y2, x1:x2, :]
+            crop_images.append(crop)
+            crop_params.append(np.array([1, 1, 0, 0, im_id, y1, x1], dtype=np.float32))
 
-        Args:
-            imgsz (tuple[int, int]): Image size.
-            crop_size (tuple[int, int]): Crop size.
-            overlap (tuple[int, int]): Overlap.
+        return crop_images, crop_params
 
-        Returns:
-            (tuple[int, int]): Adjusted image size.
-        """
-        adjusted_size = []
-        for i in range(2):
-            step = crop_size[i] - overlap[i]
-            if (imgsz[i] - overlap[i]) % step != 0:
-                adjusted = ((imgsz[i] - overlap[i]) // step + 1) * step + overlap[i]
-            else:
-                adjusted = imgsz[i]
-            adjusted_size.append(adjusted)
-
-        return tuple(adjusted_size)
-
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def pre_transform(
         self,
         ims: list[UInt8HWC],
     ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
-        """
-        Pre-transform input image in BGR format before inference.
+        """Pre-transform input image in BGR format before inference.
 
         Args:
+        ----
             im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
 
         Returns:
+        -------
             (tuple): A list of transformed images, letterbox params, and origins.
-        """
-        letterbox_images, letterbox_params = self.detector._pre_transform(
-            ims=ims,
-            imgsz=self.imgsz,
-            stride=self.detector.stride,
-            fp16=self.detector.backend.fp16,
-        )  # letterbox_images: (n, 3, h, w), letterbox_params: (n, 2)
 
-        full_crops, full_origins = make_sahi_slices_batch(
-            imgs=letterbox_images,
-            crop_size=self.crop_size,
-            crop_overlap=self.crop_overlap,
+        """
+        crop_params, crop_images = [], []
+
+        for im_id, im in enumerate(ims):
+            # step 1. adjust img to crop & overlap
+            im = cv2.cvtColor(src=im, code=cv2.COLOR_BGR2RGB, dst=im)
+
+            # step 2. letterbox img to crop
+            letterbox_im, letterbox_param = letterbox(
+                img=im,
+                auto=False,
+                stride=self.detector.stride,
+                new_shape=self.crop_size,
+            )
+
+            crop_params.append(np.array([*letterbox_param, im_id, 0, 0], dtype=np.float32))
+            crop_images.append(letterbox_im)
+
+            if im.shape[0] <= self.crop_size[0] and im.shape[1] <= self.crop_size[1]:
+                LOGGER.warning(f"WARNING ⚠️ image size {im.shape} is less than crop size {self.crop_size}, skip.")
+            else:
+
+                crops, params = self.make_slices(
+                    im=im,
+                    crop_overlap=self.crop_overlap,
+                    crop_size=self.crop_size,
+                    im_id=im_id,
+                )
+
+                crop_params.extend(params)
+                crop_images.extend(crops)
+
+        crop_images = self.detector._pre_transform_normalize(
+            ims=crop_images,
+            fp16=self.detector.backend.fp16,
         )
 
-        # merge letterbox_params and origins
-        # Expand letterbox_params to match number of crops by repeating for each crop's image_index
-        letterbox_params = [
-            np.array([*letterbox_params[origin[0]], *origin], dtype=np.float32) for origin in full_origins
-        ]  # (n, 5)
-
-        return np.stack(full_crops), letterbox_params
+        return crop_images, crop_params
 
     @staticmethod
-    # @jit(nopython=True, fastmath=True, parallel=True)
+    @conditional_jit(nopython=True, fastmath=True, parallel=False, inline="always", turn_on=USE_NUMBA)
     def _post_transform(
         predictions: list[FloatFeaturesBatch],
         letterbox_params: list[LetterboxParams],
-        conf: float,
-        iou: float,
-        max_det: int,
         n_ims: int,
+        conf: float = 0.1,
+        iou: float = 0.7,
+        max_det: int = 100,
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Numba-compiled post-transform input image before inference.
+        """Numba-compiled post-transform input image before inference.
 
         Args:
+        ----
             predictions (Float(np.ndarray)): (B, ...) as output from a network.
             letterbox_params (List(LetterboxParams)): Ratios, pads and origins of every image after letterbox, (B, 5)
+            n_ims (int): Number of original images.
             conf (float): Confidence threshold.
             iou (float): IoU threshold.
             max_det (int): Maximum number of detections to return.
-            n_ims (int): Number of images.
+
         Returns:
+        -------
             (list): Rescaled bboxes.
+
         """
-        b = len(predictions)  # batch = number of crops * number of images
-        ncrops = b // n_ims  # number of crops
-        output = [np.zeros((max_det * ncrops, 6), dtype=predictions.dtype) for _ in range(n_ims)]
+        b = len(predictions)
+        output = [np.zeros((max_det, 6), dtype=predictions.dtype) for _ in range(n_ims)]
         counts = np.zeros(n_ims, dtype=np.int64)
         for i in range(b):
-            rx, ry, px, py, image_id, ox, oy = letterbox_params[i]
+            ry, rx, py, px, image_id, oy, ox = letterbox_params[i]
             image_id = int(image_id)
             dets = postprocess_yolo_outputs(
                 predictions=predictions[i],
@@ -207,21 +204,25 @@ class SAHIDetector(BaseDetector):
 
         return output
 
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def post_transform(
         self,
         predictions: FloatFeaturesBatch,
         letterbox_params: list[LetterboxParams],
+        n_ims: int,
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Post-transform input image before inference.
+        """Post-transform input image before inference.
 
         Args:
+        ----
             predictions (Float(np.ndarray)): (B, ...) as output from a network, B = K * N
-            letterbox_params: List(LetterboxParams): Ratios and pads of every image after letterbox, (K, 2)
-            origins: List(Tuple[int, int]): Origins of every image after letterbox, (N, 3)
+            letterbox_params: List(LetterboxParams): Ratios, pads and origins of every image after letterbox, (B, 5)
+            n_ims (int): Number of original images.
+
         Returns:
+        -------
             (list): Rescaled bboxes.
+
         """
         return self._post_transform(
             predictions=predictions,
@@ -229,42 +230,58 @@ class SAHIDetector(BaseDetector):
             conf=self.detector.conf,
             iou=self.detector.iou,
             max_det=self.detector.max_det,
-            n_ims=len(letterbox_params) // self.ncrops,
+            n_ims=n_ims,
         )
 
     def __call__(
         self,
         ims: list[UInt8HWC],
     ) -> list[FloatBBoxesWithCls]:
-        """
-        Runs inference on the YOLOv8 model.
+        """Runs inference on the YOLOv8 model.
 
         Args:
+        ----
             ims (List(np.ndarray)): [(H, W, C) x N] for list.
 
         Returns:
+        -------
             (List[Tuple[np.ndarray]]): Tuple containing the bboxes, score, class_id
-        """
 
+        """
         batch_ims, batch_params = self.pre_transform(ims)
-        predictions = self.detector.backend(batch_ims)[0]  # yolov8 has only one output
-        output = self.post_transform(
+
+        with get_profile(use_cuda=False, use_torch=True, freq=PROFILE_FREQ, name="sahi full backend"):
+            tmp_batch = len(batch_ims)
+            if self.batch == -1 or tmp_batch < self.batch:
+                predictions = self.detector.backend(batch_ims)[0]
+            else:
+                # We break the list of crops into batches of size self.batch
+                predictions = []
+                for i in range(0, tmp_batch, self.batch):
+                    chunk = batch_ims[i : i + self.batch]
+                    # Run the detector on the chunk
+                    pred_chunk = self.detector.backend(chunk)[0]
+                    predictions.append(pred_chunk)
+                # Concatenate along the batch dimension (axis=0)
+                predictions = np.concatenate(predictions, axis=0)
+
+        return self.post_transform(
             predictions=predictions,
             letterbox_params=batch_params,
+            n_ims=len(ims),
         )
-
-        return output
 
     @NoProfile
     def warmup(
         self,
         iters: int = 10,
     ) -> None:
-        """
-        Warm up the model by running one forward pass with a dummy input.
+        """Warm up the model by running one forward pass with a dummy input.
 
         Args:
+        ----
             iters (int): Number of iterations to warm up the model.
+
         """
         # First, warm up the underlying detector.
         self.detector.warmup(iters=iters)
@@ -272,7 +289,7 @@ class SAHIDetector(BaseDetector):
         # Then, warm up the SAHI detector.
         im = [
             np.empty(
-                shape=(*self.imgsz, 3),
+                shape=(self.crop_size[0] * 2 - self.crop_overlap[0], self.crop_size[1] * 2 - self.crop_overlap[1], 3),
                 dtype=np.uint8,
             ),
         ]  # input
@@ -287,8 +304,8 @@ class SAHIDetector(BaseDetector):
         return (
             f"SAHI("
             f"detector={self.detector.__repr__()}, "
-            f"imgsz={self.imgsz}, "
             f"crop_size={self.crop_size}, "
-            f"crop_overlap={self.crop_overlap}"
+            f"crop_overlap={self.crop_overlap}, "
+            f"batch={self.batch}."
             f")"
         )

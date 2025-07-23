@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 from neudc.nn.models.cls.feature_extractor import FeatureExtractor
-from neudc.utils import LOGGER, PROFILE_FREQ, Profile
+from neudc.utils import PROFILE_FREQ, Profile
 
 from .base import BaseClsModel
 
@@ -64,7 +64,7 @@ class BlurClassification(BaseClsModel):
         self.path = path
         self.device_id = device_id
 
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def pre_transform(
         self,
         ims: list[UInt8HWC],
@@ -105,7 +105,7 @@ class BlurClassification(BaseClsModel):
                 batch_feats.append(feats)
         return batch_feats
 
-    @Profile(use_cuda=False, logger=LOGGER, freq=PROFILE_FREQ)
+    @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def post_transform(
         self,
         predictions: list[np.ndarray],

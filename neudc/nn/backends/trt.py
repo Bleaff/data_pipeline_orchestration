@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import ctypes
 import json
-from typing import Callable, Optional, Union
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import tensorrt as trt
@@ -8,20 +10,24 @@ from cuda import cuda, cudart
 
 from neudc.nn import BaseBackend
 from neudc.utils import LOGGER, PROFILE_FREQ, Profile, TensorRTLogger
-from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
+
+if TYPE_CHECKING:
+    from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
 
 __all__ = ("TensorRTBackend",)
 
 
-def check_cuda_err(err):
-    if isinstance(err, cuda.CUresult):
-        if err != cuda.CUresult.CUDA_SUCCESS:
-            raise RuntimeError(f"Cuda Error: {err}")
+def check_cuda_err(err) -> None:
+    if isinstance(err, cuda.CUresult) and err != cuda.CUresult.CUDA_SUCCESS:
+        msg = f"Cuda Error: {err}"
+        raise RuntimeError(msg)
     if isinstance(err, cudart.cudaError_t):
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f"Cuda Runtime Error: {err}")
+            msg = f"Cuda Runtime Error: {err}"
+            raise RuntimeError(msg)
     else:
-        raise RuntimeError(f"Unknown error type: {err}")
+        msg = f"Unknown error type: {err}"
+        raise RuntimeError(msg)
 
 
 def cuda_call(call):
@@ -33,14 +39,14 @@ def cuda_call(call):
 
 
 class HostDeviceMem:
-    """Pair of host and device memory, where the host memory is wrapped in a numpy array"""
+    """Pair of host and device memory, where the host memory is wrapped in a numpy array."""
 
     def __init__(
         self,
         size: int,
         shape: tuple[int, ...],
         dtype: np.dtype = np.dtype(np.uint8),
-    ) -> "HostDeviceMem":
+    ) -> HostDeviceMem:
         nbytes = size * dtype.itemsize
         host_mem = cuda_call(cudart.cudaMallocHost(nbytes))
         pointer_type = ctypes.POINTER(np.ctypeslib.as_ctypes_type(dtype))
@@ -55,11 +61,12 @@ class HostDeviceMem:
         return self._host.reshape(self.shape)
 
     @host.setter
-    def host(self, data: Union[np.ndarray, bytes]) -> None:
+    def host(self, data: np.ndarray | bytes) -> None:
         if isinstance(data, np.ndarray):
             if data.size > self._host.size:
+                msg = f"Tried to fit an array of size {data.size} into host memory of size {self._host.size}"
                 raise ValueError(
-                    f"Tried to fit an array of size {data.size} into host memory of size {self._host.size}"
+                    msg,
                 )
             np.copyto(
                 dst=self._host[: data.size],
@@ -78,13 +85,13 @@ class HostDeviceMem:
     def nbytes(self) -> int:
         return self._nbytes
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Host: {self._host}\nDevice: {self.device}\nSize: {self.nbytes}\n"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def free(self):
+    def free(self) -> None:
         cuda_call(cudart.cudaFree(self.device))
         cuda_call(cudart.cudaFreeHost(self.host.ctypes.data))
 
@@ -96,7 +103,6 @@ def do_inference_base(
     execute_async_func: Callable,
 ) -> list[np.ndarray]:
     """Transfer input data to the GPU."""
-
     # Transfer input data to the GPU.
     [
         cuda_call(
@@ -106,7 +112,7 @@ def do_inference_base(
                 count=inp.nbytes,
                 kind=cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
                 stream=stream,
-            )
+            ),
         )
         for inp in inputs
     ]
@@ -123,7 +129,7 @@ def do_inference_base(
                 count=out.nbytes,
                 kind=cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
                 stream=stream,
-            )
+            ),
         )
         for out in outputs
     ]
@@ -143,13 +149,12 @@ def do_inference_old(
     outputs: list[HostDeviceMem],
     stream: ctypes.c_void_p,
 ) -> list[np.ndarray]:
-    """
-    This function is generalized for multiple inputs/outputs.
+    """This function is generalized for multiple inputs/outputs.
     inputs and outputs are expected to be lists of HostDeviceMem objects.
-    Warning: only for TensorRT < 10.0
+    Warning: only for TensorRT < 10.0.
     """
 
-    def execute_async_func():
+    def execute_async_func() -> None:
         context.execute_async_v2(
             stream_handle=stream,
             bindings=bindings,
@@ -171,13 +176,12 @@ def do_inference_new(
     outputs: list[HostDeviceMem],
     stream: ctypes.c_void_p,
 ) -> list[np.ndarray]:
-    """
-    This function is generalized for multiple inputs/outputs.
+    """This function is generalized for multiple inputs/outputs.
     inputs and outputs are expected to be lists of HostDeviceMem objects.
-    Warning: only for TensorRT >= 10.0
+    Warning: only for TensorRT >= 10.0.
     """
 
-    def execute_async_func():
+    def execute_async_func() -> None:
         context.execute_async_v3(stream_handle=stream)
 
     # Setup context tensor address.
@@ -203,13 +207,14 @@ class TensorRTBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
-    ) -> "TensorRTBackend":
-        """
-        Init of TensorRT backend
+    ) -> TensorRTBackend:
+        """Init of TensorRT backend.
 
         Args:
+        ----
             path (str): path of a model.
             device_id (int): device id for the inference. -1 is cpu device.
+
         """
         logger = TensorRTLogger()
         (status,) = cudart.cudaSetDevice(device_id)
@@ -243,9 +248,9 @@ class TensorRTBackend(BaseBackend):
         # Model context
         try:
             self.context = engine.create_execution_context()
-        except Exception as e:  # model is None
+        except Exception:  # model is None
             LOGGER.error(f"ERROR: TensorRT model exported with a different version than {trt.__version__}\n")
-            raise e
+            raise
 
         self.inputs, self.outputs, self.bindings, self.stream, self.fp16 = self._allocate_buffers(engine)
         self.engine = engine
@@ -257,14 +262,16 @@ class TensorRTBackend(BaseBackend):
         self,
         input: FloatImagesBatch,
     ) -> list[FloatFeaturesBatch]:
-        """
-        Inference on the TensorRT backend.
+        """Inference on the TensorRT backend.
 
         Args:
+        ----
             input (FloatImagesBatch): Input images.
 
         Returns:
+        -------
             list[FloatFeaturesBatch]: Output features.
+
         """
         # TODO check input shapes
         self.inputs[0].host = input
@@ -281,7 +288,7 @@ class TensorRTBackend(BaseBackend):
     @staticmethod
     def _allocate_buffers(
         engine: trt.ICudaEngine,
-        profile_idx: Optional[int] = None,
+        profile_idx: int | None = None,
     ) -> tuple[
         list[HostDeviceMem],
         list[HostDeviceMem],
@@ -290,7 +297,6 @@ class TensorRTBackend(BaseBackend):
         bool,
     ]:
         """Allocates buffers for inference."""
-
         inputs: list[HostDeviceMem] = []
         outputs: list[HostDeviceMem] = []
         bindings: list[int] = []
@@ -305,19 +311,16 @@ class TensorRTBackend(BaseBackend):
             # get_tensor_profile_shape returns (min_shape, optimal_shape, max_shape)
             # Pick out the max shape to allocate enough memory for the binding.
             if profile_idx is None:
-                if is_trt10:
-                    shape = engine.get_tensor_shape(name)
-                else:
-                    shape = engine.get_binding_shape(i)
+                shape = engine.get_tensor_shape(name) if is_trt10 else engine.get_binding_shape(i)
+            elif is_trt10:
+                shape = engine.get_tensor_profile_shape(name, profile_idx)[-1]
             else:
-                if is_trt10:
-                    shape = engine.get_tensor_profile_shape(name, profile_idx)[-1]
-                else:
-                    shape = engine.get_profile_shape(profile_idx, i)[-1]
+                shape = engine.get_profile_shape(profile_idx, i)[-1]
 
             shape_valid = np.all([s >= 0 for s in shape])
             if not shape_valid and profile_idx is None:
-                raise ValueError(f"Binding {name} has dynamic shape, but no profile was specified.")
+                msg = f"Binding {name} has dynamic shape, but no profile was specified."
+                raise ValueError(msg)
 
             size = trt.volume(shape)
             # Allocate host and device buffers
@@ -346,7 +349,7 @@ class TensorRTBackend(BaseBackend):
 
         return inputs, outputs, bindings, stream, fp16
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Frees the resources allocated in allocate_buffers."""
         buffers = []
         if hasattr(self, "inputs"):

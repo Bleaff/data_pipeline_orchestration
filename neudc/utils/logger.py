@@ -37,6 +37,7 @@ from logging import Logger
 MACOS, LINUX, WINDOWS = (platform.system() == x for x in ["Darwin", "Linux", "Windows"])
 LOGGING_NAME = "neudc"
 VERBOSE = True
+USE_NUMBA = True
 
 
 def emojis(string: str = "") -> str:
@@ -68,7 +69,7 @@ def set_logging(
         - Adds both stream and rotating file handlers.
 
     """
-    level = logging.INFO if verbose else logging.ERROR
+    level = logging.DEBUG if verbose else logging.ERROR
     formatter = logging.Formatter("%(message)s")
 
     if WINDOWS and hasattr(sys.stdout, "encoding") and sys.stdout.encoding != "utf-8":

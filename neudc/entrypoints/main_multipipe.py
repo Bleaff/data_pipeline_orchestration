@@ -1,6 +1,7 @@
 import logging
-import time
 import signal
+import time
+
 from neudc.core.utils.config_loader import load_config
 from neudc.service.pipeline_manager import PipelineServiceManager
 
@@ -21,6 +22,7 @@ def main(config_path: str) -> None:
 
     # Graceful shutdown hook
     is_stopping = False
+
     def shutdown_handler(signum, frame):
         nonlocal is_stopping
         if is_stopping:
@@ -55,5 +57,6 @@ def main(config_path: str) -> None:
 
 if __name__ == "__main__":
     import sys
+
     config_path = sys.argv[1] if len(sys.argv) > 1 else "config/pipes.yaml"
     main(config_path)

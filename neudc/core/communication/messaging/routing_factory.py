@@ -1,5 +1,4 @@
-"""
-Factory responsible for creating and wiring mailboxes for nodes.
+"""Factory responsible for creating and wiring mailboxes for nodes.
 
 The factory is responsible for:
     1. Creating mailboxes for all nodes
@@ -12,26 +11,26 @@ The "outputs" parameter is optional and contains a list of target node_ids
 that the node should send messages to.
 """
 
+from __future__ import annotations
+
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
-from typing import Dict
 
 
 class RoutingFactory:
-    """
-    Factory responsible for creating and wiring mailboxes for nodes.
-    """
+    """Factory responsible for creating and wiring mailboxes for nodes."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict) -> RoutingFactory:
         self.config = config
 
-    def create_mailboxes(self) -> Dict[str, ZMQMailbox]:
-        """
-        Create mailboxes for all nodes and wire their output queues.
+    def create_mailboxes(self) -> dict[str, ZMQMailbox]:
+        """Create mailboxes for all nodes and wire their output queues.
 
-        Returns:
+        Returns
+        -------
             Dict[str, ZMQMailbox]: Mapping of node_id to its ZMQMailbox instance.
+
         """
-        mailboxes: Dict[str, ZMQMailbox] = {}
+        mailboxes: dict[str, ZMQMailbox] = {}
 
         # 1. Create mailbox for every node
         for node_cfg in self.config["nodes"]:
@@ -44,7 +43,8 @@ class RoutingFactory:
             outputs = node_cfg.get("outputs", [])
             for target_node_id in outputs:
                 if target_node_id not in mailboxes:
-                    raise ValueError(f"Target node '{target_node_id}' not found in mailboxes.")
+                    msg = f"Target node '{target_node_id}' not found in mailboxes."
+                    raise ValueError(msg)
                 pub_port = mailboxes[target_node_id].consume_port
                 mailboxes[node_id].add_publisher(pub_port)
 
