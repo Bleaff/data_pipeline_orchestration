@@ -58,7 +58,8 @@ class YOLOv8(BaseDetector):
         """
         super().__init__(path=path, backend=backend, device_id=device_id)
         backend = backend(
-            path=path, device_id=device_id, 
+            path=path,
+            device_id=device_id,
         )
         # Check names
         if not names and "names" not in backend.metadata:  # names missing
