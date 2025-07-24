@@ -43,6 +43,10 @@ class CreateDatasetMixin:
         Returns:
             Frame: The same frame, unmodified.
         """
+        if getattr(frame, "drop", False):
+            LOGGER.debug(f"Skip saving frame {frame.frame_id} (drop=True)")
+            return frame
+
         save_dir_images, save_dir_labels = self.get_output_dirs(frame)
 
         image_path = save_dir_images / f"frame_{frame.frame_id}.jpg"
