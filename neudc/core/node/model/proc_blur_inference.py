@@ -50,5 +50,4 @@ class ProcessBlurInference(BaseProcessInference):
         for res in result:
             if res[0]:
                 item.drop = True
-            return item
-        return None
+        return item

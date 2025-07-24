@@ -59,18 +59,21 @@ class PostprocessProfiler(BaseProfiler):
                 self._init_metrics()
 
             with self:
-                result = func(method_self, result, item)
+                func_result = func(method_self, result, item)
 
             if isinstance(item, Batch):
                 self._process_batch_result(result, item)
             elif isinstance(item, Frame):
                 self._process_frame_result(result, item)
-            return result
+            return func_result
 
         return wrapper
 
     def _process_batch_result(self, result, batch: Batch):
         total_frames = len(batch.frames)
+        LOGGER.debug(
+            f"[{self.node_name}] Postprocessed {total_frames} frames >>>>>>>>>>>> type of result: {type(result)}"
+        )
         total_boxes = sum(len(res) for res in result)
 
         self.total_frames_counter.labels(node=self.node_name).inc(total_frames)

@@ -162,38 +162,24 @@ class FilterProcessProfiler(BaseProfiler):
             self.cache["total"] += 1
             TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
-            if frame_out is not None:
-                self.cache["go_through"] += 1
+            if frame_out.drop:
+                self.cache["filtered"] += 1
                 GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
             else:
-                self.cache["filtered"] += 1
+                self.cache["go_through"] += 1
                 FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
         elif isinstance(frame_out, Batch):
             total_in = len(frame_in.frames)
             self.cache["total"] += total_in
             TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc(total_in)
-
-            if frame_out is not None:
-                total_out = len(frame_out.frames)
-                self.cache["go_through"] += total_out
-                GO_THROUGH_COUNTER.labels(node=self.node_name).inc(total_out)
-
-                filtered = total_in - total_out
-                if filtered > 0:
-                    self.cache["filtered"] += filtered
-                    FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc(filtered)
-            else:
-                # Вся пачка была отфильтрована
-                self.cache["filtered"] += total_in
-                FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc(total_in)
-
-        elif isinstance(frame_in, Frame) and frame_out is None:
-            self.cache["filtered"] += 1
-            self.cache["total"] += 1
-            FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
-            TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc()
-
+            for frame in frame_out.frames:
+                if frame.drop:
+                    self.cache["filtered"] += 1
+                    FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
+                else:
+                    self.cache["go_through"] += 1
+                    GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
         else:
             LOGGER.warning(f"[{self.node_name}] Unknown frame_out type: {type(frame_out)}")
             return
