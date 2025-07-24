@@ -1,5 +1,9 @@
+"""ProcessEmbeddingInference: post-process embedding vectors to select representative frames."""
+
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from sklearn.cluster import DBSCAN
@@ -10,8 +14,7 @@ from neudc.utils import LOGGER
 
 
 class ProcessEmbeddingInference(BaseBatchProcessInference):
-    """
-    Post-processes embedding vectors to select non-duplicate frames.
+    """Post-processes embedding vectors to select non-duplicate frames.
 
     Expects a configuration dict in args[0] with keys:
       - eps (float): DBSCAN epsilon parameter (cosine distance). Default: 0.015.
@@ -20,31 +23,39 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
                             to include per cluster. Default: 2.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize caches and clustering parameters.
 
+        Args:
+        ----
+            *args: positional arguments forwarded to BaseBatchProcessInference
+            **kwargs: keyword arguments, expects 'model_config' dict
+
+        """
         self.emb_cache: dict[str, dict[int, np.ndarray]] = {}
         self.frame_cache: dict[str, dict[int, Frame]] = {}
-        cfg = {}
-        if args and isinstance(args[0], dict):
-            cfg = args[0]
-        self.eps = cfg.get("eps", 0.015)
-        self.min_samples = cfg.get("min_samples", 10)
-        self.num_extremes = cfg.get("num_extremes", 2)
+
+        self.eps = kwargs["model_config"].get("eps", 0.015)
+        self.min_samples = kwargs["model_config"].get("min_samples", 2)
+        self.num_extremes = kwargs["model_config"].get("num_extremes", 1)
         super().__init__(*args, **kwargs)
 
-    def postprocess_result(self, result: Any, item: Batch) -> Optional[Batch] | Frame | None:
-        """
-        Accumulates embeddings and Frame metadata by source folder.
-        As soon as a frame with frame_id == frame_id_last is seen for a source,
-        immediately performs clustering and selection of non-duplicates.
+    def postprocess_result(self, result: np.ndarray, item: Batch) -> Batch | None | Frame:
+        """Accumulate embeddings and frame metadata, then cluster when complete.
 
-        Parameters:
-          result: np.ndarray of shape (batch_size, D) — embedding vectors.
-          items:  List[Frame], same length as result — frame metadata.
+        Parameters
+        ----------
+        result : np.ndarray
+            Embedding vectors of shape (batch_size, D).
+        item : Batch[Frame]
+            Batch of Frame objects corresponding to each embedding.
 
-        Returns:
-          List[Frame] of selected unique frames for the completed source,
-          or None if no source has yet reached its last frame in this batch.
+        Returns
+        -------
+        Optional[Batch[Frame]]
+            A Batch of selected unique frames for any source that has
+            reached its last_id, or None if not yet ready.
+
         """
         for emb, frame_item in zip(result, item):
             src = str(Path(frame_item.source_frame).parent)
@@ -53,66 +64,81 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
             self.emb_cache.setdefault(src, {})[frame_id] = emb
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
-            LOGGER.debug(f"{frame_id=}/{last_id=}")
-            if frame_id == last_id:
-                unique = self.cluster_and_select(src)
-                return unique
-        return
+            if len(self.emb_cache[src]) == last_id:
+                return self.cluster_and_select(src)
+        return None
 
-    def cluster_and_select(self, source: str) -> Optional[Batch] | Frame | None:
-        """
-        1) Runs DBSCAN (cosine metric) on all cached embeddings for the source.
+    def cluster_and_select(self, source: str) -> Batch | None | Frame:  # noqa: C901
+        """1) Run DBSCAN (cosine) on all cached embeddings for the source.
+
         2) For each cluster label >= 0:
-             - add the medoid (point closest to the cluster centroid)
-             - add self.num_extremes points farthest from the medoid
-           For label == -1 (noise), add all frames.
+             - pick the medoid (closest to centroid)
+             - pick the point farthest from that medoid
+             - greedily pick up to self.num_extremes further points by
+               farthest-first: each new point maximizes its minimum
+               distance to all already selected points
+           For label == -1 (noise), include all frames.
         3) Clear caches for the source.
-        4) Remove any duplicate frames from the final list.
-
-        Returns:
-          List[Frame] of non-duplicate representative frames.
+        4) Deduplicate by (source_frame, frame_id).
         """
-        emb_dict = self.emb_cache[source]
-        frame_dict = self.frame_cache[source]
-        frame_ids = sorted(emb_dict.keys())
-        all_embds = np.stack([emb_dict[id] for id in frame_ids], axis=0)
+        emb_dict = self.emb_cache.pop(source)
+        frame_dict = self.frame_cache.pop(source)
+        fids = sorted(emb_dict.keys())
+        all_emb = np.stack([emb_dict[fid] for fid in fids], axis=0)
 
-        labels = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric="cosine").fit_predict(all_embds)
+        labels = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric="cosine").fit_predict(all_emb)
 
-        unique: Batch[Frame] = Batch(frames=list())
-        for cluster_label in sorted(set(labels)):
-            idxs = [i for i, lbl in zip(frame_ids, labels) if lbl == cluster_label]
+        unique = Batch(frames=[])
 
-            if cluster_label == -1:
-                unique.frames.extend(frame_dict[i] for i in idxs)
+        for lbl in sorted(set(labels)):
+            members = [fid for fid, lb in zip(fids, labels) if lb == lbl]
+
+            if lbl == -1:
+                unique.frames.extend(frame_dict[fid] for fid in members)
                 continue
 
-            embs = np.stack([emb_dict[i] for i in idxs], axis=0)
+            idxs = [fids.index(fid) for fid in members]
+            embs = all_emb[idxs, :]  # shape (k, D)
+            k = embs.shape[0]
+
             centroid = embs.mean(axis=0)
+            d2c = np.linalg.norm(embs - centroid[None, :], axis=1)
 
-            dists = np.linalg.norm(embs - centroid[None, :], axis=1)
-            medoid_loc = int(np.argmin(dists))
-            unique.frames.append(frame_dict[idxs[medoid_loc]])
+            medoid_idx = int(np.argmin(d2c))
+            unique.frames.append(frame_dict[members[medoid_idx]])
 
-            sorted_locs = np.argsort(-dists)
-            count = 0
-            for loc in sorted_locs:
-                if loc == medoid_loc:
-                    continue
-                unique.frames.append(frame_dict[idxs[loc]])
-                count += 1
-                if count >= self.num_extremes:
+            if np.allclose(d2c, 0):
+                continue
+
+            dist_to_medoid = np.linalg.norm(embs - embs[medoid_idx : medoid_idx + 1, :], axis=1)
+            far_idx = int(np.argmax(dist_to_medoid))
+            if far_idx != medoid_idx:
+                unique.frames.append(frame_dict[members[far_idx]])
+
+            diffs = embs[:, None, :] - embs[None, :, :]
+            pdist = np.linalg.norm(diffs, axis=2)
+
+            selected = {medoid_idx, far_idx}
+            while len(selected) < 1 + self.num_extremes:
+                best_j, best_dist = None, -1.0
+                for j in range(k):
+                    if j in selected:
+                        continue
+                    dist_to_set = min(pdist[j, i] for i in selected)
+                    if dist_to_set > best_dist:
+                        best_dist = dist_to_set
+                        best_j = j
+                if best_j is None:
                     break
-
-        del self.emb_cache[source]
-        del self.frame_cache[source]
+                selected.add(best_j)
+                unique.frames.append(frame_dict[members[best_j]])
 
         seen = set()
-        filtered: Batch[Frame] = Batch(frames=list())
-        for f in unique:
-            key = (f.source_frame, f.frame_id)
+        filtered = Batch(frames=[])
+        for frame in unique.frames:
+            key = (frame.source_frame, frame.frame_id)
             if key not in seen:
                 seen.add(key)
-                filtered.frames.append(f)
+                filtered.frames.append(frame)
 
         return filtered
