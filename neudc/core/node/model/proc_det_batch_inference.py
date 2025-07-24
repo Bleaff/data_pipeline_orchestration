@@ -32,6 +32,7 @@ class ProcessDetBatchInference(BaseBatchProcessInference):
                     for x, y, x2, y2, score, cls_id in dets
                 ]
             )
+
             if self.extract_embeddings:
                 frame.embedding = embs[i]
         return item

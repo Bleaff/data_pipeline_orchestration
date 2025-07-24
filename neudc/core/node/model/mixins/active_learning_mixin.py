@@ -39,8 +39,9 @@ class ActiveLearningMixin:
 
         self.cache: dict[str, dict[int, Frame]] = defaultdict(dict)
         self.expected: dict[str, int] = {}
+        self.remaining: dict[str, set[int]] = {}
 
-    def process(self, frame: Batch) -> Batch | None | Frame | None:
+    def process(self, frame: Frame) -> Batch | None | Frame | None:
         """
         Called once per incoming frame.
 
@@ -50,9 +51,23 @@ class ActiveLearningMixin:
         - Otherwise return `None` so the pipeline knows to keep waiting.
         """
         src_dir = Path(frame.source_frame).parent.as_posix()  #'assets/images'
+        if src_dir not in self.remaining:
+            last_id = frame.frame_id_last
+            self.remaining[src_dir] = set(range(last_id + 1))
+            self.expected[src_dir] = last_id
 
         self.cache[src_dir][frame.frame_id] = frame
-        self.expected[src_dir] = frame.frame_id_last
+        self.remaining[src_dir].discard(frame.frame_id)
+
+        left_per_dir_cnt = {k: len(v) for k, v in self.remaining.items()}
+        left_per_dir_ids = {k: sorted(v) for k, v in self.remaining.items()}
+        left_total = sum(left_per_dir_cnt.values())
+
+        LOGGER.info(
+            "Waiting frames: total %d |  pending IDs %s",
+            left_total,
+            left_per_dir_ids,
+        )
 
         ready = all(len(frames) == self.expected[src] for src, frames in self.cache.items())
 
@@ -64,12 +79,16 @@ class ActiveLearningMixin:
         all_frames: list[Frame] = []
 
         for frames in self.cache.values():
-            all_frames.extend([frames[k] for k in sorted(frames)])
+            for k in sorted(frames):
+                f = frames[k]
+                if not getattr(f, "drop", False):
+                    all_frames.append(f)
 
         selected = self.active_select(all_frames)
 
         self.cache.clear()
         self.expected.clear()
+        self.remaining.clear()
 
         return selected
 
