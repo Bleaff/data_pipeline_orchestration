@@ -25,24 +25,32 @@ nodes:
       backend: TorchBackend
       device_id: 0
       conf: 0.6
+    folder_path: "/home/user/mkotovanu/neudc/assets/images"
+    mode: "only_one"
+    frame_delay: 0.0001
     outputs: [model]
+
 
   - id: model
     type: ProcessDetBatchInference
     model_config:
       type: YOLOv8
-      path: "assets/models/yolov8n.torchscript"
-      backend: TorchBackend
+      imgsz: 640
+      path: "/home/user/mkotovanu/neudc/assets/models/yolo_emb.onnx"
+      extract_embeddings: True
+      backend: ONNXRuntimeBackend
       device_id: 0
     batch_size: 4
-    batch_collect_timeout: 0.4
+    outputs: [create_dataset]
+
+  # - id: active_learning
+  #   type: ActiveLearning
+  #   num_to_select: 5
+  #   conf_strategy: sum
+  #   conf_weight: 1.0
+  #   outputs: [visualizer]
+
+  - id: create_dataset
+    type: CreateDataset
+    save_dir: "./final_datasets"
     outputs: []
-
-  # - id: visualizer
-  #   type: DrawNode
-  #   outputs: [saver]
-
-  # - id: saver
-  #   type: SaveImageNode
-  #   save_dir: "./output_images"
-  #   outputs: []
