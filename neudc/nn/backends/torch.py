@@ -25,6 +25,8 @@ class TorchBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
+        extract_embeddings: bool = False,
+        embed_layer_idx: int = -2,
         compile: bool = False,
         fp16: int = False,
     ) -> TorchBackend:
@@ -46,6 +48,8 @@ class TorchBackend(BaseBackend):
         TorchBackend.cpu = not TorchBackend.cuda
 
         self.device = torch.device(f"cuda:{device_id}" if device_id >= 0 else "cpu")
+        self.extract_embeddings = extract_embeddings
+        self.embed_layer_idx = embed_layer_idx
         model, metadata = self._load_model(path, self.device)
 
         self.metadata = metadata
@@ -62,7 +66,6 @@ class TorchBackend(BaseBackend):
             except Exception as e:
                 LOGGER.warning(f"WARNING ⚠️ torch.compile failed: {e}, running without compilation")
                 compile = False
-
         self.model = model
         self.fp16 = fp16
         self.compile = compile
@@ -162,10 +165,11 @@ class TorchBackend(BaseBackend):
         else:
             torch_input = torch_input.float()
 
-        # Run the model on the GPU.
         torch_output = self.model(torch_input)
 
-        return postprocess_output(torch_output)
+        torch_output_post = postprocess_output(torch_output)
+
+        return torch_output_post
 
     def __del__(self) -> None:
         self.model = None
