@@ -5,10 +5,11 @@ prometheus:
 nodes:
   - id: reader
     type: FolderImageNode
-    folder_path: "assets/images/"
-    mode: "loop"
-    frame_delay: 0.01
+    folder_path: "assets/images"
+    mode: "only_one"
+    frame_delay: 0.0001
     outputs: [hash]
+
 
   - id: hash
     type: HashNode
@@ -21,36 +22,54 @@ nodes:
     type: ProcessBlurInference
     model_config:
       type: BlurClassification
-      path: "/home/work/Desktop/Job/neudc/assets/models/trained_model-Kaggle_dataset_ts.pt"
+      path: "assets/models/trained_model-Kaggle_dataset_ts.pt"
       backend: TorchBackend
       device_id: 0
       conf: 0.6
-    folder_path: "/home/user/mkotovanu/neudc/assets/images"
-    mode: "only_one"
-    frame_delay: 0.0001
-    outputs: [model]
+    outputs: [embedding]
 
+  - id: embedding
+    type: ProcessEmbeddingInference
+    model_config:
+      type: EmbeddingFilter
+      path: "assets/models/resnet18_truncated.torchscript"
+      backend: TorchBackend
+      device_id: 0
+      eps: 0.01
+      min_samples: 10
+      num_extremes: 2
+    batch_size: 4
+    outputs: [model]
 
   - id: model
     type: ProcessDetBatchInference
     model_config:
       type: YOLOv8
       imgsz: 640
-      path: "/home/user/mkotovanu/neudc/assets/models/yolo_emb.onnx"
+      path: "assets/models/yolo_emb.onnx"
       extract_embeddings: True
       backend: ONNXRuntimeBackend
       device_id: 0
     batch_size: 4
-    outputs: [create_dataset]
+    outputs: [active_learning]
 
-  # - id: active_learning
-  #   type: ActiveLearning
-  #   num_to_select: 5
-  #   conf_strategy: sum
-  #   conf_weight: 1.0
-  #   outputs: [visualizer]
+  - id: active_learning
+    type: ActiveLearning
+    num_to_select: 5
+    conf_strategy: sum
+    conf_weight: 1.0
+    outputs: [create_dataset]
 
   - id: create_dataset
     type: CreateDataset
     save_dir: "./final_datasets"
     outputs: []
+
+  # - id: visualizer
+  #   type: DrawNode
+  #   outputs: [saver]
+
+  # - id: saver
+  #   type: SaveImageNode
+  #   save_dir: "./output_images"
+  #   outputs: []
