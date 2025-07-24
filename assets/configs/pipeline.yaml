@@ -46,21 +46,25 @@ nodes:
       backend: ONNXRuntimeBackend
       device_id: 0
     batch_size: 4
-    outputs: [active_learning]
+    outputs: [create_dataset]
 
-  - id: active_learning
-    type: ActiveLearning
-    num_to_select: 5
-    conf_strategy: sum
-    conf_weight: 1.0
-    outputs: [visualizer]
+  # - id: active_learning
+  #   type: ActiveLearning
+  #   num_to_select: 5
+  #   conf_strategy: sum
+  #   conf_weight: 1.0
+  #   outputs: [visualizer]
 
-
-  - id: visualizer
-    type: DrawNode
-    outputs: [saver]
-
-  - id: saver
-    type: SaveImageNode
-    save_dir: "./output_images"
+  - id: create_dataset
+    type: CreateDataset
+    save_dir: "./final_datasets"
     outputs: []
+
+  # - id: visualizer
+  #   type: DrawNode
+  #   outputs: [saver]
+
+  # - id: saver
+  #   type: SaveImageNode
+  #   save_dir: "./output_images"
+  #   outputs: []

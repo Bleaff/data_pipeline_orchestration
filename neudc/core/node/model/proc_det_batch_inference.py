@@ -26,7 +26,8 @@ class ProcessDetBatchInference(BaseBatchProcessInference):
                         x2=int(x2),
                         y2=int(y2),
                         score=float(score),
-                        class_id=self.model.names[int(cls_id)],
+                        class_id_name=self.model.names[int(cls_id)],
+                        class_id_num=int(cls_id),
                     )
                     for x, y, x2, y2, score, cls_id in dets
                 ]

@@ -17,6 +17,7 @@ from neudc.core.node.model.proc_blur_inference import ProcessBlurInference
 from neudc.core.node.model.proc_det_batch_inference import ProcessDetBatchInference
 from neudc.core.node.model.proc_det_inference import ProcessDetInference
 from neudc.core.node.model.proc_embedding_inference import ProcessEmbeddingInference
+from neudc.core.node.processors.create_dataset_node import CreateDataset
 from neudc.core.node.processors.draw_node import DrawNode
 from neudc.core.node.processors.resize_node import ResizeNode
 from neudc.core.node.processors.resize_process_node import ResizeProcessNode
@@ -38,6 +39,7 @@ class NodeFactory:
         "ProcessEmbeddingInference": ProcessEmbeddingInference,
         "ProcessDetBatchInference": ProcessDetBatchInference,
         "ActiveLearning": ActiveLearning,
+        "CreateDataset": CreateDataset,
     }
 
     @staticmethod
