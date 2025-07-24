@@ -10,7 +10,6 @@ from sklearn.cluster import DBSCAN
 
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
-from neudc.utils import LOGGER
 
 
 class ProcessEmbeddingInference(BaseBatchProcessInference):
