@@ -83,7 +83,6 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-test.ipynb
 
 # IPython
 profile_default/
@@ -155,6 +154,7 @@ venv.bak/
 /site
 
 # mypy
+.ruff_cache/
 .mypy_cache/
 .dmypy.json
 dmypy.json
@@ -180,3 +180,8 @@ cython_debug/
 
 # Temporary files
 *.tmp
+for_test/
+output_images/
+
+assets/images/*
+# assets/models/*

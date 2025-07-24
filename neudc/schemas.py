@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import os
-from typing import Annotated, Optional, Union
+from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -15,14 +17,15 @@ class ModelConfig(BaseModel):
     backend: BackendType = BackendType.TORCH  # Default to TorchBackend
     conf: Annotated[float, Field(ge=0.0, le=1.0)] = 0.25
     iou: Annotated[float, Field(ge=0.0, le=1.0)] = 0.45
-    imgsz: Annotated[Union[int, tuple[int, int]], Field(gt=0)] = 640
+    imgsz: Annotated[int | tuple[int, int], Field(gt=0)] = 640
     names: Annotated[list[str], Field(min_length=1)]
 
     @field_validator("device")
     @classmethod
     def validate_device(cls, v: str) -> str:
         if v not in ("cpu", "cuda"):
-            raise ValueError("Device must be either 'cpu' or 'cuda'")
+            msg = "Device must be either 'cpu' or 'cuda'"
+            raise ValueError(msg)
         return v
 
     @field_validator("backend")
@@ -32,7 +35,8 @@ class ModelConfig(BaseModel):
         if v == BackendType.TENSORRT:
             device = values.data.get("device")
             if "cuda" not in device:
-                raise ValueError("TensorRTBackend only supports 'cuda' device")
+                msg = "TensorRTBackend only supports 'cuda' device"
+                raise ValueError(msg)
         return v
 
     @field_validator("path")
@@ -40,43 +44,51 @@ class ModelConfig(BaseModel):
     def validate_model_path(cls, v: str, values) -> str:
         # Ensure the file exists
         if not os.path.exists(v):
-            raise ValueError(f"Model path {v} does not exist")
+            msg = f"Model path {v} does not exist"
+            raise ValueError(msg)
 
         # Check file extension
         if not v.lower().endswith((".pt", ".pth", ".engine", ".torchscript")):
-            raise ValueError("Model file must be a .pt, .pth, .torchscript or .engine file")
+            msg = "Model file must be a .pt, .pth, .torchscript or .engine file"
+            raise ValueError(msg)
 
         # Additional backend-specific validation
         backend = values.data.get("backend")
         if backend == BackendType.TORCH and not v.lower().endswith((".pt", ".pth", ".torchscript")):
-            raise ValueError("For TorchBackend, model file must be a .pt, .torchscript or .pth file")
+            msg = "For TorchBackend, model file must be a .pt, .torchscript or .pth file"
+            raise ValueError(msg)
         elif backend == BackendType.TENSORRT and not v.lower().endswith(".engine"):
-            raise ValueError("For TensorRTBackend, model file must be a .engine file")
+            msg = "For TensorRTBackend, model file must be a .engine file"
+            raise ValueError(msg)
 
         return v
 
     @field_validator("imgsz")
     @classmethod
-    def validate_imgsz(cls, v: Union[int, tuple[int, int]]) -> Union[int, tuple[int, int]]:
+    def validate_imgsz(cls, v: int | tuple[int, int]) -> int | tuple[int, int]:
         if isinstance(v, list):
             if len(v) != 2:
-                raise ValueError("If imgsz is a list, it must contain exactly two elements [h, w]")
+                msg = "If imgsz is a list, it must contain exactly two elements [h, w]"
+                raise ValueError(msg)
             if not all(isinstance(x, int) and x > 0 for x in v):
-                raise ValueError("Both elements in imgsz list must be positive integers")
+                msg = "Both elements in imgsz list must be positive integers"
+                raise ValueError(msg)
         elif isinstance(v, int):
             if v <= 0:
-                raise ValueError("imgsz must be a positive integer")
+                msg = "imgsz must be a positive integer"
+                raise ValueError(msg)
         else:
-            raise ValueError("imgsz must be either an integer or a list of two integers")
+            msg = "imgsz must be either an integer or a list of two integers"
+            raise ValueError(msg)
         return v
 
 
 class DataConfig(BaseModel):
     paths: list[str]
     skip_frames: Annotated[int, Field(ge=0)] = 0
-    intervals: Optional[
-        Annotated[list[Annotated[list[float], Field(min_items=2, max_items=2)]], Field(min_length=1)]
-    ] = None
+    intervals: Annotated[list[Annotated[list[float], Field(min_items=2, max_items=2)]], Field(min_length=1)] | None = (
+        None
+    )
     save_result_dir: str = "results/"
     save_imgs_with_prediction_bbox: bool = True
     save_coco_annotations: bool = True
@@ -99,9 +111,11 @@ class DataConfig(BaseModel):
     def validate_intervals(cls, v: list[list[float]]) -> list[list[float]]:
         for interval in v:
             if len(interval) != 2:
-                raise ValueError("Interval must contain exactly 2 values")
+                msg = "Interval must contain exactly 2 values"
+                raise ValueError(msg)
             if interval[0] >= interval[1]:
-                raise ValueError("Start time must be before end time")
+                msg = "Start time must be before end time"
+                raise ValueError(msg)
         return v
 
     @field_validator("save_result_dir")

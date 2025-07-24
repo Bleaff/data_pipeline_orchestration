@@ -1,0 +1,31 @@
+pipes:
+  - AlertPipe:
+    - nodes:
+      - id: reader
+        type: FolderImageNode
+        folder_path: "./test_images"
+        mode: "loop"
+        frame_delay: 0.5
+        outputs: [resize, saver]
+
+      - id: resize
+        type: ResizeNode
+        target_width: 320
+        target_height: 240
+        outputs: [saver]
+
+      - id: saver
+        type: SaveImageNode
+        save_dir: "./output_images"
+        outputs: []
+
+      data_mining: AlertReader
+      structure:
+  - AlertPipe:
+    - nodes:
+      - id: reader
+        type: FolderImageNode
+        folder_path: "./test_images"
+        mode: "loop"
+        frame_delay: 0.5
+        outputs: [resize, saver]

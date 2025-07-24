@@ -1,5 +1,4 @@
-"""
-Node that processes Frame objects.
+"""Node that processes Frame objects.
 
 This node is the base class for all processor nodes. It provides a common interface
 for processing Frame objects.
@@ -11,6 +10,7 @@ The node also provides a method to create a node instance from a configuration
 dictionary.
 
 Example:
+-------
     >>> config = {
     ...     "mailbox": mailbox,
     ...     "logger": logger,

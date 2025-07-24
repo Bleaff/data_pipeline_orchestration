@@ -11,35 +11,45 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from neudc.core.node.broadcast.image_saver import SaveImageNode
-from neudc.core.node.processors.resize_node import ResizeNode
+from neudc.core.node.filters.hash_node import HashNode
+from neudc.core.node.model.active_learning_node import ActiveLearning
+from neudc.core.node.model.proc_blur_inference import ProcessBlurInference
+from neudc.core.node.model.proc_det_batch_inference import ProcessDetBatchInference
+from neudc.core.node.model.proc_det_inference import ProcessDetInference
+from neudc.core.node.model.proc_embedding_inference import ProcessEmbeddingInference
+from neudc.core.node.processors.create_dataset_node import CreateDataset
 from neudc.core.node.processors.draw_node import DrawNode
+from neudc.core.node.processors.resize_node import ResizeNode
 from neudc.core.node.processors.resize_process_node import ResizeProcessNode
 from neudc.core.node.readers.image_reader import FolderImageNode
-from neudc.core.node.model.proc_det_inference import ProcessDetInference
-from neudc.core.node.filters.hash_node import HashNode
+
+
 class NodeFactory:
     """Factory to create node instances based on config."""
 
     NODE_CLASS_MAP: ClassVar = {
         "FolderImageNode": FolderImageNode,
-        "ResizeNode": ResizeNode,
         "SaveImageNode": SaveImageNode,
         "ResizeProcessNode": ResizeProcessNode,
-        "ResizeNode": ResizeProcessNode,
+        "ResizeNode": ResizeNode,
         "ProcessDetInference": ProcessDetInference,
         "DrawNode": DrawNode,
         "HashNode": HashNode,
+        "ProcessBlurInference": ProcessBlurInference,
+        "ProcessEmbeddingInference": ProcessEmbeddingInference,
+        "ProcessDetBatchInference": ProcessDetBatchInference,
+        "ActiveLearning": ActiveLearning,
+        "CreateDataset": CreateDataset,
     }
 
     @staticmethod
-    def create(config: dict[str, Any], mailbox: Any, logger: Any) -> Any:
+    def create(config: dict[str, Any], mailbox: Any) -> Any:
         """Create a node instance from its config.
 
         Args:
         ----
             config (dict): Node config.
             mailbox (Any): Precreated mailbox for this node.
-            logger (Any): Logger for this node.
 
         Returns:
         -------
@@ -53,7 +63,7 @@ class NodeFactory:
             msg = f"Unknown node type: {node_type}"
             raise ValueError(msg)
 
-        config = dict(config)  # make a copy
+        config = config.copy()  # make a copy
         config["mailbox"] = mailbox
-        config["logger"] = logger
+        del config["type"], config["outputs"]
         return node_class.from_config(config)

@@ -10,6 +10,8 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any
 
+from neudc.utils import LOGGER
+
 
 class BaseNode(ABC):
     """Abstract base class for node implementations in a distributed system.
@@ -37,23 +39,31 @@ class BaseNode(ABC):
     By default you can use just `init_runtime` method to make your node work.
     """
 
-    def __init__(self, mailbox: Any, logger: Any, _id: str = "BaseNode") -> None:
-        """Initialize the node with a mailbox and a logger."""
+    def __init__(self, mailbox: Any, id: str = "BaseNode", _join_timeout: float = 0.1) -> BaseNode:
+        """Initialize the node with a mailbox and a logger.
+
+        Args:
+        ----
+            mailbox (Any): The mailbox to use for communication with other nodes.
+            _id (str): The ID of the node.
+            _join_timeout (float): The timeout for joining the thread.
+
+        """
         super().__init__()
         self.mailbox = mailbox
-        self.logger = logger
         self.thread: threading.Thread | None = None
-        self._join_timeout = 0.1
+        self._join_timeout = _join_timeout
         self.is_running = False
-        self.id = _id
+        self.id = id
         self.is_ready = False
 
     def _collect_data(self) -> Any:
         """Grabs data from mailbox."""
         return self.mailbox.receive()
 
-    @staticmethod
-    def from_config(config: dict[str, Any]) -> BaseNode:
+    @classmethod
+    @abstractmethod
+    def from_config(cls: BaseNode, config: dict[str, Any]) -> BaseNode:
         """Create a node instance from the given configuration.
 
         Args:
@@ -69,7 +79,6 @@ class BaseNode(ABC):
             NotImplementedError: If the method is not implemented by a subclass.
 
         """
-        raise NotImplementedError
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Start the processing loop by wrapping the `run` method."""
@@ -84,7 +93,6 @@ class BaseNode(ABC):
             NotImplementedError: If the method is not implemented by a subclass.
 
         """
-        raise NotImplementedError
 
     def _run(self) -> None:
         """Run the node processing loop."""
@@ -96,28 +104,27 @@ class BaseNode(ABC):
                     result = self.process(data)
                     if result:
                         self.mailbox.send(result)
-                except Exception:
+                except Exception as e:
                     self.is_ready = False
-                    self.logger.exception("Error while processing")
+                    LOGGER.exception("Error while processing", exc_info=e)
 
     @abstractmethod
     def start(self) -> None:
         """Start func should implement behavior to initialize the node."""
-        raise NotImplementedError
 
     def init_runtime(self) -> None:
         """Initialize runtime resources for the node."""
         # This method can be overridden by subclasses to initialize specific resources
-        self.logger.info("Starting node...")
+        LOGGER.info("Starting node...")
         self.is_running = True
         self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
-        self.logger.info("Node started.")
+        LOGGER.info("Node started.")
 
     def stop(self) -> None:
         """Signal the thread to stop and wait for it."""
-        self.logger.info("Stopping node...")
+        LOGGER.info("Stopping node...")
         self.is_running = False
         self.is_ready = False
         self._stop_event.set()
@@ -125,8 +132,7 @@ class BaseNode(ABC):
         # prevent joining current thread
         if threading.current_thread() != self.thread and self.thread.is_alive():
             self.thread.join(timeout=self._join_timeout)
-
-        self.logger.info("Node stopped.")
+        LOGGER.info("Node stopped.")
 
     def status(self) -> bool:
         """Check the status of the node."""

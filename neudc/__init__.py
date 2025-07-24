@@ -1,5 +1,4 @@
-"""
-(NEUDC) - A distributed system for video and image processing
+"""(NEUDC) - A distributed system for video and image processing.
 
 NEUDC is a Python-based system for distributed video and image processing. It is designed to
 be highly scalable and flexible, allowing you to build complex pipelines for processing
@@ -35,12 +34,8 @@ pipelines for processing large datasets.
 
 """
 
-
 __version__ = "0.0.1"
 
 import os
 
-from neudc.utils import NUMBA_DISABLE_JIT
-
 os.environ["CUDA_MODULE_LOADING"] = "LAZY"
-os.environ["NUMBA_DISABLE_JIT"] = "1" if NUMBA_DISABLE_JIT else "0"

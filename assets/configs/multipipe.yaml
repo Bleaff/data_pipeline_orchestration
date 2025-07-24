@@ -1,0 +1,60 @@
+pipes:
+  - name: ObjectDetectionPipeA
+    nodes:
+      - id: reader
+        type: FolderImageNode
+        folder_path: "assets/images/images_a"
+        mode: "loop"
+        frame_delay: 0.1
+        outputs: [model]
+
+      - id: model
+        type: ProcessDetInference
+        model_config:
+          type: YOLOv8
+          path: "/Users/bleaf/Desktop/Job/neudc/models/yolov8n.torchscript"
+          backend: TorchBackend
+          device_id: -1
+        outputs: [resize]
+
+      - id: resize
+        type: ResizeNode
+        target_width: 320
+        target_height: 240
+        outputs: [visualizer]
+
+      - id: visualizer
+        type: DrawNode
+        outputs: [saver]
+
+      - id: saver
+        type: SaveImageNode
+        save_dir: "./output_images/pipe_a"
+        outputs: []
+
+  - name: ObjectDetectionPipeB
+    nodes:
+      - id: reader
+        type: FolderImageNode
+        folder_path: "assets/images/images_b"
+        mode: "loop"
+        frame_delay: 0.2
+        outputs: [model]
+
+      - id: model
+        type: ProcessDetInference
+        model_config:
+          type: YOLOv8
+          path: "/Users/bleaf/Desktop/Job/neudc/models/yolov8n.torchscript"
+          backend: TorchBackend
+          device_id: -1
+        outputs: [visualizer]
+
+      - id: visualizer
+        type: DrawNode
+        outputs: [saver]
+
+      - id: saver
+        type: SaveImageNode
+        save_dir: "./output_images/pipe_b"
+        outputs: []

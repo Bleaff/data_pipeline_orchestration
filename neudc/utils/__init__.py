@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytz  # type: ignore[import-untyped]
 
-from .logger import LOGGER
-from .profile import CUDA_PROFILE_ENABLE, NoProfile, Profile
+from neudc.utils.logger import LOGGER, USE_NUMBA
+from neudc.utils.profile import CUDA_PROFILE_ENABLE, NoProfile, Profile, conditional_jit, get_profile, toggle_jit
 
 # System metadata and environment flags
 FILE = Path(__file__).resolve()
@@ -22,22 +22,30 @@ ROOT = FILE.parents[1]
 MACOS, LINUX, WINDOWS = (platform.system() == x for x in ["Darwin", "Linux", "Windows"])
 ARM64 = platform.machine() in {"arm64", "aarch64"}
 TIMEZONE = pytz.timezone("Europe/Moscow")
-PROFILE_FREQ = 50
-NUMBA_DISABLE_JIT = True
+PROFILE_FREQ = 10
 
 
 try:
-    import tensorrt as trt
+    import tensorrt as trt  # noqa
 
     TENSORRT_ENABLE = True
 except ImportError:
     TENSORRT_ENABLE = False
     LOGGER.info("TensorRT library is not installed. Check your installation carefully.")
 try:
+    import onnxruntime as ort  # noqa
+
     ONNX_PROFILE_ENABLE = True
 except ImportError:
     ONNX_PROFILE_ENABLE = False
     LOGGER.info("ONNX library is not installed. Check your installation carefully.")
+try:
+    from cuda import cuda  # noqa
+
+    CUDA_PROFILE_ENABLE = True
+except ImportError:
+    CUDA_PROFILE_ENABLE = False
+    LOGGER.info("Cuda library is not installed. Check your installation carefully.")
 
 if TENSORRT_ENABLE:
     TRT_LOGGING_MAP = {
@@ -80,4 +88,9 @@ __all__ = (
     "TENSORRT_ENABLE",
     "CUDA_PROFILE_ENABLE",
     "ONNX_PROFILE_ENABLE",
+    "CUDA_PROFILE_ENABLE",
+    "get_profile",
+    "USE_NUMBA",
+    "conditional_jit",
+    "toggle_jit",
 )

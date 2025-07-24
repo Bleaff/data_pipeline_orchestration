@@ -8,7 +8,7 @@ The class provides an interface for sending and receiving messages, as well as m
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -39,10 +39,11 @@ class BaseMailbox(ABC, Generic[T]):
 
         This method should be overridden by subclasses to implement the specific receiving logic for the mailbox.
         """
+
     @staticmethod
     @abstractmethod
-    def from_state(cls, state: dict[str, Any]) -> BaseMailbox:
+    def from_state(cls: type[BaseMailbox], state: dict[str, Any]) -> BaseMailbox:
         """Create a mailbox from a state dictionary.
-        
+
         This method should be overridden by subclasses to implement the specific creation logic for the mailbox.
         """

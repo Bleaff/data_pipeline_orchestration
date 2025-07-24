@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import cv2
 
 from neudc.core.base.base_thread import BaseThreadedNode
+from neudc.utils import LOGGER
 
 if TYPE_CHECKING:
     from neudc.core.communication.messaging.types import Frame
@@ -19,19 +20,19 @@ if TYPE_CHECKING:
 class SaveImageNode(BaseThreadedNode):
     """A node that saves incoming Frame images to disk in the specified directory."""
 
-    def __init__(self, mailbox: Any, logger: Any, save_dir: str) -> None:
+    def __init__(self, mailbox: Any, save_dir: str) -> SaveImageNode:
         """Initialize the SaveImageNode."""
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        super().__init__(mailbox, logger)
+        super().__init__(mailbox=mailbox)
 
-    @staticmethod
-    def from_config(config: dict[str, Any]) -> SaveImageNode:
+    @classmethod
+    def from_config(cls: SaveImageNode, config: dict[str, Any]) -> SaveImageNode:
         """Create SaveImageNode from configuration.
 
         Args:
         ----
-            config (dict): Dictionary containing 'mailbox', 'logger', 'save_dir'.
+            config (dict): Dictionary containing 'mailbox', 'save_dir'.
 
         Returns:
         -------
@@ -40,7 +41,6 @@ class SaveImageNode(BaseThreadedNode):
         """
         return SaveImageNode(
             mailbox=config["mailbox"],
-            logger=config["logger"],
             save_dir=config["save_dir"],
         )
 
@@ -58,10 +58,9 @@ class SaveImageNode(BaseThreadedNode):
         """
         filename = self.save_dir / f"frame_{frame.frame_id}.jpg"
         success = cv2.imwrite(str(filename), frame.image)
-
         if success:
-            self.logger.debug(f"Saved frame {frame.frame_id} to {filename}")
+            LOGGER.debug(f"Saved frame {frame.frame_id} to {filename}")
         else:
-            self.logger.warning(f"Failed to save frame {frame.frame_id} to {filename}")
+            LOGGER.warning(f"WARNING ⚠️ Failed to save frame {frame.frame_id} to {filename}")
 
         return frame
