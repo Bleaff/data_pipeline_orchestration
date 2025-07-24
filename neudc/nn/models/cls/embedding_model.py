@@ -147,3 +147,6 @@ class EmbeddingFilter(BaseClsModel):
     def __repr__(self) -> str:
         """Return the string representation including key parameters."""
         return f"EmbeddingFilter(path={self.path}, device_id={self.device_id}, eps={self.eps}, min_samples={self.min_samples}, self.num_extremes={self.num_extremes})"
+
+    def warmup(self):
+        pass
