@@ -77,7 +77,7 @@ torch = [
     {version = "^2.2.1", source="pypi", markers = "sys_platform == 'darwin'"},
     {version = "^2.2.1", source="torch_cuda121", markers = "sys_platform == 'linux' or sys_platform == 'win32'"},
 ]
-
+ultralytics = "*"
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.2"
 pytest-cov = "^6.0.0"
