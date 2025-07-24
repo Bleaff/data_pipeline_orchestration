@@ -57,7 +57,8 @@ class Box(BaseAttribute):
     y1: float | int
     x2: float | int
     y2: float | int
-    class_id: str
+    class_id_name: str
+    class_id_num: int
     score: float
     labels: list[Class] | None = None
     reid: str = "-1"
@@ -98,7 +99,9 @@ class Frame(BaseModel):
     source_frame: str
     frame_id: int
     boxes: list[Box]
+    embedding: np.ndarray | None = None
     frame_id_last: int
+    drop: bool
 
     class Config:
         """Pydantic config for Frame class."""
