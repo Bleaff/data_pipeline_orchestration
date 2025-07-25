@@ -36,6 +36,7 @@ class PostprocessProfiler(BaseProfiler):
         self.enable_metrics = enable_metrics
         self.start = 0.0
         self.dt = 0.0
+        self.cache = {"total_frames": 0, "total_boxes": 0, "total_time": 0, "avarge_time": 0.0}
 
     def _init_metrics(self):
         metric_prefix = f"{self.node_name}".replace(" ", "_")
@@ -71,21 +72,29 @@ class PostprocessProfiler(BaseProfiler):
 
     def _process_batch_result(self, result, batch: Batch):
         total_frames = len(batch.frames)
-        LOGGER.debug(
-            f"[{self.node_name}] Postprocessed {total_frames} frames >>>>>>>>>>>> type of result: {type(result)}"
-        )
         total_boxes = sum(len(res) for res in result)
 
         self.total_frames_counter.labels(node=self.node_name).inc(total_frames)
         self.total_boxes_counter.labels(node=self.node_name).inc(total_boxes)
 
-        LOGGER.debug(f"[{self.node_name}] Postprocessed {total_frames} frames with {total_boxes} boxes")
+        self.cache["total_frames"] += total_frames
+        self.cache["total_boxes"] += total_boxes
+        self.cache["avarge_time"] = self.cache["total_time"] / self.cache["total_frames"]
+        LOGGER.debug(
+            f"[{self.node_name}] Postprocessed {self.cache['total_frames']} frames with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarge_time']}s"
+        )
 
     def _process_frame_result(self, result, frame: Frame):
         total_boxes = len(result)
         self.total_boxes_counter.labels(node=self.node_name).inc(total_boxes)
         self.total_frames_counter.labels(node=self.node_name).inc()
-        LOGGER.debug(f"[{self.node_name}] Postprocessed frame with {total_boxes} boxes")
+
+        self.cache["total_boxes"] += total_boxes
+        self.cache["total_frames"] += 1
+        self.cache["avarge_time"] = self.cache["total_time"] / self.cache["total_frames"]
+        LOGGER.debug(
+            f"[{self.node_name}] Postprocessed frame with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarge_time']}s"
+        )
 
     def __enter__(self):
         self.start = self.time()
@@ -94,7 +103,7 @@ class PostprocessProfiler(BaseProfiler):
     def __exit__(self, *_):
         self.dt = self.time() - self.start
         self.exec_time_gauge.labels(node=self.node_name).set(self.dt)
-        LOGGER.debug(f"[{self.node_name}] Postprocess exec time: {self.dt:.6f}s")
+        self.cache["total_time"] += self.dt
 
     def time(self) -> float:
         # if self.use_cuda:
