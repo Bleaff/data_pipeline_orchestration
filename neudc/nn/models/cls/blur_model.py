@@ -191,3 +191,6 @@ class BlurClassification(BaseClsModel):
 
         """
         return f"BlurClassification(path={self.path}, device_id={self.device_id}, conf={self.conf})"
+
+    def warmup(self):
+        pass

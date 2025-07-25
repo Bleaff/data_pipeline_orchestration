@@ -158,7 +158,10 @@ class TorchBackend(BaseBackend):
 
             return obj
 
-        torch_input = torch.from_numpy(input).pin_memory().to(self.device, non_blocking=True)
+        if torch.cuda.is_available():
+            torch_input = torch.from_numpy(input).pin_memory().to(self.device, non_blocking=True)
+        else:
+            torch_input = torch.from_numpy(input).to(self.device, non_blocking=True)
 
         if self.fp16:
             torch_input = torch_input.half()

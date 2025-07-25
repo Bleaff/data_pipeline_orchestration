@@ -18,6 +18,8 @@ from neudc.core.base.base_node import BaseNode
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.utils import LOGGER
 
+mp.set_start_method("spawn", force=True)
+
 
 class BaseProcessNode(BaseNode, mp.Process, ABC):
     """Base node class that runs in a separate process.
@@ -31,7 +33,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     HEALTH_CHECK_INTERVAL = 5  # seconds
     HEALTH_TIMEOUT = 15  # seconds
 
-    def __init__(self, mailbox: Any) -> BaseProcessNode:
+    def __init__(self, mailbox: Any, id="BaseProcessNode") -> BaseProcessNode:
         """Initialize the base process node.
 
         Args:
@@ -42,7 +44,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         """
         # Initialize BaseNode and multiprocessing.Process
-        BaseNode.__init__(self, mailbox=None)
+        BaseNode.__init__(self, mailbox=None, id=id)
         self.mailbox_config = mailbox.__getstate__()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)

@@ -45,10 +45,13 @@ Functions:
 
 import time
 
+from prometheus_client import start_http_server
+
 from neudc.core.base import BaseProcessNode, BaseThreadedNode
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
+from neudc.utils.logger import LOGGER
 
 
 def main(config_path: str) -> None:
@@ -63,6 +66,11 @@ def main(config_path: str) -> None:
 
     # Load pipeline configuration from YAML
     config = load_config(config_path)
+
+    # Load metrics
+    prometheus_config = config.get("prometheus")
+    if prometheus_config and prometheus_config.get("port") and prometheus_config["enable"]:
+        start_http_server(prometheus_config["port"])
 
     # 1. Create routing factory and initialize mailboxes
     router = RoutingFactory(config)
@@ -79,7 +87,8 @@ def main(config_path: str) -> None:
         if isinstance(node, BaseProcessNode):
             node.start()
             nodes.append(node)
-    time.sleep(2)
+    time.sleep(10)
+    LOGGER.info("All processes started. Now time to fucking wait for x seconds.")
     # 2. Потом запусти тредовые
     for node_config in config["nodes"]:
         node_id = node_config["id"]

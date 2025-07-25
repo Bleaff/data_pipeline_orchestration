@@ -53,7 +53,7 @@ class ActiveLearningMixin:
         src_dir = Path(frame.source_frame).parent.as_posix()  #'assets/images'
         if src_dir not in self.remaining:
             last_id = frame.frame_id_last
-            self.remaining[src_dir] = set(range(last_id + 1))
+            self.remaining[src_dir] = set(range(last_id))
             self.expected[src_dir] = last_id
 
         self.cache[src_dir][frame.frame_id] = frame
