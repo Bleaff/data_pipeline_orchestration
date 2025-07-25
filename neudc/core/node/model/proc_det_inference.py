@@ -2,12 +2,14 @@ from typing import Any
 
 from neudc.core.communication.messaging.types import Box, Frame
 from neudc.core.node.model.base_process_inference import BaseProcessInference
+from neudc.profilers.postprocess_detector_profiler import PostprocessProfiler
 
 
 class ProcessDetInference(BaseProcessInference):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+    @PostprocessProfiler()
     def postprocess_result(self, result: Any, item: Frame):
         """Put the result to the item."""
         boxes = []

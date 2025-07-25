@@ -2,6 +2,7 @@ from typing import Any
 
 from neudc.core.communication.messaging.types import Batch, Box
 from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
+from neudc.profilers.postprocess_detector_profiler import PostprocessProfiler
 
 
 class ProcessDetBatchInference(BaseBatchProcessInference):
@@ -10,6 +11,7 @@ class ProcessDetBatchInference(BaseBatchProcessInference):
         model_cfg = kwargs.get("model_config", {})
         self.extract_embeddings: bool = model_cfg.get("extract_embeddings", False)
 
+    @PostprocessProfiler()
     def postprocess_result(self, result: Any, item: Batch):
         """Put the result to the item"""
         if self.extract_embeddings:

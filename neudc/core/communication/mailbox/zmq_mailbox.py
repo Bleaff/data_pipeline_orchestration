@@ -94,6 +94,7 @@ class ZMQMailbox(BaseMailbox[dict]):
                 for frame in message:
                     pub_socket.put(frame)
             else:
+                LOGGER.info(f"[{self.name}][SEND] → Frame with type {type(message)}")
                 pub_socket.put(message)
 
     def receive(self, timeout: float | None = None) -> dict:
@@ -103,6 +104,11 @@ class ZMQMailbox(BaseMailbox[dict]):
             LOGGER.debug(f"[{self.name}][RECV][{time.time()}] ← Frame with {message.frame_id=}")
         except Empty:
             message = None
+        except AttributeError:
+            LOGGER.critical(
+                f"Fucking mistake from node: [{self.name}] ->>>>>>>>>> HHHHHUUUUUUI BLYAT NAHUI {message=}",
+                exc_info=True,
+            )  # Fucking mistake don't give me )
         return message
 
     def add_publisher(self, port: int) -> None:

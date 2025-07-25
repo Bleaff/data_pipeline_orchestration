@@ -39,7 +39,7 @@ class BaseNode(ABC):
     By default you can use just `init_runtime` method to make your node work.
     """
 
-    def __init__(self, mailbox: Any, _id: str = "BaseNode", _join_timeout: float = 0.1) -> BaseNode:
+    def __init__(self, mailbox: Any, id: str = "BaseNode", _join_timeout: float = 0.1) -> BaseNode:
         """Initialize the node with a mailbox and a logger.
 
         Args:
@@ -54,7 +54,7 @@ class BaseNode(ABC):
         self.thread: threading.Thread | None = None
         self._join_timeout = _join_timeout
         self.is_running = False
-        self.id = _id
+        self.id = id
         self.is_ready = False
 
     def _collect_data(self) -> Any:

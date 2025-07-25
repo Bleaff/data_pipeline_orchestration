@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytz  # type: ignore[import-untyped]
 
-from .logger import LOGGER, USE_NUMBA
-from .profile import CUDA_PROFILE_ENABLE, NoProfile, Profile, conditional_jit, get_profile, toggle_jit
+from neudc.utils.logger import LOGGER, USE_NUMBA
+from neudc.utils.profile import CUDA_PROFILE_ENABLE, NoProfile, Profile, conditional_jit, get_profile, toggle_jit
 
 # System metadata and environment flags
 FILE = Path(__file__).resolve()

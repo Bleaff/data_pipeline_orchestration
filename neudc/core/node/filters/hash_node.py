@@ -14,12 +14,14 @@ class HashNode(HashFilterMixin, BaseThreadedNode):
         delta: int,
         hash_type: str,
         hash_size: int,
+        id: str = "HashNode",
         *args: Any,
         **kwargs: Any,
     ) -> HashNode:
         """Initialize the HashNode with delta and type of hash."""
         HashFilterMixin.__init__(self, delta=delta, hash_type=hash_type, hash_size=hash_size)
-        BaseThreadedNode.__init__(self, *args, **kwargs)
+        BaseThreadedNode.__init__(self, id=id, *args, **kwargs)
+        self.id = id
 
     @classmethod
     def from_config(cls: type[HashNode], config: dict[str, Any]) -> HashNode:

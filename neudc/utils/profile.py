@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import sys
 import time
+from functools import wraps
 from typing import Any, Callable, Self
 
 import torch
@@ -85,6 +86,7 @@ class Profile(contextlib.ContextDecorator):
         """Allow this class to be used as a decorator."""
         self.func_name = self.func_name or func.__name__
 
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             if not Profile.enabled:
                 return func(*args, **kwargs)
@@ -160,6 +162,7 @@ class NoProfile(contextlib.ContextDecorator):
 
         """
 
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Disable profiling before function call and restore it after."""
             prev_state = Profile.enabled
