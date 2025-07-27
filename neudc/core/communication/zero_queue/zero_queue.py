@@ -153,8 +153,11 @@ class ZeroQueue:
 
         """
         timeout_millis = int(timeout * 1000) if timeout else None
-        if self.socket_sub in dict(self.poller.poll(timeout=timeout_millis)):
-            return self.get_nowait()
+        try:
+            if self.socket_sub in dict(self.poller.poll(timeout=timeout_millis)):
+                return self.get_nowait()
+        except zmq.error.ZMQError:
+            return None
         return None
 
     def get_nowait(self) -> Any:
