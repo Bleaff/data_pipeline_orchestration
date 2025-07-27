@@ -149,9 +149,6 @@ class FilterProcessProfiler(BaseProfiler):
             with self:
                 func_result = func(method_self, inside_argument)
             self._process_frame(inside_argument, func_result)
-            # LOGGER.debug(
-            #     f"[{self.node_name}] Function: {func.__name__}, result: {func_result}, argument: {inside_argument}"
-            # )
             return func_result
 
         return wrapper
@@ -197,6 +194,7 @@ class FilterProcessProfiler(BaseProfiler):
             self.t += self.dt
             self.call_count += 1
             EXEC_TIME_GAUGE.labels(node=self.node_name).set(self.dt)
+            self.cache["total_time"] = self.t
         LOGGER.debug(f"Elapsed time for '{self.node_name}' is {self.t} s")
 
     def __str__(self) -> str:

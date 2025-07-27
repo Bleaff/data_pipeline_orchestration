@@ -22,6 +22,8 @@ import time
 from queue import Empty, Full, Queue
 from typing import Any
 
+from zmq.error import ZMQError
+
 from neudc.core.base.base_mailbox import BaseMailbox
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
@@ -104,11 +106,8 @@ class ZMQMailbox(BaseMailbox[dict]):
             LOGGER.debug(f"[{self.name}][RECV][{time.time()}] ← Frame with {message.frame_id=}")
         except Empty:
             message = None
-        except AttributeError:
-            LOGGER.critical(
-                f"Fucking mistake from node: [{self.name}] ->>>>>>>>>> HHHHHUUUUUUI BLYAT NAHUI {message=}",
-                exc_info=True,
-            )  # Fucking mistake don't give me )
+        except ZMQError:
+            pass
         return message
 
     def add_publisher(self, port: int) -> None:
