@@ -36,7 +36,7 @@ class PostprocessProfiler(BaseProfiler):
         self.enable_metrics = enable_metrics
         self.start = 0.0
         self.dt = 0.0
-        self.cache = {"total_frames": 0, "total_boxes": 0, "total_time": 0, "avarge_time": 0.0}
+        self.cache = {"total_frames": 0, "total_boxes": 0, "total_time": 0, "avarage_time": 0.0}
 
     def _init_metrics(self):
         metric_prefix = f"{self.node_name}".replace(" ", "_")
@@ -79,9 +79,9 @@ class PostprocessProfiler(BaseProfiler):
 
         self.cache["total_frames"] += total_frames
         self.cache["total_boxes"] += total_boxes
-        self.cache["avarge_time"] = self.cache["total_time"] / self.cache["total_frames"]
+        self.cache["avarage_time"] = self.cache["total_time"] / self.cache["total_frames"]
         LOGGER.debug(
-            f"[{self.node_name}] Postprocessed {self.cache['total_frames']} frames with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarge_time']}s"
+            f"[{self.node_name}] Postprocessed {self.cache['total_frames']} frames with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarage_time']}s"
         )
 
     def _process_frame_result(self, result, frame: Frame):
@@ -91,9 +91,9 @@ class PostprocessProfiler(BaseProfiler):
 
         self.cache["total_boxes"] += total_boxes
         self.cache["total_frames"] += 1
-        self.cache["avarge_time"] = self.cache["total_time"] / self.cache["total_frames"]
+        self.cache["avarage_time"] = self.cache["total_time"] / self.cache["total_frames"]
         LOGGER.debug(
-            f"[{self.node_name}] Postprocessed frame with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarge_time']}s"
+            f"[{self.node_name}] Postprocessed frame with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarage_time']}s"
         )
 
     def __enter__(self):

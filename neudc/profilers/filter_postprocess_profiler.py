@@ -138,7 +138,9 @@ class FilterPostprocessProfiler(BaseProfiler):
             with self:
                 func_result = func(method_self, result, item)
             # Be careful - in filter and postprocess we have different result - frame output.
-            if isinstance(item, Batch):
+            if func_result is None:
+                return None
+            elif isinstance(item, Batch):
                 self._process_batch_result(func_result, item)
             elif isinstance(item, Frame):
                 self._process_frame_result(func_result, item)
@@ -159,7 +161,7 @@ class FilterPostprocessProfiler(BaseProfiler):
                 GO_THROUGH_COUNTER.labels(node=self.node_name).inc()
         self.cache["avarage_time"] = self.cache["total_time"] / self.cache["total"]
         LOGGER.debug(
-            f"[{self.node_name}] {self.cache['total']=} frames,  {self.cache['filtered']=} frames, {self.cache['go_through']=}. Average time of execution: {self.cache['avarge_time']}s"
+            f"[{self.node_name}] {self.cache['total']=} frames,  {self.cache['filtered']=} frames, {self.cache['go_through']=}. Average time of execution: {self.cache['avarage_time']:.6f}s"
         )
 
     def _process_frame_result(self, result, frame: Frame):
@@ -172,9 +174,9 @@ class FilterPostprocessProfiler(BaseProfiler):
             self.cache["go_through"] += 1
             FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
-        self.cache["avarge_time"] = self.cache["total_time"] / self.cache["total"]
+        self.cache["avarage_time"] = self.cache["total_time"] / self.cache["total"]
         LOGGER.debug(
-            f"[{self.node_name}] {self.cache['total']=} frames,  {self.cache['filtered']=} frames, {self.cache['go_through']=}. Average time of execution: {self.cache['avarge_time']}s"
+            f"[{self.node_name}] {self.cache['total']=} frames,  {self.cache['filtered']=} frames, {self.cache['go_through']=}. Average time of execution: {self.cache['avarage_time']:.6f}s"
         )
 
     def _process_frame(self, frame_in, frame_out) -> None:
@@ -217,8 +219,10 @@ class FilterPostprocessProfiler(BaseProfiler):
             self.dt = self.time() - self.start
             self.t += self.dt
             self.call_count += 1
+            self.cache["total_time"] = self.t
             EXEC_TIME_GAUGE.labels(node=self.node_name).set(self.dt)
         LOGGER.debug(f"Elapsed time for '{self.node_name}' is {self.t} s")
+        self.cache["total_time"] = self.t
 
     def __str__(self) -> str:
         """Return a human-readable string of the accumulated elapsed time."""

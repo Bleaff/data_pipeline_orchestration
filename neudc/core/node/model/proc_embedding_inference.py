@@ -10,6 +10,7 @@ from sklearn.cluster import DBSCAN
 
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.node.model.base_batch_process_inference import BaseBatchProcessInference
+from neudc.profilers.filter_postprocess_profiler import FilterPostprocessProfiler
 
 
 class ProcessEmbeddingInference(BaseBatchProcessInference):
@@ -39,6 +40,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
         self.num_extremes = kwargs["model_config"].get("num_extremes", 1)
         super().__init__(*args, **kwargs)
 
+    @FilterPostprocessProfiler()
     def postprocess_result(self, result: np.ndarray, item: Batch) -> Batch | None | Frame:
         """Accumulate embeddings and frame metadata, then cluster when complete.
 
