@@ -63,9 +63,8 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
             self.emb_cache.setdefault(src, {})[frame_id] = emb
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
-            if len(self.emb_cache[src]) == last_id:
+            if len(self.frame_cache[src]) == last_id:
                 return self.cluster_and_select(src)
-        return None
 
     def cluster_and_select(self, source: str) -> Batch | None | Frame:  # noqa: C901
         """1) Run DBSCAN (cosine) on all cached embeddings for the source.
@@ -82,62 +81,57 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
         """
         emb_dict = self.emb_cache.pop(source)
         frame_dict = self.frame_cache.pop(source)
+        if not emb_dict:
+            return Batch(frames=list(frame_dict.values()))
         fids = sorted(emb_dict.keys())
         all_emb = np.stack([emb_dict[fid] for fid in fids], axis=0)
 
         labels = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric="cosine").fit_predict(all_emb)
 
-        unique = Batch(frames=[])
+        picked: set[tuple[str, int]] = set()
 
         for lbl in sorted(set(labels)):
             members = [fid for fid, lb in zip(fids, labels) if lb == lbl]
 
             if lbl == -1:
-                unique.frames.extend(frame_dict[fid] for fid in members)
+                picked.update((frame_dict[fid].source_frame, fid) for fid in members)
                 continue
 
             idxs = [fids.index(fid) for fid in members]
-            embs = all_emb[idxs, :]  # shape (k, D)
+            embs = all_emb[idxs, :]
             k = embs.shape[0]
 
             centroid = embs.mean(axis=0)
             d2c = np.linalg.norm(embs - centroid[None, :], axis=1)
 
             medoid_idx = int(np.argmin(d2c))
-            unique.frames.append(frame_dict[members[medoid_idx]])
+            picked.add((frame_dict[members[medoid_idx]].source_frame, members[medoid_idx]))
 
-            if np.allclose(d2c, 0):
-                continue
+            if not np.allclose(d2c, 0):
+                far_idx = int(np.linalg.norm(embs - embs[medoid_idx], axis=1).argmax())
+                if far_idx != medoid_idx:
+                    picked.add((frame_dict[members[far_idx]].source_frame, members[far_idx]))
 
-            dist_to_medoid = np.linalg.norm(embs - embs[medoid_idx : medoid_idx + 1, :], axis=1)
-            far_idx = int(np.argmax(dist_to_medoid))
-            if far_idx != medoid_idx:
-                unique.frames.append(frame_dict[members[far_idx]])
+            if self.num_extremes:
+                pdist = np.linalg.norm(embs[:, None] - embs[None, :], axis=2)
+                selected = {medoid_idx, far_idx}
+                while len(selected) < 1 + self.num_extremes:
+                    best, best_dist = None, -1.0
+                    for j in range(len(embs)):
+                        if j in selected:
+                            continue
+                        dist = min(pdist[j, i] for i in selected)
+                        if dist > best_dist:
+                            best, best_dist = j, dist
+                    if best is None:
+                        break
+                    selected.add(best)
+                    picked.add((frame_dict[members[best]].source_frame, members[best]))
 
-            diffs = embs[:, None, :] - embs[None, :, :]
-            pdist = np.linalg.norm(diffs, axis=2)
+        final = Batch(frames=[])
+        for fid, frm in frame_dict.items():
+            if not getattr(frm, "drop", False):
+                frm.drop = (frm.source_frame, fid) not in picked
+            final.frames.append(frm)
 
-            selected = {medoid_idx, far_idx}
-            while len(selected) < 1 + self.num_extremes:
-                best_j, best_dist = None, -1.0
-                for j in range(k):
-                    if j in selected:
-                        continue
-                    dist_to_set = min(pdist[j, i] for i in selected)
-                    if dist_to_set > best_dist:
-                        best_dist = dist_to_set
-                        best_j = j
-                if best_j is None:
-                    break
-                selected.add(best_j)
-                unique.frames.append(frame_dict[members[best_j]])
-
-        seen = set()
-        filtered = Batch(frames=[])
-        for frame in unique.frames:
-            key = (frame.source_frame, frame.frame_id)
-            if key not in seen:
-                seen.add(key)
-                filtered.frames.append(frame)
-
-        return filtered
+        return final
