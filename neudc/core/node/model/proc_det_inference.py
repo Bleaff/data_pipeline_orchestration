@@ -20,8 +20,9 @@ class ProcessDetInference(BaseProcessInference):
                 y1=int(y),
                 x2=int(x2),
                 y2=int(y2),
-                score=score,
-                class_id=self.model.names[int(class_id)],
+                score=float(score),
+                class_id_name=self.model.names[int(class_id)],
+                class_id_num=int(class_id),
             )
             boxes.append(box)
         item.boxes.extend(boxes)
