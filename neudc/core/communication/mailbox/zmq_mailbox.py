@@ -17,8 +17,8 @@ Typical usage:
 
 from __future__ import annotations
 
+import logging
 import threading
-import time
 from queue import Empty, Full, Queue
 from typing import Any
 
@@ -55,22 +55,23 @@ class ZMQMailbox(BaseMailbox[dict]):
 
     def _receiver_loop(self) -> None:
         """Thread loop for receiving messages from the ZeroMQ subscriber."""
-        _unsent_message: Any = None
         while self._running:
             message = self.sub_queue.get(timeout=self._join_timeout)
-            if message:
-                try:
-                    self._message_queue.put(message, timeout=1)
+            if message is None:
+                continue
+            try:
+                # Block with periodic wake-ups so a full queue applies backpressure
+                # instead of silently dropping the message (or injecting a bogus one).
+                while self._running:
+                    try:
+                        self._message_queue.put(message, timeout=self._join_timeout)
+                        break
+                    except Full:
+                        continue
+                if LOGGER.isEnabledFor(logging.DEBUG):
                     LOGGER.debug(f"[RECV] ← message of type {type(message)}")
-
-                except Full:
-                    LOGGER.warning("Message queue is full")
-                    while self._message_queue.full():
-                        time.sleep(0.01)  # Sleep briefly to avoid busy waiting
-                    self._message_queue.put(_unsent_message)
-                    LOGGER.debug("[SENDING] → unsent message")
-                except Exception as e:
-                    LOGGER.exception("Error in receiver loop", exc_info=e)
+            except Exception as e:
+                LOGGER.exception("Error in receiver loop", exc_info=e)
 
     def start(self) -> None:
         """Start the receiving thread."""
@@ -96,22 +97,29 @@ class ZMQMailbox(BaseMailbox[dict]):
                 for frame in message:
                     pub_socket.put(frame)
             else:
-                LOGGER.info(f"[{self.name}][SEND] → Frame with type {type(message)}")
+                if LOGGER.isEnabledFor(logging.DEBUG):
+                    LOGGER.debug(f"[{self.name}][SEND] → message with type {type(message)}")
                 pub_socket.put(message)
 
     def receive(self, timeout: float | None = None) -> dict:
         """Receive a message from the mailbox."""
         try:
             message = self._message_queue.get(timeout=timeout if timeout else 0.1)
-            LOGGER.debug(f"[{self.name}][RECV][{time.time()}] ← Frame with {message.frame_id=}")
+            if LOGGER.isEnabledFor(logging.DEBUG):
+                frame_id = getattr(message, "frame_id", None)
+                LOGGER.debug(f"[{self.name}][RECV] ← message {type(message).__name__} frame_id={frame_id}")
         except Empty:
             message = None
         except ZMQError:
-            pass
+            message = None
         return message
 
     def add_publisher(self, port: int) -> None:
-        """Connect a publisher to the mailbox. This method is not thread-safe."""
+        """Connect a publisher to the mailbox. This method is not thread-safe.
+
+        ``ZeroQueuePub`` performs a one-time "slow joiner" settle on connect, so
+        the subscription has propagated by the time this returns.
+        """
         self.pub_sockets[port] = ZeroQueuePub(port=port)
         LOGGER.debug(f"[{self.name}][Added publisher] → port:{port}")
 

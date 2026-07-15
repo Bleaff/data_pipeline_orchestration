@@ -125,7 +125,7 @@ class TorchBackend(BaseBackend):
 
             raise RuntimeError(f"Failed to load model from {path}. Tried TorchScript, PyTorch, and YOLO formats.")
 
-    @Profile(use_cuda=cuda, use_torch=True, freq=PROFILE_FREQ, name="torch")
+    @Profile(use_cuda=True, use_torch=True, freq=PROFILE_FREQ, name="torch")
     @torch.inference_mode()
     def __call__(
         self,
