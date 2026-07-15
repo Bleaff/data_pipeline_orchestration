@@ -52,6 +52,7 @@ from neudc.core.base import BaseProcessNode
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
+from neudc.core.utils.config_schema import validate_pipeline_config
 from neudc.utils.logger import LOGGER
 
 # How long to wait for a process node to report readiness before starting producers.
@@ -75,6 +76,7 @@ def main(config_path: str) -> None:
 
     """
     config = load_config(config_path)
+    validate_pipeline_config(config)  # fail fast with a clear message on a bad config
     _maybe_start_prometheus(config)
 
     # 1. Routing: one mailbox per node, wired to their outputs.
