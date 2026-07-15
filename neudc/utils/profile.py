@@ -122,21 +122,22 @@ class Profile(contextlib.ContextDecorator):
         return f"Elapsed time for '{self.func_name}' is {self.t} s"
 
     def time(self) -> float:
-        """Get the current time, synchronizing with CUDA if needed."""
+        """Get the current time, synchronizing with CUDA if a device is actually present.
+
+        The sync decision is made at call time (not decoration time), so profiling a
+        model that ends up on CPU is a no-op instead of spamming errors, while GPU runs
+        are correctly synchronized before the timestamp is taken.
+        """
         if self.use_cuda:
-            sync_success = False
             if CUDA_PROFILE_ENABLE:
                 (err,) = cudart.cudaDeviceSynchronize()
-                sync_success = err == cuda.CUresult.CUDA_SUCCESS
-            elif self.use_torch:
+                if err != cuda.CUresult.CUDA_SUCCESS:
+                    LOGGER.error("CUDA device synchronization failed.")
+            elif self.use_torch and torch.cuda.is_available():
                 try:
                     torch.cuda.synchronize()
-                    sync_success = True
-                except (ImportError, AttributeError, RuntimeError) as e:
+                except (AttributeError, RuntimeError) as e:
                     LOGGER.exception("Torch CUDA sync failed.", exc_info=e)
-
-            if not sync_success:
-                LOGGER.error("CUDA device synchronization failed.")
 
         return time.time()
 
