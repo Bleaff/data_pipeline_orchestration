@@ -30,6 +30,7 @@ The logger is thread-safe, meaning that it can be used concurrently by multiple 
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import sys
 from logging import Logger
@@ -38,6 +39,20 @@ MACOS, LINUX, WINDOWS = (platform.system() == x for x in ["Darwin", "Linux", "Wi
 LOGGING_NAME = "neudc"
 VERBOSE = True
 USE_NUMBA = True
+
+_VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+
+def _resolve_level(verbose: bool) -> int:
+    """Resolve the log level from the NEUDC_LOG_LEVEL env var, falling back to verbosity.
+
+    The environment variable takes precedence so the hot path can be quieted in
+    production without code changes. When unset, INFO is used (DEBUG only if verbose).
+    """
+    env_level = os.environ.get("NEUDC_LOG_LEVEL", "").upper()
+    if env_level in _VALID_LEVELS:
+        return getattr(logging, env_level)
+    return logging.INFO if verbose else logging.ERROR
 
 
 def emojis(string: str = "") -> str:
@@ -69,7 +84,7 @@ def set_logging(
         - Adds both stream and rotating file handlers.
 
     """
-    level = logging.DEBUG if verbose else logging.ERROR
+    level = _resolve_level(verbose)
     formatter = logging.Formatter("%(message)s")
 
     if WINDOWS and hasattr(sys.stdout, "encoding") and sys.stdout.encoding != "utf-8":
@@ -115,7 +130,8 @@ def set_logging(
     return logger
 
 
-# Set logger
-LOGGER = set_logging(LOGGING_NAME, verbose=VERBOSE)
+# Set logger. File logging is opt-in (NEUDC_LOG_FILE=path) to keep the hot path
+# free of per-message disk I/O; the level honours NEUDC_LOG_LEVEL (default INFO).
+LOGGER = set_logging(LOGGING_NAME, verbose=VERBOSE, output=os.environ.get("NEUDC_LOG_FILE") or None)
 for _logger in ("sentry_sdk", "urllib3.connectionpool"):
     logging.getLogger(_logger).setLevel(logging.CRITICAL + 1)
