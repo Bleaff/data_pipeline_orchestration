@@ -129,10 +129,15 @@ class ZMQMailbox(BaseMailbox[dict]):
         LOGGER.debug(f"[{self.name}][Removed publisher] → {rm_pub}")
 
     def __getstate__(self) -> dict[str, Any]:
-        """Get the current state of the mailbox."""
+        """Return a picklable snapshot of the mailbox.
+
+        This is a pure serializer: it must not mutate ``self`` (pickling an object
+        should never stop it). Releasing the bound consume port for a hand-off to a
+        child process is done explicitly by the caller (see BaseProcessNode.__init__).
+        """
         LOGGER.debug(f"[{self.name}][GET STATE] → {self.name}")
         state = self.__dict__.copy()
-        # Remove the thread and logger from the state to avoid issues with pickling
+        # Drop the non-picklable runtime pieces; sizes/ports are enough to rebuild.
         state["_thread"] = None
         state["_running"] = False
         state["logger"] = None  # Avoid pickling the logger
@@ -141,9 +146,6 @@ class ZMQMailbox(BaseMailbox[dict]):
         state["consume_port"] = self.consume_port
         state["sub_queue"] = None
         state["_message_queue"] = None  # Avoid pickling the queue itself
-
-        self.stop()
-        # Stop the thread to ensure a consistent state
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
