@@ -5,8 +5,6 @@ This class defines the base attributes for a box, including the source node ID.
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np  # noqa
 from pydantic import BaseModel
 
@@ -122,29 +120,3 @@ class Batch(BaseModel):
 
     def __getitem__(self, index):
         return self.frames[index]
-
-
-# === Pipeline Configuration ===
-
-
-class NodeConfig(BaseModel):
-    """Single node configuration for pipeline."""
-
-    name: str
-    type: str
-    params: dict[str, Any]
-    output_queue: str
-
-
-class Pipeline(BaseModel):
-    """Pipeline consisting of multiple nodes."""
-
-    name: str
-    nodes: dict[str, NodeConfig]
-
-
-class Task(BaseModel):
-    """Task wrapping a pipeline."""
-
-    name: str
-    pipeline: Pipeline
