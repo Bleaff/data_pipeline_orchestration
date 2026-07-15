@@ -44,10 +44,18 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """
         # Initialize BaseNode and multiprocessing.Process
         BaseNode.__init__(self, mailbox=None, id=id)
+        # Capture a picklable snapshot of the mailbox, then explicitly release the
+        # bound consume port in the parent so the child can rebind it after spawn.
+        # (__getstate__ itself no longer stops the mailbox as a side effect.)
         self.mailbox_config = mailbox.__getstate__()
+        mailbox.stop()
         mp.Process.__init__(self)
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
         self.stop_event = mp.Event()
+        # Set by the child once its mailbox is rebound and runtime is ready; lets the
+        # parent wait for real readiness instead of a fixed sleep before starting
+        # upstream producers. Shared across spawn the same way as stop_event.
+        self._ready_event = mp.Event()
 
     def start(self) -> None:
         """Start the process node."""
@@ -77,6 +85,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self._last_success_time = mp.Value("d", time.time())
 
         self._start_afterwords()  # Start the node's thread
+        self._ready_event.set()  # Mailbox is rebound and runtime is initialized.
         LOGGER.info(f"Process node started, entering processing loop...Mailbox status:{self.mailbox.consume_port}")
 
         while not self.stop_event.is_set():
@@ -94,6 +103,13 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                     self._last_success_time.value = time.time()
             except Exception as e:
                 LOGGER.exception("[BaseProcessNode] Exception", exc_info=e)
+
+    def wait_ready(self, timeout: float | None = None) -> bool:
+        """Block until the child signals readiness (mailbox rebound, runtime up).
+
+        Returns True if the node became ready within the timeout, else False.
+        """
+        return self._ready_event.wait(timeout)
 
     def stop(self) -> None:
         """Signal the process to stop and wait for the health thread."""
