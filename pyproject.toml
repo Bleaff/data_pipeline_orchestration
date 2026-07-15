@@ -72,6 +72,7 @@ scikit-learn = "*"
 imagehash = "*"
 scikit-image = "*"
 pydantic = "*"
+prometheus-client = "*"
 torchvision = "*"
 torch = [
     {version = "^2.2.1", source="pypi", markers = "sys_platform == 'darwin'"},
