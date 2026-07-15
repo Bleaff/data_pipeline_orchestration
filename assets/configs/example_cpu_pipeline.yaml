@@ -1,0 +1,26 @@
+# Minimal CPU-only pipeline: read images from a folder, resize them, save to disk.
+#
+# Run:
+#   python3 -m neudc.entrypoints.main assets/configs/example_cpu_pipeline.yaml
+#
+# No GPU or model is required, so this doubles as a smoke test and as a template
+# for wiring your own nodes. Point `folder_path` at a directory that actually
+# contains images (an empty folder in "loop" mode has nothing to read).
+nodes:
+  - id: reader
+    type: FolderImageNode
+    folder_path: "assets/images"   # directory with your input images
+    mode: "loop"                    # "loop" cycles forever; "only_one" stops after one pass
+    frame_delay: 0.1                # seconds between frames
+    outputs: [resize]
+
+  - id: resize
+    type: ResizeNode
+    target_width: 640
+    target_height: 480
+    outputs: [saver]
+
+  - id: saver
+    type: SaveImageNode
+    save_dir: "./output_images"
+    outputs: []
