@@ -84,6 +84,11 @@ class FolderImageNode(BaseThreadedNode):
         """
         del args, kwargs
 
+        if not self.image_files:
+            LOGGER.error(f"No images found in {self.folder_path}; stopping reader.")
+            self.stop()
+            return None
+
         if self.frame_id >= len(self.image_files):
             if self.mode == ImageReaderMode.ONLY_ONE:
                 LOGGER.info("All images processed in 'ONLY_ONE' mode.")
