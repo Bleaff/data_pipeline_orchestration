@@ -1,6 +1,7 @@
-"""Script serves as the entry point for the application.
+"""Single-pipeline entry point for the application.
 
-running the system from config file:
+Running the system from a config file:
+
 nodes:
   - id: reader
     type: FolderImageNode
@@ -20,7 +21,7 @@ nodes:
     type: ProcessDetInference
     model_config:
       type: YOLOv8
-      path: "/home/user/mkotovanu/neudc/models/yolov8n.torchscript"
+      path: "/path/to/yolov8n.torchscript"
       backend: TorchBackend
       device_id: 0
     outputs: [visualizer]
@@ -34,78 +35,91 @@ nodes:
     save_dir: "./output_images"
     outputs: []
 
-
-It initializes and configures the necessary components for the system to run,
-including the routing and node factories. The configuration is loaded from a specified
-YAML file, which contains the details for setting up the nodes and their connections.
-
-Functions:
-- main(config_path: str) -> None: Initiates the application with the given configuration file path.
+It loads the YAML config, builds the routing/mailboxes and node instances, starts
+process nodes first (waiting for each to signal readiness so their mailboxes are
+bound before upstream producers start), then starts threaded nodes, and finally
+blocks until a shutdown signal arrives.
 """
 
-import time
+from __future__ import annotations
+
+import signal
+import threading
 
 from prometheus_client import start_http_server
 
-from neudc.core.base import BaseProcessNode, BaseThreadedNode
+from neudc.core.base import BaseProcessNode
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
 from neudc.utils.logger import LOGGER
 
+# How long to wait for a process node to report readiness before starting producers.
+STARTUP_READY_TIMEOUT_SEC = 30.0
+
+
+def _maybe_start_prometheus(config: dict) -> None:
+    """Start the Prometheus HTTP server if enabled in the config."""
+    prometheus_config = config.get("prometheus")
+    if prometheus_config and prometheus_config.get("port") and prometheus_config.get("enable"):
+        start_http_server(prometheus_config["port"])
+        LOGGER.info(f"Prometheus metrics server started on port {prometheus_config['port']}")
+
 
 def main(config_path: str) -> None:
-    """Entrypoint for the application. Takes the path to the YAML config as input. Factories nodes and routes messages between them.
+    """Build and run a single pipeline from a YAML configuration file.
 
     Args:
     ----
         config_path (str): Path to the YAML configuration file.
 
     """
-    is_running = True
-
-    # Load pipeline configuration from YAML
     config = load_config(config_path)
+    _maybe_start_prometheus(config)
 
-    # Load metrics
-    prometheus_config = config.get("prometheus")
-    if prometheus_config and prometheus_config.get("port") and prometheus_config["enable"]:
-        start_http_server(prometheus_config["port"])
-
-    # 1. Create routing factory and initialize mailboxes
+    # 1. Routing: one mailbox per node, wired to their outputs.
     router = RoutingFactory(config)
     mailbox_map = router.create_mailboxes()
 
-    # 2. Create node instances using NodeFactory
-    nodes = []
-
-    # 1. Сначала запусти процессные
+    # 2. Build every node exactly once and split by execution model.
+    process_nodes: list = []
+    threaded_nodes: list = []
     for node_config in config["nodes"]:
-        node_id = node_config["id"]
-        mailbox = mailbox_map[node_id]
-        node = NodeFactory.create(node_config, mailbox=mailbox)
-        if isinstance(node, BaseProcessNode):
-            node.start()
-            nodes.append(node)
-    time.sleep(10)
-    LOGGER.info("All processes started. Now time to fucking wait for x seconds.")
-    # 2. Потом запусти тредовые
-    for node_config in config["nodes"]:
-        node_id = node_config["id"]
-        mailbox = mailbox_map[node_id]
-        node = NodeFactory.create(node_config, mailbox=mailbox)
-        if isinstance(node, BaseThreadedNode):
-            node.start()
-            nodes.append(node)
+        node = NodeFactory.create(node_config, mailbox=mailbox_map[node_config["id"]])
+        (process_nodes if isinstance(node, BaseProcessNode) else threaded_nodes).append(node)
 
-    # 3. Keep the main thread alive while nodes are working
+    all_nodes = process_nodes + threaded_nodes
+
+    # 3. Start process nodes first and wait until each has bound its mailbox,
+    #    so no producer sends into a not-yet-listening consumer.
+    for node in process_nodes:
+        node.start()
+    for node in process_nodes:
+        if not node.wait_ready(timeout=STARTUP_READY_TIMEOUT_SEC):
+            LOGGER.warning(f"Process node '{node.id}' did not report readiness in time; starting anyway.")
+
+    # 4. Start threaded nodes (readers/producers/light processors).
+    for node in threaded_nodes:
+        node.start()
+
+    LOGGER.info(f"Pipeline running with {len(all_nodes)} nodes. Waiting for shutdown signal...")
+
+    # 5. Block until interrupted, without a busy loop.
+    stop_event = threading.Event()
+
+    def _handle_signal(signum, _frame) -> None:
+        LOGGER.info(f"Received signal {signum}; shutting down...")
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
     try:
-        while is_running:
-            pass
-    except KeyboardInterrupt:
-        is_running = False
-        for node in nodes:
+        stop_event.wait()
+    finally:
+        for node in all_nodes:
             node.stop()
+        LOGGER.info("All nodes stopped.")
 
 
 if __name__ == "__main__":

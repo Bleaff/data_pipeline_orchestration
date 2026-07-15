@@ -35,7 +35,7 @@ class BasePipeline(Process):
         It also keeps the process alive until interrupted.
         """
         # Initialize logging
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(self.name)
 
         # 1. Routing
@@ -49,8 +49,7 @@ class BasePipeline(Process):
         for node_config in self.nodes_config:
             node_id = node_config["id"]
             mailbox = mailbox_map[node_id]
-            node_logger = logging.getLogger(f"{self.name}.{node_id}")
-            node = NodeFactory.create(node_config, mailbox=mailbox, logger=node_logger)
+            node = NodeFactory.create(node_config, mailbox=mailbox)
             self.nodes.append(node)
 
         # Start all nodes
