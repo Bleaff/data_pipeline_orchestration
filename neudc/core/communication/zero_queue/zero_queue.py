@@ -34,6 +34,9 @@ class ZeroQueue:
     Suitable for inter-process message passing on a single machine.
     """
 
+    # Time to let a SUB subscription propagate to a freshly-connected PUB.
+    CONNECT_SETTLE_SEC: float = 0.1
+
     def __init__(
         self,
         port: int = -1,
@@ -93,6 +96,12 @@ class ZeroQueue:
         self.socket_pub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_pub, contype)
         self.socket_sub: zmq.Context.socket | None = None  # type: ignore[no-redef]
+
+        # One-time settle so the peer SUB's subscription reaches this PUB before the
+        # first send (ZeroMQ "slow joiner"). Done once here at wiring time instead of
+        # per-message, so it never touches send throughput.
+        if contype == ZeroQueueConnectionType.CONNECT:
+            time.sleep(self.CONNECT_SETTLE_SEC)
 
     def _bind_port(self, port: int, socket: zmq.Context.socket) -> int:
         """Bind the socket to a random port and return the port number."""
@@ -175,7 +184,6 @@ class ZeroQueue:
             item (Any): Object to send.
 
         """
-        time.sleep(0.001)
         self.socket_pub.send_pyobj(item)  # type: ignore[union-attr]
 
     def put_nowait(self, item: Any) -> None:
