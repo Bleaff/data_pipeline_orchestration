@@ -1,46 +1,46 @@
-"""Create node factory instances based on config.
+"""Create node instances from configuration dictionaries.
 
-This module provides a factory to create node instances from configuration
-dictionaries. The factory knows how to create nodes of different types based on
-the config.
-
+The factory maps a node ``type`` string to the class that implements it and builds
+an instance via that class's ``from_config``. Node classes are imported lazily, on
+first use, so building a lightweight (e.g. CPU-only) pipeline does not require the
+optional dependencies of unrelated nodes (torch, ultralytics, imagehash, ...).
 """
 
 from __future__ import annotations
 
+import importlib
 from typing import Any, ClassVar
-
-from neudc.core.node.broadcast.image_saver import SaveImageNode
-from neudc.core.node.filters.hash_node import HashNode
-from neudc.core.node.model.active_learning_node import ActiveLearning
-from neudc.core.node.model.proc_blur_inference import ProcessBlurInference
-from neudc.core.node.model.proc_det_batch_inference import ProcessDetBatchInference
-from neudc.core.node.model.proc_det_inference import ProcessDetInference
-from neudc.core.node.model.proc_embedding_inference import ProcessEmbeddingInference
-from neudc.core.node.processors.create_dataset_node import CreateDataset
-from neudc.core.node.processors.draw_node import DrawNode
-from neudc.core.node.processors.resize_node import ResizeNode
-from neudc.core.node.processors.resize_process_node import ResizeProcessNode
-from neudc.core.node.readers.image_reader import FolderImageNode
 
 
 class NodeFactory:
     """Factory to create node instances based on config."""
 
-    NODE_CLASS_MAP: ClassVar = {
-        "FolderImageNode": FolderImageNode,
-        "SaveImageNode": SaveImageNode,
-        "ResizeProcessNode": ResizeProcessNode,
-        "ResizeNode": ResizeNode,
-        "ProcessDetInference": ProcessDetInference,
-        "DrawNode": DrawNode,
-        "HashNode": HashNode,
-        "ProcessBlurInference": ProcessBlurInference,
-        "ProcessEmbeddingInference": ProcessEmbeddingInference,
-        "ProcessDetBatchInference": ProcessDetBatchInference,
-        "ActiveLearning": ActiveLearning,
-        "CreateDataset": CreateDataset,
+    # node type -> (module path, class name). Imported on demand in `_resolve`.
+    NODE_IMPORTS: ClassVar[dict[str, tuple[str, str]]] = {
+        "FolderImageNode": ("neudc.core.node.readers.image_reader", "FolderImageNode"),
+        "SaveImageNode": ("neudc.core.node.broadcast.image_saver", "SaveImageNode"),
+        "ResizeProcessNode": ("neudc.core.node.processors.resize_process_node", "ResizeProcessNode"),
+        "ResizeNode": ("neudc.core.node.processors.resize_node", "ResizeNode"),
+        "ProcessDetInference": ("neudc.core.node.model.proc_det_inference", "ProcessDetInference"),
+        "DrawNode": ("neudc.core.node.processors.draw_node", "DrawNode"),
+        "HashNode": ("neudc.core.node.filters.hash_node", "HashNode"),
+        "ProcessBlurInference": ("neudc.core.node.model.proc_blur_inference", "ProcessBlurInference"),
+        "ProcessEmbeddingInference": ("neudc.core.node.model.proc_embedding_inference", "ProcessEmbeddingInference"),
+        "ProcessDetBatchInference": ("neudc.core.node.model.proc_det_batch_inference", "ProcessDetBatchInference"),
+        "ActiveLearning": ("neudc.core.node.model.active_learning_node", "ActiveLearning"),
+        "CreateDataset": ("neudc.core.node.processors.create_dataset_node", "CreateDataset"),
     }
+
+    @staticmethod
+    def _resolve(node_type: str) -> Any:
+        """Import and return the node class for ``node_type``."""
+        try:
+            module_path, class_name = NodeFactory.NODE_IMPORTS[node_type]
+        except KeyError:
+            msg = f"Unknown node type: {node_type}"
+            raise ValueError(msg) from None
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
 
     @staticmethod
     def create(config: dict[str, Any], mailbox: Any) -> Any:
@@ -48,7 +48,7 @@ class NodeFactory:
 
         Args:
         ----
-            config (dict): Node config.
+            config (dict): Node config. Must contain a ``type`` key.
             mailbox (Any): Precreated mailbox for this node.
 
         Returns:
@@ -57,13 +57,10 @@ class NodeFactory:
 
         """
         node_type = config["type"]
-        node_class = NodeFactory.NODE_CLASS_MAP.get(node_type)
+        node_class = NodeFactory._resolve(node_type)
 
-        if not node_class:
-            msg = f"Unknown node type: {node_type}"
-            raise ValueError(msg)
-
-        config = config.copy()  # make a copy
+        config = config.copy()  # do not mutate the caller's dict
         config["mailbox"] = mailbox
-        del config["type"], config["outputs"]
+        config.pop("type", None)
+        config.pop("outputs", None)  # routing-only key, not a node argument
         return node_class.from_config(config)

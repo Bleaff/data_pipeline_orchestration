@@ -17,12 +17,14 @@ process(frame):
 
 """
 
+import logging
 import os
 from typing import Any
 
 import cv2
 
 from neudc.core.communication.messaging.types import Frame
+from neudc.utils import LOGGER
 
 
 class ResizeLogicMixin:
@@ -36,9 +38,11 @@ class ResizeLogicMixin:
 
     def process(self, frame: Frame) -> Frame:
         """Resize the image in the Frame object to the target dimensions."""
-        resized_image = cv2.resize(frame.image, (self.target_width, self.target_height))
-        frame.image = resized_image
-        self.logger.debug(  # type: ignore[attr-defined]
-            f"[{self.name}] Running in PID: {os.getpid()}\nResized frame {frame.frame_id} to {self.target_width}x{self.target_height}",  # type: ignore[attr-defined]
-        )
+        frame.image = cv2.resize(frame.image, (self.target_width, self.target_height))
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            node_id = getattr(self, "id", type(self).__name__)
+            LOGGER.debug(
+                f"[{node_id}] PID {os.getpid()} resized frame {frame.frame_id} "
+                f"to {self.target_width}x{self.target_height}",
+            )
         return frame

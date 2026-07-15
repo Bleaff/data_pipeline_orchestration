@@ -36,7 +36,6 @@ class ResizeProcessNode(ResizeLogicMixin, BaseProcessNode):
         """
         return ResizeProcessNode(
             mailbox=config["mailbox"],
-            logger=config["logger"],
             target_width=config["target_width"],
             target_height=config["target_height"],
         )

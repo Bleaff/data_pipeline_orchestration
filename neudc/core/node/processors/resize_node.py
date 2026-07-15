@@ -26,13 +26,12 @@ from neudc.core.node.processors.mixins.resize_mixin import ResizeLogicMixin
 
 
 class ResizeNode(ResizeLogicMixin, BaseThreadedNode):
-    """A node that resizes incoming Frame objects to a target resolution."""
+    """A node that resizes incoming Frame objects to a target resolution.
 
-    def __init__(self, target_width: int, target_height: int, *args: Any, **kwargs: Any) -> None:
-        """Initialize the ResizeNode with target dimensions."""
-        self.target_width = target_width
-        self.target_height = target_height
-        super().__init__(*args, **kwargs)
+    Initialization (``target_width``, ``target_height``, ``mailbox``) is handled by
+    ``ResizeLogicMixin`` via the MRO, which stores the dimensions and forwards the
+    remaining arguments to ``BaseThreadedNode``.
+    """
 
     @staticmethod
     def from_config(config: dict[str, Any]) -> ResizeNode:
@@ -49,7 +48,6 @@ class ResizeNode(ResizeLogicMixin, BaseThreadedNode):
         """
         return ResizeNode(
             mailbox=config["mailbox"],
-            logger=config["logger"],
             target_width=config["target_width"],
             target_height=config["target_height"],
         )
