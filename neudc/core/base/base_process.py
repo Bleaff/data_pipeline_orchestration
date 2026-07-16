@@ -50,7 +50,11 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.mailbox_config = mailbox.__getstate__()
         mailbox.stop()
         mp.Process.__init__(self)
+        # Health state lives in shared memory created here (like stop_event), so the
+        # parent's status()/health monitor observe what the child writes. The child
+        # MUST mutate these Values, never reassign them (see _mark_running).
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
+        self._last_success_time = mp.Value("d", 0.0)
         self.stop_event = mp.Event()
         # Set by the child once its mailbox is rebound and runtime is ready; lets the
         # parent wait for real readiness instead of a fixed sleep before starting
@@ -81,8 +85,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         """Process entrypoint: start health monitor and processing loop."""
         LOGGER.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
         self.init_process_runtime()
-        self._healthy = mp.Value("b", self.HEALTH_NORMAL)
-        self._last_success_time = mp.Value("d", time.time())
+        self._mark_running()
 
         self._start_afterwords()  # Start the node's thread
         self._ready_event.set()  # Mailbox is rebound and runtime is initialized.
@@ -104,6 +107,17 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
             except Exception as e:
                 LOGGER.exception("[BaseProcessNode] Exception", exc_info=e)
 
+    def _mark_running(self) -> None:
+        """Mark the node healthy and reset its last-success timestamp (child side).
+
+        Mutates the shared mp.Value objects created in __init__ instead of replacing
+        them, so the parent's status() and the health monitor see the child's state.
+        """
+        with self._healthy.get_lock():
+            self._healthy.value = self.HEALTH_NORMAL
+        with self._last_success_time.get_lock():
+            self._last_success_time.value = time.time()
+
     def wait_ready(self, timeout: float | None = None) -> bool:
         """Block until the child signals readiness (mailbox rebound, runtime up).
 
@@ -117,9 +131,9 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.stop_event.set()
 
     def status(self) -> bool:
-        """Return current health status."""
+        """Return current health status (True = healthy)."""
         with self._healthy.get_lock():
-            return self._healthy.value
+            return bool(self._healthy.value)
 
     def _health_monitor(self) -> None:
         """Monitor if node continues to process over time."""
