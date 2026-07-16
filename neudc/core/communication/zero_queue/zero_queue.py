@@ -23,6 +23,7 @@ from typing import Any
 
 import zmq
 
+from neudc.core.communication.messaging import codec
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 from neudc.utils import LOGGER
 
@@ -170,28 +171,35 @@ class ZeroQueue:
         """Receive a message without waiting."""
         socks = dict(self.poller.poll(timeout=0))
         if self.socket_sub in socks:
-            return self.socket_sub.recv_pyobj(zmq.NOBLOCK)  # type: ignore[union-attr]
+            return codec.loads(self.socket_sub.recv(zmq.NOBLOCK))  # type: ignore[union-attr]
         return None
 
     def put(self, item: Any) -> None:
-        """Send a message.
+        """Serialize and send a message.
 
         Args:
         ----
             item (Any): Object to send.
 
         """
-        self.socket_pub.send_pyobj(item)  # type: ignore[union-attr]
+        self.socket_pub.send(codec.dumps(item))  # type: ignore[union-attr]
+
+    def put_bytes(self, raw: bytes) -> None:
+        """Send an already-serialized message (see :func:`codec.dumps`).
+
+        Lets a fan-out producer serialize once and reuse the bytes for every edge.
+        """
+        self.socket_pub.send(raw)  # type: ignore[union-attr]
 
     def put_nowait(self, item: Any) -> None:
-        """Send a message without blocking.
+        """Serialize and send a message without blocking.
 
         Args:
         ----
             item (Any): Object to send.
 
         """
-        self.socket_pub.send_pyobj(item, zmq.NOBLOCK)  # type: ignore[union-attr]
+        self.socket_pub.send(codec.dumps(item), zmq.NOBLOCK)  # type: ignore[union-attr]
 
     def _after_fork(self) -> None:
         """Reset sockets after fork (Unix only)."""
