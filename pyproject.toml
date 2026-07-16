@@ -32,14 +32,13 @@ maintainers = [
     "Marius Kotovanu",
     "Sergey Sysoev",
 ]
-license = "AGPL-3.0"
+license = "AGPL-3.0-or-later"
 keywords = ["machine-learning", "deep-learning", "computer-vision", "cvat"]
 classifiers = [
-    "Development Status :: 0 - Beta",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -51,21 +50,18 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS :: MacOS X",
 ]
-exclude = ["configs/*"]
-[tool.setuptools.dynamic]
-version = {attr = "neudc.__version__"}
 
 # Required dependencies ------------------------------------------------------------------------------------------------
 [tool.poetry.dependencies]
-python = ">=3.9"
+# 3.11 is the real floor: the code uses enum.StrEnum and typing.Self.
+python = ">=3.11"
 pyyaml = "==6.0.2"
 jaxtyping = "==0.2.36"
 numba = "==0.60"
-numpy = ">2.0.0,<2.1.0"
+numpy = ">2.0.0,<2.1.0"  # numba 0.60 does not support numpy >= 2.1
 pytz = "==2024.2"
 opencv-python-headless = "==4.10.0.84"
 pyzmq = "==27.0.0"
-click = "==8.1.7"
 tqdm = "*"
 scipy = "*"
 scikit-learn = "*"
@@ -100,9 +96,18 @@ onnx = [
     "onnxruntime-gpu",
 ]
 
+# Package sources -----------------------------------------------------------------------------------------------------
+# Referenced by the `torch` dependency above for Linux/Windows CUDA wheels.
+[[tool.poetry.source]]
+name = "torch_cuda121"
+url = "https://download.pytorch.org/whl/cu121"
+priority = "explicit"
+
 # Project URLs --------------------------------------------------------------------------------------------------------
 [tool.poetry.urls]
-"Source" = "https://gitlab.ai.cloud.ru/ivbasharov/neudc.git"
+"Homepage" = "https://github.com/Bleaff/data_pipeline_orchestration"
+"Source" = "https://github.com/Bleaff/data_pipeline_orchestration"
+"Issues" = "https://github.com/Bleaff/data_pipeline_orchestration/issues"
 
 # Tools settings -------------------------------------------------------------------------------------------------------
 [tool.isort]
@@ -115,7 +120,7 @@ ensure_newline_before_comments = true
 
 [tool.black]
 line-length = 120
-target-version = ['py39', 'py311', 'py310', 'py312', 'py313']
+target-version = ['py311', 'py312', 'py313']
 include = '\.pyi?$'
 
 [tool.yapf]
