@@ -19,7 +19,6 @@ concurrently without worrying about race conditions.
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 import zmq
@@ -29,13 +28,16 @@ from neudc.utils import LOGGER
 
 
 class ZeroQueue:
-    """PUB/SUB-based queue implementation using ZeroMQ.
+    """PUSH/PULL-based queue implementation using ZeroMQ.
 
+    Each edge is a 1:1 PUSH (producer) -> PULL (consumer) channel. Unlike PUB/SUB
+    this never silently drops messages: a PUSH with no ready PULL queues locally and
+    a full high-water mark applies backpressure to the producer instead of dropping.
+    Fan-out to several downstream nodes is modelled as several independent edges.
     Suitable for inter-process message passing on a single machine.
-    """
 
-    # Time to let a SUB subscription propagate to a freshly-connected PUB.
-    CONNECT_SETTLE_SEC: float = 0.1
+    The ``PUB``/``SUB`` mode names are kept for the producer/consumer roles.
+    """
 
     def __init__(
         self,
@@ -69,7 +71,7 @@ class ZeroQueue:
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
     def _init_sub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
-        """Initialize the subscriber socket. Ports gets from initialization.
+        """Initialize the consumer (PULL) socket. The port comes from initialization.
 
         Args:
         ----
@@ -77,31 +79,26 @@ class ZeroQueue:
 
         """
         self.socket_pub: zmq.Context.socket | None = None
-        self.socket_sub: zmq.Context.socket | None = self.context.socket(zmq.SUB)
+        self.socket_sub: zmq.Context.socket | None = self.context.socket(zmq.PULL)
         self.socket_sub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_sub, contype)
-        self.socket_sub.subscribe("")
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
     def _init_pub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
-        """Initialize the publisher socket. Ports gets from initialization.
+        """Initialize the producer (PUSH) socket. The port comes from initialization.
 
         Args:
         ----
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
 
         """
-        self.socket_pub: zmq.Context.socket | None = self.context.socket(zmq.PUB)  # type: ignore[no-redef]
+        self.socket_pub: zmq.Context.socket | None = self.context.socket(zmq.PUSH)  # type: ignore[no-redef]
         self.socket_pub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_pub, contype)
         self.socket_sub: zmq.Context.socket | None = None  # type: ignore[no-redef]
-
-        # One-time settle so the peer SUB's subscription reaches this PUB before the
-        # first send (ZeroMQ "slow joiner"). Done once here at wiring time instead of
-        # per-message, so it never touches send throughput.
-        if contype == ZeroQueueConnectionType.CONNECT:
-            time.sleep(self.CONNECT_SETTLE_SEC)
+        # No "slow joiner" settle needed: a PUSH socket queues messages until a PULL
+        # peer is connected, so nothing is lost when the producer starts first.
 
     def _bind_port(self, port: int, socket: zmq.Context.socket) -> int:
         """Bind the socket to a random port and return the port number."""
@@ -201,13 +198,12 @@ class ZeroQueue:
         self._reset()
 
     def _reset(self) -> None:
-        """Recreate PUB/SUB sockets."""
-        self.socket_pub = self.context.socket(zmq.PUB)
+        """Recreate PUSH/PULL sockets."""
+        self.socket_pub = self.context.socket(zmq.PUSH)
         self.socket_pub.connect(f"tcp://*:{self.port}")
 
-        self.socket_sub = self.context.socket(zmq.SUB)
+        self.socket_sub = self.context.socket(zmq.PULL)
         self.socket_sub.connect(f"tcp://localhost:{self.port}")
-        self.socket_sub.subscribe("")
 
         self.poller = zmq.Poller()
 
