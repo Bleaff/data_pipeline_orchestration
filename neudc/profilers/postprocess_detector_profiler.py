@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from functools import wraps
 
@@ -8,24 +9,6 @@ from prometheus_client import Counter, Gauge
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.profilers.base import BaseProfiler
 from neudc.utils import LOGGER
-
-try:
-    pass
-
-    CUDA_PROFILE_ENABLE = True
-except ImportError:
-    CUDA_PROFILE_ENABLE = False
-    LOGGER.info("Cuda library is not installed. Check your installation carefully.")
-
-
-if CUDA_PROFILE_ENABLE:
-    pass
-
-import logging
-from functools import wraps
-
-logging.basicConfig(level=logging.DEBUG)
-LOGGER = logging.getLogger(__name__)
 
 
 class PostprocessProfiler(BaseProfiler):
@@ -80,9 +63,11 @@ class PostprocessProfiler(BaseProfiler):
         self.cache["total_frames"] += total_frames
         self.cache["total_boxes"] += total_boxes
         self.cache["avarage_time"] = self.cache["total_time"] / self.cache["total_frames"]
-        LOGGER.debug(
-            f"[{self.node_name}] Postprocessed {self.cache['total_frames']} frames with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarage_time']}s"
-        )
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug(
+                f"[{self.node_name}] Postprocessed {self.cache['total_frames']} frames with "
+                f"{self.cache['total_boxes']} boxes. Average execution time: {self.cache['avarage_time']}s"
+            )
 
     def _process_frame_result(self, result, frame: Frame):
         total_boxes = len(result)
@@ -92,9 +77,11 @@ class PostprocessProfiler(BaseProfiler):
         self.cache["total_boxes"] += total_boxes
         self.cache["total_frames"] += 1
         self.cache["avarage_time"] = self.cache["total_time"] / self.cache["total_frames"]
-        LOGGER.debug(
-            f"[{self.node_name}] Postprocessed frame with {self.cache['total_boxes']} boxes. Average time of execution: {self.cache['avarage_time']}s"
-        )
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug(
+                f"[{self.node_name}] Postprocessed frame with {self.cache['total_boxes']} boxes. "
+                f"Average execution time: {self.cache['avarage_time']}s"
+            )
 
     def __enter__(self):
         self.start = self.time()

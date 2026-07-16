@@ -3,6 +3,7 @@ import signal
 import time
 
 from neudc.core.utils.config_loader import load_config
+from neudc.core.utils.config_schema import ConfigError, validate_pipeline_config
 from neudc.service.pipeline_manager import PipelineServiceManager
 
 
@@ -42,8 +43,11 @@ def main(config_path: str) -> None:
         nodes = pipe["nodes"]
         task = pipe.get("task", {})
         try:
+            validate_pipeline_config({"nodes": nodes})  # fail fast on a bad pipe
             manager.start_pipeline(name=name, nodes_config=nodes, task_config=task)
             logger.info(f"Started pipeline: {name}")
+        except ConfigError as e:
+            logger.error(f"Invalid config for pipeline '{name}': {e}")
         except Exception as e:
             logger.exception(f"Failed to start pipeline {name}: {e}")
 
