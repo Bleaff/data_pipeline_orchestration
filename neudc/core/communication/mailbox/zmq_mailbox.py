@@ -25,6 +25,7 @@ from typing import Any
 from zmq.error import ZMQError
 
 from neudc.core.base.base_mailbox import BaseMailbox
+from neudc.core.communication.messaging import codec
 from neudc.core.communication.messaging.types import Batch, Frame
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType
@@ -91,15 +92,22 @@ class ZMQMailbox(BaseMailbox[dict]):
             pub_socket.stop()
 
     def send(self, message: Batch | Frame) -> None:
-        """Send a message to the mailbox."""
-        for pub_socket in self.pub_sockets.values():
-            if isinstance(message, Batch):
-                for frame in message:
-                    pub_socket.put(frame)
-            else:
-                if LOGGER.isEnabledFor(logging.DEBUG):
-                    LOGGER.debug(f"[{self.name}][SEND] → message with type {type(message)}")
-                pub_socket.put(message)
+        """Send a message to every downstream edge.
+
+        Each frame is serialized once and the same bytes are reused for all
+        publishers, so fan-out to N nodes does not pay N serializations.
+        """
+        if isinstance(message, Batch):
+            for frame in message:
+                raw = codec.dumps(frame)
+                for pub_socket in self.pub_sockets.values():
+                    pub_socket.put_bytes(raw)
+        else:
+            if LOGGER.isEnabledFor(logging.DEBUG):
+                LOGGER.debug(f"[{self.name}][SEND] → message with type {type(message)}")
+            raw = codec.dumps(message)
+            for pub_socket in self.pub_sockets.values():
+                pub_socket.put_bytes(raw)
 
     def receive(self, timeout: float | None = None) -> dict:
         """Receive a message from the mailbox."""

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 import zmq
 
+from neudc.core.communication.messaging import codec
 from neudc.core.communication.zero_queue.zero_pub import ZeroQueuePub
 from neudc.core.communication.zero_queue.zero_queue import ZeroQueue
 from neudc.core.communication.zero_queue.zero_sub import ZeroQueueSub
@@ -51,7 +52,7 @@ def test_zeroqueue_put_sends_object(mock_zmq) -> None:
     pub = ZeroQueue(port=5555, mode=ZeroQueueMode.PUB, contype=ZeroQueueConnectionType.CONNECT)
     test_obj = {"key": "value"}
     pub.put(test_obj)
-    mock_zmq["socket"].send_pyobj.assert_called_once_with(test_obj)
+    mock_zmq["socket"].send.assert_called_once_with(codec.dumps(test_obj))
 
 
 def test_zeroqueue_get_nowait_receives_object(mock_zmq) -> None:
@@ -59,7 +60,7 @@ def test_zeroqueue_get_nowait_receives_object(mock_zmq) -> None:
     socket = mock_zmq["socket"]
     poller = mock_zmq["poller"]
 
-    socket.recv_pyobj.return_value = test_msg
+    socket.recv.return_value = codec.dumps(test_msg)
     poller.poll.return_value = [(socket, zmq.POLLIN)]  # <-- вот это фиксит
 
     sub = ZeroQueue(port=5555, mode=ZeroQueueMode.SUB, contype=ZeroQueueConnectionType.CONNECT)

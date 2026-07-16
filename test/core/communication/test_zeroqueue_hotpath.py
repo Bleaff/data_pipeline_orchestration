@@ -21,13 +21,12 @@ def test_put_does_not_call_time_sleep(monkeypatch) -> None:
     monkeypatch.setattr(time, "sleep", lambda *a, **k: sleep_calls.append(a))
 
     pub = ZeroQueue(port=5555, mode=ZeroQueueMode.PUB, contype=ZeroQueueConnectionType.CONNECT)
-    # A one-time "slow joiner" settle at construction is expected; the hot path is put().
     sleep_calls.clear()
 
     for i in range(50):
         pub.put({"i": i})
 
-    assert socket_mock.send_pyobj.call_count == 50
+    assert socket_mock.send.call_count == 50
     assert sleep_calls == []  # no per-message sleep
 
 
@@ -42,4 +41,6 @@ def test_put_forwards_object(monkeypatch) -> None:
     pub = ZeroQueue(port=5555, mode=ZeroQueueMode.PUB, contype=ZeroQueueConnectionType.CONNECT)
     payload = {"key": "value"}
     pub.put(payload)
-    socket_mock.send_pyobj.assert_called_once_with(payload)
+    from neudc.core.communication.messaging import codec
+
+    socket_mock.send.assert_called_once_with(codec.dumps(payload))
