@@ -29,3 +29,13 @@ Automatically runs all written tests for core module
 ```bash
 python3 -m pytest test
 ```
+
+### License
+
+Copyright (C) 2025–2026 Sergey Sysoev
+
+This project is licensed under the GNU Affero General Public License v3.0 or later
+(AGPL-3.0-or-later). See [LICENSE](LICENSE) for the full text.
+
+Note that the AGPL requires anyone who runs a modified version of this software as a
+network service to make the corresponding source code available to its users.
