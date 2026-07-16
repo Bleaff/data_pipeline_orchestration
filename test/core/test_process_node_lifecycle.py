@@ -41,3 +41,21 @@ def test_ready_event_starts_unset() -> None:
     assert node._ready_event.is_set() is False
     # Not started yet, so waiting with a zero timeout reports "not ready".
     assert node.wait_ready(timeout=0) is False
+
+
+def test_health_state_is_shared_not_reassigned() -> None:
+    """The child must mutate the shared health Values so the parent's status() is truthful."""
+    mailbox = ZMQMailbox()
+    node = _EchoProcessNode(mailbox, id="echo")
+
+    assert node.status() is False  # HEALTH_INITIAL before the child marks running
+    healthy_id = id(node._healthy)
+    time_id = id(node._last_success_time)
+
+    node._mark_running()
+
+    # Same shared objects (mutated, not replaced) — otherwise the parent never sees it.
+    assert id(node._healthy) == healthy_id
+    assert id(node._last_success_time) == time_id
+    assert node.status() is True
+    assert node._last_success_time.value > 0.0
