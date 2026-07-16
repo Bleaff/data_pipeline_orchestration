@@ -69,6 +69,8 @@ class TorchBackend(BaseBackend):
         self.model = model
         self.fp16 = fp16
         self.compile = compile
+        # Reused pinned host buffer for CUDA input staging (see _stage_input).
+        self._pinned_staging: torch.Tensor | None = None
 
     @staticmethod
     def _load_model(path: str, device: torch.device) -> tuple[torch.nn.Module, dict]:
@@ -125,6 +127,27 @@ class TorchBackend(BaseBackend):
 
             raise RuntimeError(f"Failed to load model from {path}. Tried TorchScript, PyTorch, and YOLO formats.")
 
+    def _needs_new_staging(self, tensor: torch.Tensor) -> bool:
+        """Whether the cached pinned buffer must be (re)allocated for this input."""
+        buf = self._pinned_staging
+        return buf is None or tuple(buf.shape) != tuple(tensor.shape) or buf.dtype != tensor.dtype
+
+    def _stage_input(self, input_np: FloatImagesBatch) -> torch.Tensor:
+        """Move a numpy batch to the model device.
+
+        On CUDA, copy through a pinned host buffer that is reused across calls of the
+        same shape/dtype (steady-state batching), avoiding a fresh pinned allocation
+        every call, then transfer asynchronously. On CPU this is a plain transfer.
+        """
+        tensor = torch.from_numpy(input_np)
+        if self.device.type != "cuda":
+            return tensor.to(self.device, non_blocking=True)
+
+        if self._needs_new_staging(tensor):
+            self._pinned_staging = torch.empty(tuple(tensor.shape), dtype=tensor.dtype, pin_memory=True)
+        self._pinned_staging.copy_(tensor)
+        return self._pinned_staging.to(self.device, non_blocking=True)
+
     @Profile(use_cuda=True, use_torch=True, freq=PROFILE_FREQ, name="torch")
     @torch.inference_mode()
     def __call__(
@@ -158,10 +181,7 @@ class TorchBackend(BaseBackend):
 
             return obj
 
-        if torch.cuda.is_available():
-            torch_input = torch.from_numpy(input).pin_memory().to(self.device, non_blocking=True)
-        else:
-            torch_input = torch.from_numpy(input).to(self.device, non_blocking=True)
+        torch_input = self._stage_input(input)
 
         if self.fp16:
             torch_input = torch_input.half()

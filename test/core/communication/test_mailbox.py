@@ -30,9 +30,21 @@ def test_has_working_port_sharing() -> None:
     pub_3.send({"msg": "test_1"})
     pub_2.send({"msg": "test_2"})
 
-    received = [mailbox.receive() for _ in range(2)]
+    import time
 
-    assert received == [{"msg": "test_1"}, {"msg": "test_2"}]
+    received = []
+    deadline = time.time() + 5
+    while len(received) < 2 and time.time() < deadline:
+        msg = mailbox.receive(timeout=0.1)
+        if msg is not None:
+            received.append(msg)
+
+    # Two independent producers feed one consumer; PUSH/PULL fair-queues across them,
+    # so the interleaving order is not defined. What matters is that both arrive.
+    assert {frozenset(m.items()) for m in received} == {
+        frozenset({"msg": "test_1"}.items()),
+        frozenset({"msg": "test_2"}.items()),
+    }
 
 
 def test_remove_publisher() -> None:
