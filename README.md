@@ -147,7 +147,8 @@ Optional extras: `pip install -e ".[dev]"`, `".[trt]"` (TensorRT), `".[onnx]"` (
 
 Planned work is tracked on the [project board](https://github.com/users/Bleaff/projects/6):
 zero-shot / open-vocabulary labelling, video support with tracking and label propagation,
-a control-plane API with a dashboard, and shared-memory image transport.
+a control-plane API with a dashboard, shared-memory image transport, and diffusion-based
+image generation (local models or hosted API endpoints).
 
 ## 📄 License
 
