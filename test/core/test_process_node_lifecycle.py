@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+from neudc.core.base.base_node import BaseNode
 from neudc.core.base.base_process import BaseProcessNode
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 
@@ -59,3 +62,31 @@ def test_health_state_is_shared_not_reassigned() -> None:
     assert id(node._last_success_time) == time_id
     assert node.status() is True
     assert node._last_success_time.value > 0.0
+
+
+def test_start_afterwords_does_not_start_a_second_consumer_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test for #12: run()'s own loop is the sole mailbox consumer.
+
+    `_start_afterwords()` used to also call `BaseNode.init_runtime()`, which spun up a
+    background thread running `BaseNode._run()` — a second collect/process/send loop
+    racing `run()`'s loop for messages on the same mailbox.
+    """
+    mailbox = ZMQMailbox()
+    node = _EchoProcessNode(mailbox, id="echo")
+
+    init_runtime_calls: list[BaseNode] = []
+    monkeypatch.setattr(BaseNode, "init_runtime", lambda self: init_runtime_calls.append(self))
+
+    try:
+        node._start_afterwords()
+
+        assert init_runtime_calls == []
+        # BaseNode.__init__ defaults, untouched because init_runtime() never ran.
+        assert node.thread is None
+        assert node.is_running is False
+        # The mailbox was still rebound and health monitoring still started.
+        assert node.mailbox.consume_port == node.mailbox_config["consume_port"]
+        assert node._health_thread.is_alive()
+    finally:
+        node.stop_event.set()
+        node.mailbox.stop()
