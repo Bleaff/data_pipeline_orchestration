@@ -67,16 +67,18 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         mp.Process.start(self)
 
     def _start_afterwords(self) -> None:
-        """Start the base node's thread & initialize health monitoring."""
-        from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
+        """Rebind the mailbox in the child process and start health monitoring.
 
-        # Call the start method of BaseNode to initialize its thread
+        Does NOT start `BaseNode.init_runtime()`'s thread: `run()` below is already
+        the process' single processing loop (collect -> process -> send). Starting
+        both meant two consumers competing for the same mailbox (see #12).
+        """
         self._health_thread = threading.Thread(target=self._health_monitor, daemon=True)
         self._health_thread.start()
 
+        from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
+
         self.mailbox = ZMQMailbox.from_state(ZMQMailbox, self.mailbox_config)
-        BaseNode.mailbox = self.mailbox
-        BaseNode.init_runtime(self)
 
     def init_process_runtime(self) -> None:
         """Initialize runtime resources for the process node."""
@@ -87,7 +89,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self.init_process_runtime()
         self._mark_running()
 
-        self._start_afterwords()  # Start the node's thread
+        self._start_afterwords()  # Rebind mailbox, start health monitor
         self._ready_event.set()  # Mailbox is rebound and runtime is initialized.
         LOGGER.info(f"Process node started, entering processing loop...Mailbox status:{self.mailbox.consume_port}")
 
