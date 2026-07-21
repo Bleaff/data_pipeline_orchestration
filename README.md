@@ -25,17 +25,78 @@ save — and get a pre-labelled dataset ready for human review.
 
 ## 🧭 How it works
 
-Every node owns a mailbox. Producers `PUSH` to the mailbox of each downstream node they
-declare in `outputs`; each edge is an independent 1:1 channel, so fan-out is just several
-edges. Messages are `Frame` objects (image + boxes + metadata), serialized once per send
-with pickle protocol 5 and reused across all edges.
+neudc has two planes. The **control plane** turns a YAML file into a running graph:
+the config validator fails fast (and names the offending node), the `NodeFactory` lazily
+imports only the node types in use, and the `PipelineServiceManager` spawns and wires them.
+The **data plane** is the graph itself — each node runs as its own thread or process and
+owns a mailbox; producers `PUSH` to each downstream node they declare in `outputs`, so
+every edge is an independent 1:1 channel and fan-out is just several edges.
+
+```mermaid
+flowchart TB
+    subgraph control["🧠 Control plane"]
+        direction LR
+        yaml["📄 pipeline.yaml"] --> validator["config validator<br/><i>fail-fast · names the bad node</i>"]
+        validator --> factory["NodeFactory<br/><i>lazy imports</i>"]
+        factory --> manager["PipelineServiceManager<br/><i>start · stop · status</i>"]
+    end
+
+    manager -. "spawns and wires" .-> data
+
+    subgraph data["⚙️ Data plane — one running pipeline"]
+        direction LR
+        reader["FolderImageNode<br/><i>thread</i>"]:::thread
+        resize["ResizeProcessNode<br/><i>process</i>"]:::proc
+        det["ProcessDetBatchInference<br/><b>process · GPU</b>"]:::gpu
+        draw["DrawNode<br/><i>thread · mutates image</i>"]:::thread
+        save["SaveImageNode<br/><i>thread</i>"]:::thread
+        emb["ProcessEmbeddingInference<br/><b>process · GPU</b>"]:::gpu
+        al["ActiveLearning<br/><i>thread</i>"]:::thread
+        ds["CreateDataset<br/><i>thread</i>"]:::thread
+
+        reader ==>|Frame| resize
+        resize ==>|Batch| det
+        det ==>|Frame| draw
+        draw ==>|Frame| save
+        det -. "fan-out" .-> emb
+        emb ==> al
+        al ==> ds
+    end
+
+    classDef thread fill:#eef6ff,stroke:#3b82f6,color:#1e3a8a;
+    classDef proc fill:#fef7ed,stroke:#f59e0b,color:#7c2d12;
+    classDef gpu fill:#f0fdf4,stroke:#16a34a,color:#14532d;
+```
+
+**Message transport.** A message (`Frame` = image + boxes + metadata, or a `Batch`) is
+serialized once per send with pickle protocol 5 and the same bytes feed every edge. Large
+buffers can travel *beside* the pickle stream through POSIX shared memory instead of over
+TCP — opt-in via `NEUDC_SHM_IMAGES`, and only on single-consumer edges (fan-out keeps
+everything in-band to avoid a race on unlink). The consumer copies the buffer into its own
+**writable** memory, because nodes like `DrawNode` mutate the image in place.
 
 ```mermaid
 flowchart LR
-    reader["FolderImageNode<br/><i>thread</i>"] --> hash["HashNode<br/><i>thread · dedup</i>"]
-    hash --> model["ProcessDetBatchInference<br/><b>process · GPU</b>"]
-    model --> draw["DrawNode<br/><i>thread</i>"]
-    draw --> saver["SaveImageNode<br/><i>thread</i>"]
+    subgraph prod["Producer node"]
+        p1["process()"] --> p2["mailbox.send(msg)"]
+        p2 --> enc["codec.dumps<br/><i>pickle protocol-5</i>"]
+    end
+
+    enc ==>|"envelope: metadata + small buffers"| push(["ZMQ PUSH"])
+    enc -. "large out-of-band buffers<br/>image · embedding · tokens" .-> shm[("POSIX shared memory<br/><i>opt-in · single-consumer</i>")]
+
+    push ==>|"TCP · 1:1 · backpressure"| pull(["ZMQ PULL"])
+
+    subgraph cons["Consumer node"]
+        pull --> rx["rx-thread<br/><i>bounded queue</i>"]
+        rx --> dec["codec.loads"]
+        dec --> out["process()<br/><b>writable Frame</b>"]
+    end
+
+    shm -. "open → copy → unlink" .-> dec
+
+    classDef io fill:#f1f5f9,stroke:#64748b,color:#0f172a;
+    class push,pull io;
 ```
 
 A rendered architecture diagram lives in [`assets/schema/neudc.pdf`](assets/schema/neudc.pdf).
