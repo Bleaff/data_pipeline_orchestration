@@ -48,18 +48,20 @@ def test_roundtrip_frame_with_image_and_boxes() -> None:
 
 
 def test_uses_pickle_protocol_5() -> None:
-    # A protocol-5 pickle stream starts with the PROTO opcode for version 5.
+    # Wire framing: a leading plain tag byte, then a protocol-5 pickle stream (which
+    # starts with the PROTO opcode for version 5).
     raw = codec.dumps({"x": 1})
-    assert raw[:2] == b"\x80\x05"
+    assert raw[0] == 0  # _TAG_PLAIN
+    assert raw[1:3] == b"\x80\x05"
 
 
 def test_fanout_serializes_once_and_delivers_to_all(monkeypatch) -> None:
     calls = {"n": 0}
     real_dumps = codec.dumps
 
-    def counting_dumps(obj):
+    def counting_dumps(obj, use_shm=False):
         calls["n"] += 1
-        return real_dumps(obj)
+        return real_dumps(obj, use_shm=use_shm)
 
     monkeypatch.setattr(zmq_mailbox.codec, "dumps", counting_dumps)
 

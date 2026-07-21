@@ -96,16 +96,22 @@ class ZMQMailbox(BaseMailbox[dict]):
 
         Each frame is serialized once and the same bytes are reused for all
         publishers, so fan-out to N nodes does not pay N serializations.
+
+        The shared-memory buffer transport (opt-in via ``NEUDC_SHM_IMAGES``) is used
+        only on **single-consumer** edges: a segment is owned and unlinked by exactly
+        one consumer, so fan-out (or no downstream) falls back to the in-band pickle to
+        avoid a race on unlink. See :mod:`neudc.core.communication.messaging.codec`.
         """
+        use_shm = codec.SHM_ENABLED and len(self.pub_sockets) == 1
         if isinstance(message, Batch):
             for frame in message:
-                raw = codec.dumps(frame)
+                raw = codec.dumps(frame, use_shm=use_shm)
                 for pub_socket in self.pub_sockets.values():
                     pub_socket.put_bytes(raw)
         else:
             if LOGGER.isEnabledFor(logging.DEBUG):
                 LOGGER.debug(f"[{self.name}][SEND] → message with type {type(message)}")
-            raw = codec.dumps(message)
+            raw = codec.dumps(message, use_shm=use_shm)
             for pub_socket in self.pub_sockets.values():
                 pub_socket.put_bytes(raw)
 

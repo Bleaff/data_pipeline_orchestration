@@ -106,6 +106,8 @@ prometheus:
 |---|---|---|
 | `NEUDC_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
 | `NEUDC_LOG_FILE` | *(unset)* | Path to a rotating log file. Opt-in — off by default to keep the hot path free of disk I/O. |
+| `NEUDC_SHM_IMAGES` | `0` | Opt-in POSIX shared-memory transport for large buffers (images, embeddings, …) instead of pickling them over TCP. Applies only to **single-consumer** edges; fan-out and control messages stay in-band. POSIX only. |
+| `NEUDC_SHM_MIN_BYTES` | `65536` | Minimum buffer size (bytes) diverted to shared memory when `NEUDC_SHM_IMAGES` is on; smaller buffers stay in-band. |
 
 ## 🧩 Available nodes
 
