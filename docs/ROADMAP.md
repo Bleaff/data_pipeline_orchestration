@@ -1,7 +1,8 @@
 # 🗺 Роадмап NEUDC
 
-Согласованный план развития проекта, сгруппированный по четырём трекам:
-**фундамент** (`track:foundation`), **CV** (`track:cv`), **UI** (`track:ui`) и **LLM** (`track:llm`).
+Согласованный план развития проекта, сгруппированный по пяти трекам:
+**фундамент** (`track:foundation`), **CV** (`track:cv`), **UI** (`track:ui`),
+**LLM** (`track:llm`) и **Realtime** (`track:realtime`).
 
 Актуальный статус задач — в [issues](https://github.com/Bleaff/data_pipeline_orchestration/issues)
 и на [project board](https://github.com/users/Bleaff/projects/6). Этот файл фиксирует
@@ -27,6 +28,23 @@
 | 11 | [#13](https://github.com/Bleaff/data_pipeline_orchestration/issues/13) | medium | Включить ruff + mypy (сейчас закомментированы в pre-commit), довести типизацию, CI-матрица по Python и `pytest` в CI |
 | 12 | [#14](https://github.com/Bleaff/data_pipeline_orchestration/issues/14) | high | Настоящая наблюдаемость: глубина очередей, throughput/latency/ошибки на узел, единый реестр метрик Prometheus, Grafana-дашборд |
 | 13 | [#15](https://github.com/Bleaff/data_pipeline_orchestration/issues/15) | medium | `replicas: N` на тяжёлый узел (PUSH → N PULL-воркеров), опционально автоскейл по глубине очереди |
+| — | [#39](https://github.com/Bleaff/data_pipeline_orchestration/issues/39) | medium | **Баг:** health-монитор помечает штатно простаивающий узел как unhealthy — живость цикла путается с наличием входящих данных |
+| — | [#40](https://github.com/Bleaff/data_pipeline_orchestration/issues/40) | medium | **Баг:** `if result:` вместо `if result is not None:` — латентный, выстрелит на новых payload-типах (#34). Чинить **до** их мержа |
+
+### Эпик «Data streams» — от кадров к произвольным потокам
+
+Граф узлов пока жёстко завязан на `Frame`. Транспорт уже payload-агностичен
+(#10 / PR #32: любой крупный out-of-band буфер едет через shared memory), так что
+эпик — про типы сообщений и контракты узлов, а не про передачу.
+
+| Issue | Приоритет | Суть |
+|---|---|---|
+| [#33](https://github.com/Bleaff/data_pipeline_orchestration/issues/33) | medium | Базовый тип `BaseMessage`, от которого наследуется `Frame`; `Batch` — дженерик над ним; mailbox типизируется по нему вместо `Batch \| Frame` |
+| [#34](https://github.com/Bleaff/data_pipeline_orchestration/issues/34) | low | Payload-схемы: `TextChunk`, `TokenTensor`, `AudioChunk`, `VideoSegment` |
+| [#35](https://github.com/Bleaff/data_pipeline_orchestration/issues/35) | low | Контракт узла: явная декларация `accepts` / `emits`, диспетч в фабрике |
+| [#36](https://github.com/Bleaff/data_pipeline_orchestration/issues/36) | low | Config-валидатор: совместимость payload-типов на рёбрах, fail-fast с именем узла |
+
+Порядок строгий: **#33 → #34 → #35 → #36.**
 
 ## 🎯 Трек «CV» — ценность для авторазметки
 
@@ -62,6 +80,24 @@ hosted API) для аугментации датасетов.
 | [#25](https://github.com/Bleaff/data_pipeline_orchestration/issues/25) | medium | `LLMBackend`: провайдер-абстракция — OpenRouter + локальные Ollama / vLLM / llama.cpp через OpenAI-совместимый endpoint; база для VLM-узла и копайлота |
 | [#26](https://github.com/Bleaff/data_pipeline_orchestration/issues/26) | low | Копайлот: управление пайплайном/датасетом на естественном языке — agentic-loop поверх control-plane API (делать последним: нужны API с tools и метрики) |
 
+## 🎙 Трек «Realtime» — потоковый инференс
+
+Пайп проектировался под офлайн-разметку: пропускная способность важнее задержки,
+терять данные нельзя. Диалоговые сценарии (mic → VAD → ASR → LLM → TTS) переворачивают
+оба допущения. Эпик «Data streams» закрывает измерение **«тип»** — какой payload едет
+по графу; этот трек закрывает измерение **«время»**. Без второго получится пайп,
+который умеет носить аудио и при этом тормозит.
+
+| Issue | Приоритет | Суть |
+|---|---|---|
+| [#37](https://github.com/Bleaff/data_pipeline_orchestration/issues/37) | high | `process()` как генератор: N сообщений на один вход, инкрементально. Сейчас контракт строго 1-in → 1-out, а `Batch` требует накопить весь результат целиком — для потоковых ASR / LLM / TTS это задержка в размер всей реплики |
+| [#38](https://github.com/Bleaff/data_pipeline_orchestration/issues/38) | high | Политика очереди на ребро: `block` (дефолт, как сейчас) / `drop_oldest` / `conflate`. Разметке нужен lossless, реалтайму — выкинуть протухшее и не копить лаг |
+| [#41](https://github.com/Bleaff/data_pipeline_orchestration/issues/41) | medium | Приоритетный control-канал (barge-in): обратное ребро собирается уже сейчас, но команда «замолчи» встаёт в тот же FIFO за бэклогом — нужен путь мимо очереди данных |
+| [#42](https://github.com/Bleaff/data_pipeline_orchestration/issues/42) | low | Живой аудио-источник (микрофон / поток) + VAD. Та же задача, что `VideoReader` в #18: источник задаёт темп, не имеет конца, может отставать |
+
+Порядок: **#37 первым** — самая рискованная архитектурно правка, цену надо выяснить
+до того, как поверх наросли узлы.
+
 ---
 
 ## 🔗 Ключевые зависимости между треками
@@ -70,3 +106,11 @@ hosted API) для аугментации датасетов.
 - **Stage 12 (метрики) → Stage 13 (автоскейл), #22 (API), #23 (дашборд):** наблюдаемость — общий фундамент.
 - **#25 (`LLMBackend`) → #17 (VLM-узел), #26 (копайлот).**
 - **#22 (control-plane API) → #23/#24 (frontend), #26 (копайлот).**
+- **#33 (`BaseMessage`) → весь эпик Data streams, а также #41:** `session_id` / `turn_id` /
+  `is_final` живут в базовом типе, иначе их придётся вносить вторым проходом по всем узлам.
+- **#40 (truthiness) → #34 (payload-схемы):** починить *до*, иначе пустой `AudioChunk`
+  или `TextChunk("")` будет молча теряться без следа в логах и метриках.
+- **#37 (генератор) → #41 (отмена реплики):** прерывать нечего, пока узел отдаёт
+  ровно одно сообщение на вход.
+- **#34 (`AudioChunk`) + #38 (политика очереди) → #42 (аудио-источник).**
+- **#38 (счётчик дропов) ↔ #14 (метрики):** дроп без счётчика — потеря без следа.
