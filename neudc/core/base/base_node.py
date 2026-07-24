@@ -10,6 +10,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any
 
+from neudc.core.policy import ErrorPolicy, NodeFailure
 from neudc.utils import LOGGER
 
 
@@ -56,6 +57,13 @@ class BaseNode(ABC):
         self.is_running = False
         self.id = id
         self.is_ready = False
+        self._stop_event = threading.Event()
+        # Set when the node gives up under an ErrorAction.FAIL policy, so the pipeline
+        # can tell "stopped because it was told to" from "stopped because it broke".
+        self._failed_event = threading.Event()
+        # Replaced by the factory with the policy from the node's config; the default
+        # is the historical behaviour (log the exception and drop the message).
+        self.error_policy = ErrorPolicy()
 
     def _collect_data(self) -> Any:
         """Grabs data from mailbox."""
@@ -94,19 +102,54 @@ class BaseNode(ABC):
 
         """
 
+    def _wait_for_stop(self, timeout: float) -> bool:
+        """Sleep up to ``timeout`` seconds; return True if the node was asked to stop.
+
+        Handed to the error policy so a long retry backoff does not delay shutdown by
+        its full length.
+        """
+        return self._stop_event.wait(timeout)
+
+    def _handle(self, data: Any) -> Any:
+        """Run ``process`` on one message under this node's error policy.
+
+        Both run loops — this class's thread loop and ``BaseProcessNode.run`` — go
+        through here, so the two cannot drift apart the way they did in #12.
+
+        Returns the result to send, or None when the message was dropped. Only
+        ``process`` is covered: the send that follows is deliberately outside the
+        policy, since re-sending would deliver the message twice.
+        """
+        try:
+            return self.error_policy.execute(self.process, data, wait=self._wait_for_stop)
+        except NodeFailure:
+            # Already logged as critical by the policy. Flag the failure and let the
+            # loop fall out; deliberately *not* self.stop() — that tears down the ZMQ
+            # context, and doing it from inside the node's own processing thread while
+            # the mailbox receiver thread still holds sockets crashes the interpreter.
+            # Teardown belongs to whoever started the node (see BasePipeline.run).
+            self._failed_event.set()
+            self.is_running = False
+            self._stop_event.set()
+            return None
+
+    def failed(self) -> bool:
+        """Whether the node stopped because its error policy gave up on a message."""
+        return self._failed_event.is_set()
+
     def _run(self) -> None:
         """Run the node processing loop."""
         self.is_ready = True
         while self.is_running:
             data = self._collect_data()
             if data is not None:
-                try:
-                    result = self.process(data)
-                    if result:
+                result = self._handle(data)
+                if result:
+                    try:
                         self.mailbox.send(result)
-                except Exception as e:
-                    self.is_ready = False
-                    LOGGER.exception("Error while processing", exc_info=e)
+                    except Exception as e:
+                        self.is_ready = False
+                        LOGGER.exception("Error while sending result", exc_info=e)
 
     @abstractmethod
     def start(self) -> None:
@@ -117,7 +160,6 @@ class BaseNode(ABC):
         # This method can be overridden by subclasses to initialize specific resources
         LOGGER.info("Starting node...")
         self.is_running = True
-        self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         LOGGER.info("Node started.")

@@ -56,6 +56,11 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
         self._last_success_time = mp.Value("d", 0.0)
         self.stop_event = mp.Event()
+        # BaseNode.__init__ created threading primitives. A process node must use the
+        # multiprocessing ones instead: they are shared with the child, and a
+        # threading.Event is not picklable for spawn in the first place.
+        self._stop_event = self.stop_event
+        self._failed_event = mp.Event()
         # Set by the child once its mailbox is rebound and runtime is ready; lets the
         # parent wait for real readiness instead of a fixed sleep before starting
         # upstream producers. Shared across spawn the same way as stop_event.
@@ -99,7 +104,9 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                 if data is None:
                     continue
 
-                result = self.process(data)
+                # Same policy-aware path as the threaded loop (see BaseNode._handle):
+                # retries, dead-lettering and the fail action live in one place.
+                result = self._handle(data)
                 # check result is not None
                 if result:
                     self.mailbox.send(result)

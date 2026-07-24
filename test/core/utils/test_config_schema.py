@@ -55,6 +55,44 @@ def test_duplicate_ids() -> None:
         validate_pipeline_config(cfg)
 
 
+def test_valid_error_policy_passes() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "reader",
+                "type": "FolderImageNode",
+                "outputs": [],
+                "error_policy": {"on_error": "retry", "max_retries": 3, "dead_letter_dir": "./dead"},
+            },
+        ],
+    }
+    assert validate_pipeline_config(cfg).nodes[0].id == "reader"
+
+
+def test_invalid_error_policy_names_the_node() -> None:
+    # Fails at config load, not deep in a running pipeline, and says which node.
+    cfg = {
+        "nodes": [
+            {"id": "reader", "type": "FolderImageNode", "outputs": []},
+            {"id": "detector", "type": "ProcessDetInference", "outputs": [], "error_policy": {"on_error": "sometimes"}},
+        ],
+    }
+    with pytest.raises(ConfigError, match="Node 'detector': invalid 'error_policy'"):
+        validate_pipeline_config(cfg)
+
+
+def test_error_policy_retry_without_retries_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "error_policy": {"on_error": "retry"}}]}
+    with pytest.raises(ConfigError, match="max_retries"):
+        validate_pipeline_config(cfg)
+
+
+def test_error_policy_must_be_a_mapping() -> None:
+    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "error_policy": "retry"}]}
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        validate_pipeline_config(cfg)
+
+
 def test_example_cpu_pipeline_config_is_valid() -> None:
     config_path = Path("assets/configs/example_cpu_pipeline.yaml")
     parsed = validate_pipeline_config(load_config(config_path))

@@ -20,6 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from neudc.core.node.node_factory import NodeFactory
+from neudc.core.policy import ErrorPolicyConfig
 
 
 class ConfigError(ValueError):
@@ -61,7 +62,27 @@ class PipelineConfig(BaseModel):
                 if target not in id_set:
                     msg = f"Node '{node.id}': output '{target}' does not reference any node id"
                     raise ConfigError(msg)
+            _check_error_policy(node)
         return self
+
+
+def _check_error_policy(node: NodeSpec) -> None:
+    """Validate a node's optional ``error_policy`` block, naming the node on failure.
+
+    Kept out of :class:`NodeSpec` so the message points at the node id the user wrote
+    rather than at a positional index in the ``nodes`` list.
+    """
+    raw = getattr(node, "error_policy", None)
+    if raw is None:
+        return
+    if not isinstance(raw, dict):
+        msg = f"Node '{node.id}': 'error_policy' must be a mapping, got {type(raw).__name__}"
+        raise ConfigError(msg)
+    try:
+        ErrorPolicyConfig(**raw)
+    except ValidationError as exc:
+        msg = f"Node '{node.id}': invalid 'error_policy': {exc}"
+        raise ConfigError(msg) from exc
 
 
 def validate_pipeline_config(raw: Any) -> PipelineConfig:

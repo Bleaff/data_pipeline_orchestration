@@ -11,6 +11,8 @@ from __future__ import annotations
 import importlib
 from typing import Any, ClassVar
 
+from neudc.core.policy import ErrorPolicy
+
 
 class NodeFactory:
     """Factory to create node instances based on config."""
@@ -63,4 +65,12 @@ class NodeFactory:
         config["mailbox"] = mailbox
         config.pop("type", None)
         config.pop("outputs", None)  # routing-only key, not a node argument
-        return node_class.from_config(config)
+        # Error handling is uniform across node types, so it is wired here instead of
+        # in every from_config (see neudc.core.policy).
+        error_policy = config.pop("error_policy", None)
+        node_id = config.get("id") or node_type
+
+        node = node_class.from_config(config)
+        node.id = node_id
+        node.error_policy = ErrorPolicy.from_config(error_policy, node_id=node_id)
+        return node
