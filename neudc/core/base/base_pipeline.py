@@ -57,9 +57,15 @@ class BasePipeline(Process):
         for node in self.nodes:
             node.start()
 
-        # 3. Keep alive
+        # 3. Keep alive, watching for a node that gave up under an `on_error: fail`
+        # policy. Deliberately not `node.status()`: health also goes false when a node
+        # merely sits idle, and an idle pipeline must not shut itself down.
         try:
             while not self.stop_event.is_set():
+                broken = [node.id for node in self.nodes if node.failed()]
+                if broken:
+                    logger.critical(f"Node(s) {broken} failed under their error policy; stopping pipeline.")
+                    break
                 time.sleep(0.1)  # чтобы не сжирало CPU
         except KeyboardInterrupt:
             logger.warning("Pipeline interrupted by keyboard.")

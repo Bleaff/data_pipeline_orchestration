@@ -161,6 +161,48 @@ prometheus:
   port: 8000
 ```
 
+### Error policy
+
+Any node may declare what happens when its processing raises. Without the block a
+node logs the exception and drops the message — the historical behaviour.
+
+```yaml
+  - id: detector
+    type: ProcessDetInference
+    outputs: [saver]
+    error_policy:
+      on_error: retry          # skip (default) | retry | fail
+      max_retries: 3
+      initial_backoff: 0.1     # seconds before the first retry
+      backoff_multiplier: 2.0  # each retry waits this much longer
+      max_backoff: 5.0         # …up to this cap
+      jitter: true             # spread delays so nodes don't retry in lockstep
+      dead_letter_dir: "./dead_letter"
+      store_payload: false     # also pickle the message next to the record
+```
+
+| `on_error` | Behaviour |
+|---|---|
+| `skip` | Log, dead-letter, drop the message, keep going. The default. |
+| `retry` | Re-run `process()` up to `max_retries` times with exponential backoff, then dead-letter and drop. Requires `max_retries >= 1`. |
+| `fail` | Dead-letter and stop the node, which brings the whole pipeline down. |
+
+With `dead_letter_dir` set, every message that could not be processed is appended as
+one JSON object to `<dir>/<node_id>.jsonl` — the error, its traceback, and whatever
+identifies the message. Payloads are not written unless `store_payload` is on, since a
+dead-lettered frame would otherwise cost megabytes per record.
+
+Two things to know before choosing `retry`:
+
+- Only `process()` is retried, never the send that follows it — re-sending would
+  deliver the message twice.
+- `process()` must tolerate a second call on the same message. Nodes that mutate it in
+  place (`DrawNode` draws onto `frame.image`) would retry on a half-modified message;
+  use `skip` for those.
+
+The block is validated with the rest of the config, so a typo or a contradictory
+setting (`on_error: retry` with no retries) is rejected at startup, naming the node.
+
 ### Environment variables
 
 | Variable | Default | Purpose |

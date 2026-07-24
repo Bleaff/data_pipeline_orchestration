@@ -58,6 +58,9 @@ from neudc.utils.logger import LOGGER
 # How long to wait for a process node to report readiness before starting producers.
 STARTUP_READY_TIMEOUT_SEC = 30.0
 
+# How often to check whether a node gave up under an `on_error: fail` policy.
+FAILURE_POLL_INTERVAL_SEC = 0.5
+
 
 def _maybe_start_prometheus(config: dict) -> None:
     """Start the Prometheus HTTP server if enabled in the config."""
@@ -115,6 +118,18 @@ def main(config_path: str) -> None:
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
+
+    # 6. A node whose error policy is `fail` only flags itself; bringing the pipeline
+    #    down is the owner's job, which here is this entry point.
+    def _watch_for_failed_nodes() -> None:
+        while not stop_event.wait(FAILURE_POLL_INTERVAL_SEC):
+            broken = [node.id for node in all_nodes if node.failed()]
+            if broken:
+                LOGGER.critical(f"Node(s) {broken} failed under their error policy; shutting down.")
+                stop_event.set()
+                return
+
+    threading.Thread(target=_watch_for_failed_nodes, daemon=True).start()
 
     try:
         stop_event.wait()
