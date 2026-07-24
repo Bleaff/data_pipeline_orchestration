@@ -1,12 +1,21 @@
-"""Base class for box attributes.
+"""Message types carried by the graph.
 
-This class defines the base attributes for a box, including the source node ID.
+Everything that travels between nodes is a :class:`BaseMessage` — the common
+envelope — or a :class:`Batch` of them. :class:`Frame` is the CV payload
+(pixels plus annotations); other modalities subclass ``BaseMessage`` the same
+way, so mailboxes and node contracts are typed by the envelope rather than by
+images.
+
+Also defines the attributes that nodes annotate onto a frame: boxes, classes,
+segmentation masks, keypoints.
 """
 
 from __future__ import annotations
 
+from typing import Generic, TypeVar
+
 import numpy as np  # noqa
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # === Base Attribute ===
 
@@ -30,12 +39,9 @@ class Class(BaseAttribute):
 class Segmentation(BaseAttribute):
     """Segmentation mask (image) attached to a box."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     image: np.ndarray
-
-    class Config:
-        """Pydantic config for Segmentation class."""
-
-        arbitrary_types_allowed = True
 
 
 class Text(BaseAttribute):
@@ -51,6 +57,8 @@ class Text(BaseAttribute):
 class Box(BaseAttribute):
     """Box with absolute coordinates."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     x1: float | int
     y1: float | int
     x2: float | int
@@ -60,11 +68,6 @@ class Box(BaseAttribute):
     score: float
     labels: list[Class] | None = None
     reid: str = "-1"
-
-    class Config:
-        """Service config for Box class."""
-
-        arbitrary_types_allowed = True
 
 
 # === Keypoints ===
@@ -86,31 +89,74 @@ class Keypoints(BaseModel):
     description: str = ""
 
 
-# === Frame ===
+# === Messages ===
 
 
-class Frame(BaseModel):
+class BaseMessage(BaseModel):
+    """Common envelope for anything that travels between nodes.
+
+    Concrete payloads subclass this: :class:`Frame` for the CV path, and the
+    text / audio / token schemas for other modalities. Mailboxes and node
+    contracts are typed by this class, so the graph is not tied to images.
+
+    Large buffers on subclasses (pixels, audio samples, tensors) need no special
+    handling here — the codec pulls them out of the pickle stream generically,
+    see :mod:`neudc.core.communication.messaging.codec`.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    timestamp: float
+    source: str = ""
+    """Who produced the message: node id, device or stream name.
+
+    Distinct from :attr:`Frame.source_frame`, which is the path of an image on
+    disk and stays CV-specific.
+    """
+
+    drop: bool = False
+    """Marks a message the downstream nodes should skip rather than consume."""
+
+    # Streaming identity. Unused by the batch labelling path, where every message
+    # stands alone; a streaming producer sets these so a consumer can tell which
+    # dialogue/turn a message belongs to and when that turn ended.
+    session_id: str | None = None
+    turn_id: int | None = None
+    is_final: bool = True
+
+
+class Frame(BaseMessage):
     """Frame with image, timestamp, and boxes."""
 
     image: np.ndarray
-    timestamp: float
     source_frame: str
     frame_id: int
     boxes: list[Box]
     embedding: np.ndarray | None = None
     frame_id_last: int
-    drop: bool
-
-    class Config:
-        """Pydantic config for Frame class."""
-
-        arbitrary_types_allowed = True
 
 
-class Batch(BaseModel):
-    """Batch of frames."""
+MessageT = TypeVar("MessageT", bound=BaseMessage)
 
-    frames: list[Frame]
+
+class Batch(BaseModel, Generic[MessageT]):
+    """Group of messages handled as one unit (batched inference, selection).
+
+    Generic over the payload: ``Batch[Frame]`` for the CV path. The field keeps
+    the name ``frames`` for compatibility with existing nodes.
+
+    A batch is not itself a :class:`BaseMessage`: the mailbox unrolls it and sends
+    its items one by one, so a batch never crosses an edge as a unit.
+
+    That is what makes one pydantic quirk harmless — a parametrized alias built
+    inside a function (``Batch[Frame](...)`` in a node method) is **not picklable**,
+    because pydantic only registers the generated class in its module when the
+    parametrization happens at module level. Batches stay process-local, so this
+    never reaches the transport; serialize the unparametrized ``Batch`` if you ever
+    need one on the wire.
+    """
+
+    frames: list[MessageT]
 
     def __iter__(self):
         return iter(self.frames)

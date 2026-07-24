@@ -26,14 +26,18 @@ from zmq.error import ZMQError
 
 from neudc.core.base.base_mailbox import BaseMailbox
 from neudc.core.communication.messaging import codec
-from neudc.core.communication.messaging.types import Batch, Frame
+from neudc.core.communication.messaging.types import BaseMessage, Batch
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType
 from neudc.utils import LOGGER
 
 
-class ZMQMailbox(BaseMailbox[dict]):
-    """ZeroMQ-based mailbox implementation."""
+class ZMQMailbox(BaseMailbox[BaseMessage]):
+    """ZeroMQ-based mailbox implementation.
+
+    Typed by :class:`BaseMessage`, not by :class:`~neudc.core.communication.messaging.types.Frame`:
+    the transport carries any message subclass, so non-CV payloads need no change here.
+    """
 
     def __init__(
         self,
@@ -91,11 +95,13 @@ class ZMQMailbox(BaseMailbox[dict]):
         for pub_socket in self.pub_sockets.values():
             pub_socket.stop()
 
-    def send(self, message: Batch | Frame) -> None:
+    def send(self, message: BaseMessage | Batch) -> None:
         """Send a message to every downstream edge.
 
-        Each frame is serialized once and the same bytes are reused for all
-        publishers, so fan-out to N nodes does not pay N serializations.
+        A :class:`Batch` is unrolled and its items are sent one by one; any other
+        :class:`BaseMessage` goes out as-is. Each message is serialized once and the
+        same bytes are reused for all publishers, so fan-out to N nodes does not pay
+        N serializations.
 
         The shared-memory buffer transport (opt-in via ``NEUDC_SHM_IMAGES``) is used
         only on **single-consumer** edges: a segment is owned and unlinked by exactly
@@ -104,8 +110,8 @@ class ZMQMailbox(BaseMailbox[dict]):
         """
         use_shm = codec.SHM_ENABLED and len(self.pub_sockets) == 1
         if isinstance(message, Batch):
-            for frame in message:
-                raw = codec.dumps(frame, use_shm=use_shm)
+            for item in message:
+                raw = codec.dumps(item, use_shm=use_shm)
                 for pub_socket in self.pub_sockets.values():
                     pub_socket.put_bytes(raw)
         else:
@@ -115,11 +121,12 @@ class ZMQMailbox(BaseMailbox[dict]):
             for pub_socket in self.pub_sockets.values():
                 pub_socket.put_bytes(raw)
 
-    def receive(self, timeout: float | None = None) -> dict:
-        """Receive a message from the mailbox."""
+    def receive(self, timeout: float | None = None) -> BaseMessage | None:
+        """Receive a message from the mailbox, or None if nothing arrived in time."""
         try:
             message = self._message_queue.get(timeout=timeout if timeout else 0.1)
             if LOGGER.isEnabledFor(logging.DEBUG):
+                # frame_id is CV-specific; absent on other payloads.
                 frame_id = getattr(message, "frame_id", None)
                 LOGGER.debug(f"[{self.name}][RECV] ← message {type(message).__name__} frame_id={frame_id}")
         except Empty:
