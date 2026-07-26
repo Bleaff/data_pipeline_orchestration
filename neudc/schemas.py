@@ -1,14 +1,21 @@
+"""Pydantic configuration schemas for model inference and dataset/data-processing settings."""
+
 from __future__ import annotations
 
-import os
+from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from neudc.nn.backends import BackendType
 from neudc.utils import LOGGER
 
 __all__ = ("Config",)
+
+# imgsz given as a list must be [height, width].
+_IMGSZ_LIST_LENGTH = 2
+# An interval is a [start, end] pair.
+_INTERVAL_LENGTH = 2
 
 
 class ModelConfig(BaseModel):
@@ -30,10 +37,10 @@ class ModelConfig(BaseModel):
 
     @field_validator("backend")
     @classmethod
-    def validate_backend(cls, v: BackendType, values) -> BackendType:
+    def validate_backend(cls, v: BackendType, values: ValidationInfo) -> BackendType:
         # If backend is TensorRT, device must be cuda
         if v == BackendType.TENSORRT:
-            device = values.data.get("device")
+            device: str = values.data.get("device", "cpu")
             if "cuda" not in device:
                 msg = "TensorRTBackend only supports 'cuda' device"
                 raise ValueError(msg)
@@ -41,9 +48,9 @@ class ModelConfig(BaseModel):
 
     @field_validator("path")
     @classmethod
-    def validate_model_path(cls, v: str, values) -> str:
+    def validate_model_path(cls, v: str, values: ValidationInfo) -> str:
         # Ensure the file exists
-        if not os.path.exists(v):
+        if not Path(v).exists():
             msg = f"Model path {v} does not exist"
             raise ValueError(msg)
 
@@ -57,7 +64,7 @@ class ModelConfig(BaseModel):
         if backend == BackendType.TORCH and not v.lower().endswith((".pt", ".pth", ".torchscript")):
             msg = "For TorchBackend, model file must be a .pt, .torchscript or .pth file"
             raise ValueError(msg)
-        elif backend == BackendType.TENSORRT and not v.lower().endswith(".engine"):
+        if backend == BackendType.TENSORRT and not v.lower().endswith(".engine"):
             msg = "For TensorRTBackend, model file must be a .engine file"
             raise ValueError(msg)
 
@@ -67,7 +74,7 @@ class ModelConfig(BaseModel):
     @classmethod
     def validate_imgsz(cls, v: int | tuple[int, int]) -> int | tuple[int, int]:
         if isinstance(v, list):
-            if len(v) != 2:
+            if len(v) != _IMGSZ_LIST_LENGTH:
                 msg = "If imgsz is a list, it must contain exactly two elements [h, w]"
                 raise ValueError(msg)
             if not all(isinstance(x, int) and x > 0 for x in v):
@@ -78,8 +85,10 @@ class ModelConfig(BaseModel):
                 msg = "imgsz must be a positive integer"
                 raise ValueError(msg)
         else:
+            # Pydantic validators must raise ValueError/AssertionError to be wrapped into a
+            # ValidationError; TypeError would propagate raw and break the fail-fast config flow.
             msg = "imgsz must be either an integer or a list of two integers"
-            raise ValueError(msg)
+            raise ValueError(msg)  # noqa: TRY004
         return v
 
 
@@ -100,7 +109,7 @@ class DataConfig(BaseModel):
     def validate_paths(cls, v: list[str]) -> list[str]:
         paths = []
         for path in v:
-            if not os.path.exists(v):
+            if not Path(path).exists():
                 LOGGER.info(f"Inference path {path} doesn't exist, skip.")
             else:
                 paths.append(path)
@@ -110,7 +119,7 @@ class DataConfig(BaseModel):
     @classmethod
     def validate_intervals(cls, v: list[list[float]]) -> list[list[float]]:
         for interval in v:
-            if len(interval) != 2:
+            if len(interval) != _INTERVAL_LENGTH:
                 msg = "Interval must contain exactly 2 values"
                 raise ValueError(msg)
             if interval[0] >= interval[1]:
@@ -121,10 +130,12 @@ class DataConfig(BaseModel):
     @field_validator("save_result_dir")
     @classmethod
     def validate_result_dir(cls, v: str) -> str:
-        os.makedirs(v, exist_ok=True)
+        Path(v).mkdir(parents=True, exist_ok=True)
         return v
 
 
 class Config(BaseModel):
+    """Top-level configuration combining model inference settings and data-processing settings."""
+
     model: ModelConfig
     data: DataConfig

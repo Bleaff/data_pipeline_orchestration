@@ -29,7 +29,7 @@ class FolderImageNode(BaseThreadedNode):
         mailbox: Any,
         mode: str = ImageReaderMode.LOOP,
         frame_delay: float = 0.01,
-    ) -> FolderImageNode:
+    ) -> None:
         """Initialize FolderImageNode.
 
         Args:
@@ -89,11 +89,10 @@ class FolderImageNode(BaseThreadedNode):
             self.stop()
             return None
 
-        if self.frame_id >= len(self.image_files):
-            if self.mode == ImageReaderMode.ONLY_ONE:
-                LOGGER.info("All images processed in 'ONLY_ONE' mode.")
-                self.stop()
-                return None
+        if self.frame_id >= len(self.image_files) and self.mode == ImageReaderMode.ONLY_ONE:
+            LOGGER.info("All images processed in 'ONLY_ONE' mode.")
+            self.stop()
+            return None
 
         # Load image from disk
         image_path = self.folder_path / self.image_files[self.frame_id % len(self.image_files)]

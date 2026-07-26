@@ -41,7 +41,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
         super().__init__(*args, **kwargs)
 
     @FilterPostprocessProfiler()
-    def postprocess_result(self, result: np.ndarray, item: Batch) -> Batch | None | Frame:
+    def postprocess_result(self, result: np.ndarray, item: Batch) -> Batch[Frame] | Frame | None:
         """Accumulate embeddings and frame metadata, then cluster when complete.
 
         Parameters
@@ -58,7 +58,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
             reached its last_id, or None if not yet ready.
 
         """
-        for emb, frame_item in zip(result, item):
+        for emb, frame_item in zip(result, item, strict=True):
             src = str(Path(frame_item.source_frame).parent)
             frame_id = frame_item.frame_id
             last_id = frame_item.frame_id_last
@@ -67,8 +67,10 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
             self.frame_cache.setdefault(src, {})[frame_id] = frame_item
             if len(self.frame_cache[src]) == last_id:
                 return self.cluster_and_select(src)
+        return None
 
-    def cluster_and_select(self, source: str) -> Batch | None | Frame:  # noqa: C901
+    # Clustering/selection logic is one cohesive unit; splitting it would obscure the algorithm.
+    def cluster_and_select(self, source: str) -> Batch[Frame] | Frame | None:  # noqa: C901, PLR0912
         """1) Run DBSCAN (cosine) on all cached embeddings for the source.
 
         2) For each cluster label >= 0:
@@ -93,7 +95,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
         picked: set[tuple[str, int]] = set()
 
         for lbl in sorted(set(labels)):
-            members = [fid for fid, lb in zip(fids, labels) if lb == lbl]
+            members = [fid for fid, lb in zip(fids, labels, strict=True) if lb == lbl]
 
             if lbl == -1:
                 picked.update((frame_dict[fid].source_frame, fid) for fid in members)
@@ -101,7 +103,6 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
 
             idxs = [fids.index(fid) for fid in members]
             embs = all_emb[idxs, :]
-            k = embs.shape[0]
 
             centroid = embs.mean(axis=0)
             d2c = np.linalg.norm(embs - centroid[None, :], axis=1)
@@ -109,6 +110,9 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
             medoid_idx = int(np.argmin(d2c))
             picked.add((frame_dict[members[medoid_idx]].source_frame, members[medoid_idx]))
 
+            # Default far_idx to the medoid itself when every point in the cluster is
+            # (near-)identical, so `selected` below is always well-defined.
+            far_idx = medoid_idx
             if not np.allclose(d2c, 0):
                 far_idx = int(np.linalg.norm(embs - embs[medoid_idx], axis=1).argmax())
                 if far_idx != medoid_idx:
@@ -130,7 +134,7 @@ class ProcessEmbeddingInference(BaseBatchProcessInference):
                     selected.add(best)
                     picked.add((frame_dict[members[best]].source_frame, members[best]))
 
-        final = Batch(frames=[])
+        final: Batch[Frame] = Batch(frames=[])
         for fid, frm in frame_dict.items():
             if not getattr(frm, "drop", False):
                 frm.drop = (frm.source_frame, fid) not in picked

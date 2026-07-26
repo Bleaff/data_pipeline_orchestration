@@ -62,7 +62,7 @@ class FeatureExtractor:
         """
         self.blockSize_feature_extractor = 32
         self.downsamplingFactor = 2
-        self.resized_image: list[Any] = []
+        self.resized_image: np.ndarray = np.array([])
         self.entropy_filt_kernel_sze = 16
         self.local_entropy_thresh = 0.6
         self.valid_img_block_thresh = 0.7
@@ -289,6 +289,6 @@ class FeatureExtractor:
             - Does not reset configuration parameters
 
         """
-        self.resized_image = []
+        self.resized_image = np.array([])
         self.roi = []
         self.__freqBands = []

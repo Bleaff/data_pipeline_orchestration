@@ -19,7 +19,8 @@ from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 class RoutingFactory:
     """Factory responsible for creating and wiring mailboxes for nodes."""
 
-    def __init__(self, config: dict) -> RoutingFactory:
+    def __init__(self, config: dict) -> None:
+        """Store the pipeline configuration used to build and wire mailboxes."""
         self.config = config
 
     def create_mailboxes(self) -> dict[str, ZMQMailbox]:

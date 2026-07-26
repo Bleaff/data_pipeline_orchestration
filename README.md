@@ -161,6 +161,43 @@ prometheus:
   port: 8000
 ```
 
+Every node exposes a common set of Prometheus metrics, all labeled by `node`:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `neudc_node_queue_depth` | Gauge | Current depth of the node's internal message queue |
+| `neudc_node_queue_hwm` | Gauge | Configured ZMQ high-water mark for the node's mailbox |
+| `neudc_node_messages_processed_total` | Counter | Messages `process()` completed successfully |
+| `neudc_node_process_latency_seconds` | Histogram | `process()` wall-clock latency per attempt |
+| `neudc_node_errors_total` | Counter | `process()` exceptions raised (including retried attempts) |
+| `neudc_node_retries_total` | Counter | Retry attempts under an `on_error: retry` policy |
+| `neudc_node_dropped_total` | Counter | Messages dropped after the error policy gave up |
+| `neudc_node_dead_lettered_total` | Counter | Messages written to a node's dead-letter sink |
+| `neudc_node_failures_total` | Counter | Times a node gave up under an `on_error: fail` policy |
+| `neudc_node_health` | Gauge | Node health as observed by its own run loop (1=healthy, 0=unhealthy) |
+
+A ready-made dashboard for these is at
+[`docs/grafana/neudc-dashboard.json`](docs/grafana/neudc-dashboard.json) — import it
+into Grafana against your Prometheus datasource.
+
+**Process nodes and multiprocess mode.** Inference nodes run in a separate OS process
+(`BaseProcessNode`), so by default their metrics live in that process's own private
+registry — invisible to the endpoint above, which only serves the main process. To make
+process-node metrics visible too, set `PROMETHEUS_MULTIPROC_DIR` to a writable, empty
+directory *before starting the pipeline* (this is a hard requirement of
+[`prometheus_client`'s multiprocess mode](https://github.com/prometheus/client_python#multiprocess-mode-eg-gunicorn),
+not a neudc-specific setting — the env var must exist before `prometheus_client` is first
+imported anywhere in the process tree):
+
+```bash
+export PROMETHEUS_MULTIPROC_DIR=/tmp/neudc-prometheus
+mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
+python -m neudc.entrypoints.main config/pipeline.yaml
+```
+
+Without it, only same-process (`BaseThreadedNode`) metrics are visible — the historical,
+single-process behaviour.
+
 ### Error policy
 
 Any node may declare what happens when its processing raises. Without the block a

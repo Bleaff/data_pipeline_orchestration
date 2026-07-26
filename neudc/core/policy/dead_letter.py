@@ -33,7 +33,7 @@ _IDENTITY_FIELDS = ("frame_id", "source_frame", "timestamp", "source", "session_
 class DeadLetterSink:
     """Append-only JSONL record of messages that failed processing."""
 
-    def __init__(self, directory: str | Path, store_payload: bool = False) -> None:
+    def __init__(self, directory: str | Path, *, store_payload: bool = False) -> None:
         """Initialize the sink.
 
         Args:

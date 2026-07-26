@@ -1,8 +1,14 @@
-from typing import Any, Optional
+"""Blur-detection inference node: drops frames the model does not flag as blurry."""
 
-from neudc.core.communication.messaging.types import Frame
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from neudc.core.node.model.base_process_inference import BaseProcessInference
 from neudc.profilers.filter_postprocess_profiler import FilterPostprocessProfiler
+
+if TYPE_CHECKING:
+    from neudc.core.communication.messaging.types import Frame
 
 
 class ProcessBlurInference(BaseProcessInference):
@@ -24,7 +30,7 @@ class ProcessBlurInference(BaseProcessInference):
         super().__init__(*args, **kwargs)
 
     @FilterPostprocessProfiler()
-    def postprocess_result(self, result: Any, item: Frame) -> Optional[Frame]:
+    def postprocess_result(self, result: Any, item: Frame) -> Frame | None:
         """Post-process blur detection results and determine frame filtering.
 
         This method examines the blur detection results and decides whether to pass
@@ -38,7 +44,7 @@ class ProcessBlurInference(BaseProcessInference):
 
         Returns:
         -------
-            Optional[Frame]: Returns the input frame if blur is detected, None if no blur
+            Frame | None: Returns the input frame if blur is detected, None if no blur
                            is detected (filtering out sharp images)
 
         Note:

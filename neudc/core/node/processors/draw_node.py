@@ -1,3 +1,5 @@
+"""Threaded node wiring `DrawBoxesLogicMixin` box-drawing logic into the pipeline."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,7 +11,7 @@ from neudc.core.node.processors.mixins.draw_boxes_mixin import DrawBoxesLogicMix
 class DrawNode(DrawBoxesLogicMixin, BaseThreadedNode):
     """A node that draws boxes on incoming Frame objects."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> DrawNode:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the DrawNode with target dimensions."""
         super().__init__(*args, **kwargs)
 

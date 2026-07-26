@@ -11,8 +11,8 @@ from .base_queue import QueueLike
 from .base_thread import BaseThreadedNode
 
 __all__ = [
-    "BaseThreadedNode",
-    "BaseProcessNode",
     "BaseMailbox",
+    "BaseProcessNode",
+    "BaseThreadedNode",
     "QueueLike",
 ]

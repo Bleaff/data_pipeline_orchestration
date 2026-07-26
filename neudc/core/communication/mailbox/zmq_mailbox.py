@@ -22,6 +22,7 @@ import threading
 from queue import Empty, Full, Queue
 from typing import Any
 
+import zmq
 from zmq.error import ZMQError
 
 from neudc.core.base.base_mailbox import BaseMailbox
@@ -29,6 +30,7 @@ from neudc.core.communication.messaging import codec
 from neudc.core.communication.messaging.types import BaseMessage, Batch
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType
+from neudc.core.observability.metrics import QUEUE_DEPTH, QUEUE_HWM
 from neudc.utils import LOGGER
 
 
@@ -45,7 +47,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         message_queue_size: int = 20,
         name: str = "ZMQMailbox",
         _join_timeout: float = 0.1,
-    ) -> ZMQMailbox:
+    ) -> None:
         """Initialize the ZeroMQ mailbox."""
         self.pub_sockets: dict[int, ZeroQueuePub] = {}
         self.sub_queue: ZeroQueueSub = ZeroQueueSub()
@@ -55,6 +57,11 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self._thread: threading.Thread | None = None
         self._join_timeout = _join_timeout
         self.name = name
+
+        # Informational: the ZMQ default (1000) unless a future config path overrides it.
+        # Read back from the socket rather than hardcoded, so it stays truthful either way.
+        assert self.sub_queue.socket_sub is not None
+        QUEUE_HWM.labels(node=self.name).set(int(self.sub_queue.socket_sub.getsockopt(zmq.RCVHWM)))
 
         self.start()
 
@@ -73,9 +80,10 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
                         break
                     except Full:
                         continue
+                QUEUE_DEPTH.labels(node=self.name).set(self._message_queue.qsize())
                 if LOGGER.isEnabledFor(logging.DEBUG):
                     LOGGER.debug(f"[RECV] ← message of type {type(message)}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- top-level receiver thread loop must never crash.
                 LOGGER.exception("Error in receiver loop", exc_info=e)
 
     def start(self) -> None:
@@ -124,7 +132,8 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
     def receive(self, timeout: float | None = None) -> BaseMessage | None:
         """Receive a message from the mailbox, or None if nothing arrived in time."""
         try:
-            message = self._message_queue.get(timeout=timeout if timeout else 0.1)
+            message = self._message_queue.get(timeout=timeout or 0.1)
+            QUEUE_DEPTH.labels(node=self.name).set(self._message_queue.qsize())
             if LOGGER.isEnabledFor(logging.DEBUG):
                 # frame_id is CV-specific; absent on other payloads.
                 frame_id = getattr(message, "frame_id", None)
@@ -185,8 +194,9 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self._join_timeout = state["_join_timeout"]
         self._thread.start()
 
-    @staticmethod
-    def from_state(cls: type[ZMQMailbox], state: dict[str, Any]) -> ZMQMailbox:
+    @classmethod
+    def from_state(cls, state: dict[str, Any]) -> ZMQMailbox:
+        """Rebuild a mailbox from a state dict produced by :meth:`__getstate__`."""
         mailbox = cls()
         mailbox.stop()
         mailbox.__setstate__(state)

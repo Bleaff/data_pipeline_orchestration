@@ -75,26 +75,28 @@ torch = [
     {version = "^2.2.1", source="torch_cuda121", markers = "sys_platform == 'linux' or sys_platform == 'win32'"},
 ]
 ultralytics = "*"
+
+# Optional dependencies -------------------------------------------------------------------------------------------
+# `optional = true` here + the [tool.poetry.extras] table below is what actually
+# makes `pip install -e ".[dev]"` etc. work; a bare [tool.poetry.optional-dependencies]
+# table (the old layout here) is not a real Poetry key and is silently ignored.
+pre-commit = {version = "==4.0.1", optional = true}
+virtualenv = {version = "==20.28.0", optional = true}
+ipdb = {version = "==0.13.13", optional = true}
+ruff = {version = "*", optional = true}
+mypy = {version = "*", optional = true}
+cuda-python = {version = "==12.6.2.post1", optional = true}
+tensorrt = {version = "==10.5.0", optional = true}
+onnxruntime-gpu = {version = "*", optional = true}
+
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.2"
 pytest-cov = "^6.0.0"
 
-# Optional dependencies ------------------------------------------------------------------------------------------------
-[tool.poetry.optional-dependencies]
-dev = [
-    "pre-commit==4.0.1",
-    "virtualenv==20.28.0",
-    "ipdb==0.13.13",
-]
-
-trt = [
-    "cuda-python==12.6.2.post1",
-    "tensorrt==10.5.0",
-]
-
-onnx = [
-    "onnxruntime-gpu",
-]
+[tool.poetry.extras]
+dev = ["pre-commit", "virtualenv", "ipdb", "ruff", "mypy"]
+trt = ["cuda-python", "tensorrt"]
+onnx = ["onnxruntime-gpu"]
 
 # Package sources -----------------------------------------------------------------------------------------------------
 # Referenced by the `torch` dependency above for Linux/Windows CUDA wheels.
@@ -135,6 +137,30 @@ split_before_first_argument = false
 
 [tool.ruff]
 line-length = 120
+target-version = "py311"
+extend-exclude = [".venv*"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "E203", "E266", "E501", "E722", "F403", "F401",
+    "ANN101", "ANN401", "D203", "D213", "G004", "PLR0913", "S101",
+    # No copyright-header convention in this repo.
+    "CPY001",
+    # Conflicts with black's own trailing-comma handling.
+    "COM812",
+    # The factory layer (NodeFactory/ModelFactory/backends) requires lazy imports by
+    # design (see CLAUDE.md) so CPU-only pipelines don't pull in heavy deps at import time.
+    "PLC0415",
+    # `id` is the established parameter name for node identifiers across the codebase;
+    # renaming every node constructor is a purely cosmetic, high-churn change.
+    "A002",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests favor readability/duck-typed fakes over the doc/annotation/design rules that
+# matter for library code (see CLAUDE.md's testing guidance on lightweight mocks).
+"test/**" = ["D1", "ANN", "PLR2004", "SLF001", "ARG001", "ARG002", "FBT001", "FBT002", "S105", "S106"]
 
 [tool.docformatter]
 wrap-summaries = 120

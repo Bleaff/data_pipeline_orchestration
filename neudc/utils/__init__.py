@@ -7,6 +7,7 @@ such as TensorRT and ONNX.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import platform
 from pathlib import Path
@@ -26,26 +27,21 @@ PROFILE_FREQ = 10
 
 
 try:
-    import tensorrt as trt  # noqa
+    import tensorrt as trt
 
     TENSORRT_ENABLE = True
 except ImportError:
     TENSORRT_ENABLE = False
     LOGGER.info("TensorRT library is not installed. Check your installation carefully.")
-try:
-    import onnxruntime as ort  # noqa
 
-    ONNX_PROFILE_ENABLE = True
-except ImportError:
-    ONNX_PROFILE_ENABLE = False
+# A presence check, not a real import: nothing here needs the onnxruntime module itself,
+# and a bare `import onnxruntime` used only for this check is silently stripped by
+# autoflake's unused-import removal (it can't tell the import is load-bearing).
+ONNX_PROFILE_ENABLE = importlib.util.find_spec("onnxruntime") is not None
+if not ONNX_PROFILE_ENABLE:
     LOGGER.info("ONNX library is not installed. Check your installation carefully.")
-try:
-    from cuda import cuda  # noqa
-
-    CUDA_PROFILE_ENABLE = True
-except ImportError:
-    CUDA_PROFILE_ENABLE = False
-    LOGGER.info("Cuda library is not installed. Check your installation carefully.")
+# CUDA_PROFILE_ENABLE is computed once in neudc.utils.profile (imported above); no need
+# to recompute it here.
 
 if TENSORRT_ENABLE:
     TRT_LOGGING_MAP = {
@@ -79,18 +75,17 @@ else:
     TensorRTLogger = LOGGER  # type: ignore[attr-defined, misc, assignment]
 
 __all__ = (
-    "Profile",
-    "NoProfile",
+    "CUDA_PROFILE_ENABLE",
     "LOGGER",
-    "ROOT",
-    "TIMEZONE",
-    "TensorRTLogger",
-    "TENSORRT_ENABLE",
-    "CUDA_PROFILE_ENABLE",
     "ONNX_PROFILE_ENABLE",
-    "CUDA_PROFILE_ENABLE",
-    "get_profile",
+    "ROOT",
+    "TENSORRT_ENABLE",
+    "TIMEZONE",
     "USE_NUMBA",
+    "NoProfile",
+    "Profile",
+    "TensorRTLogger",
     "conditional_jit",
+    "get_profile",
     "toggle_jit",
 )

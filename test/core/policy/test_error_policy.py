@@ -13,18 +13,19 @@ from pydantic import ValidationError
 from neudc.core.policy import ErrorAction, ErrorPolicy, ErrorPolicyConfig, NodeFailure
 
 
-class _Boom(RuntimeError):
+class _BoomError(RuntimeError):
     """Distinct exception type so tests assert on the real failure, not any failure."""
 
 
 def _failing(times: int):
-    """Return a callable that raises _Boom for the first ``times`` calls, then echoes."""
+    """Return a callable that raises _BoomError for the first ``times`` calls, then echoes."""
     state = {"calls": 0}
 
     def func(item):
         state["calls"] += 1
         if state["calls"] <= times:
-            raise _Boom(f"attempt {state['calls']}")
+            msg = f"attempt {state['calls']}"
+            raise _BoomError(msg)
         return item
 
     func.state = state  # type: ignore[attr-defined]
@@ -149,7 +150,7 @@ def test_fail_policy_raises_node_failure() -> None:
         policy.execute(_failing(times=99), "msg", wait=_no_wait)
 
     assert "detector" in str(excinfo.value)
-    assert isinstance(excinfo.value.__cause__, _Boom)
+    assert isinstance(excinfo.value.__cause__, _BoomError)
     assert policy.stats.failures == 1
 
 

@@ -1,3 +1,5 @@
+"""Small validation/compatibility helpers shared across model and profiling code."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -32,7 +34,7 @@ def check_class_names(
 
 
 def default_class_names() -> dict[int, str]:
-    """Applies default class names to an input YAML file or returns numerical class names."""
+    """Return numerical fallback class names (class0, class1, ...) for up to 999 classes."""
     return {i: f"class{i}" for i in range(999)}  # return default if above errors
 
 
@@ -40,10 +42,10 @@ def to_tuple(data: int | tuple[int, int]) -> tuple[int, int]:
     """Convert 0d or 1d data to 1d copying the data once."""
     if isinstance(data, int):
         return (data, data)
-    return tuple(data)
+    return data
 
 
-def torch_compile(*args, **kwargs) -> Any:
+def torch_compile(*args: Any, **kwargs: Any) -> Any:
     """Safe torch.compile with backward compatibility for PyTorch 1.x."""
     if not hasattr(torch, "compile"):
         # Backward compatibility for PyTorch 1.x
@@ -53,9 +55,8 @@ def torch_compile(*args, **kwargs) -> Any:
         )
         if args and isinstance(args[0], torch.nn.Module):
             return args[0]
-        else:
-            return torch.jit.script
-    elif WINDOWS:
+        return torch.jit.script
+    if WINDOWS:
         # torch.compile is not supported on Windows
         # https://github.com/orgs/pytorch/projects/27
         LOGGER.warning(
@@ -64,7 +65,5 @@ def torch_compile(*args, **kwargs) -> Any:
         )
         if args and isinstance(args[0], torch.nn.Module):
             return args[0]
-        else:
-            return lambda x: x
-    else:
-        return torch.compile(*args, **kwargs)
+        return lambda x: x
+    return torch.compile(*args, **kwargs)

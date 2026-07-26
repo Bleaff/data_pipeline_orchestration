@@ -9,13 +9,16 @@ the ResizeNode fix — without needing a GPU or model.
 from __future__ import annotations
 
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_images(folder: Path, count: int) -> None:

@@ -1,3 +1,5 @@
+"""Model factory: builds concrete detector/classifier model instances from YAML config."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -27,7 +29,10 @@ class ModelFactory:
     """Factory to create model instances based on config."""
 
     @staticmethod
-    def create(config: dict[str, Any], device_id: int = 0) -> BaseClsModel | BaseDetector:
+    def create(
+        config: dict[str, Any],
+        device_id: int = 0,  # noqa: ARG004 - suspected pre-existing bug, never forwarded into config; flagged not fixed, see report
+    ) -> BaseClsModel | BaseDetector:
         """Create a model instance from its config.
 
         Args:
@@ -62,4 +67,4 @@ class ModelFactory:
         )
 
 
-__all__ = ["YOLOv8", "SAHIDetector", "DeepOcSort", "BlurClassification", "EmbeddingFilter", "ModelFactory"]
+__all__ = ["BlurClassification", "EmbeddingFilter", "ModelFactory", "SAHIDetector", "YOLOv8"]

@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from torchvision import transforms
 
-from neudc.utils import PROFILE_FREQ, Profile
+from neudc.utils import PROFILE_FREQ, NoProfile, Profile
 
 from .base import BaseClsModel
 
@@ -27,7 +27,7 @@ class EmbeddingFilter(BaseClsModel):
     returns 1D embeddings.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0917 - classifier config constructor, one flag per tunable
         self,
         path: str,
         backend: type[BaseBackend],
@@ -48,7 +48,7 @@ class EmbeddingFilter(BaseClsModel):
             num_extremes (int, optional): Num extremes per cluster (unused here). Defaults to 2.
 
         """
-        super().__init__(path=path, backend=backend, device_id=device_id)
+        super().__init__(path=path, backend=backend, device_id=device_id)  # type: ignore[safe-super]
 
         self.backend = backend(path=path, device_id=device_id)
 
@@ -146,7 +146,17 @@ class EmbeddingFilter(BaseClsModel):
 
     def __repr__(self) -> str:
         """Return the string representation including key parameters."""
-        return f"EmbeddingFilter(path={self.path}, device_id={self.device_id}, eps={self.eps}, min_samples={self.min_samples}, self.num_extremes={self.num_extremes})"
+        return (
+            f"EmbeddingFilter(path={self.path}, device_id={self.device_id}, eps={self.eps}, "
+            f"min_samples={self.min_samples}, num_extremes={self.num_extremes})"
+        )
 
-    def warmup(self):
-        pass
+    @NoProfile  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
+    def warmup(self, iters: int = 10) -> None:
+        """No-op; embedding extraction currently has no warmup pass implemented.
+
+        Args:
+        ----
+            iters (int): Unused; kept for interface compatibility with `BaseClsModel.warmup`.
+
+        """

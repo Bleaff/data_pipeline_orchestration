@@ -10,27 +10,27 @@ from __future__ import annotations
 import contextlib
 import sys
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Self
+from typing import TYPE_CHECKING, Any, Self
 
 import torch
 from numba import jit
 
 from .logger import LOGGER, USE_NUMBA
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 try:
-    import cuda
+    from cuda import cuda, cudart
 
     CUDA_PROFILE_ENABLE = True
 except ImportError:
     CUDA_PROFILE_ENABLE = False
     LOGGER.info("Cuda library is not installed. Check your installation carefully.")
 
-
-if CUDA_PROFILE_ENABLE:
-    from cuda import cuda, cudart
-
-__all__ = ("Profile", "NoProfile", "get_profile", "conditional_jit", "toggle_jit")
+__all__ = ("NoProfile", "Profile", "conditional_jit", "get_profile", "toggle_jit")
 
 
 class Profile(contextlib.ContextDecorator):
@@ -59,7 +59,7 @@ class Profile(contextlib.ContextDecorator):
         freq: int | None = None,
         max_calls: int = 100_000,
         name: str | None = None,
-    ) -> Profile:
+    ) -> None:
         """Initialize the Profile class.
 
         Args:
@@ -188,12 +188,13 @@ class NoProfile(contextlib.ContextDecorator):
 NoProfile = NoProfile()  # type: ignore[assignment, misc]
 
 # Registry to track toggleable functions
-_JIT_REGISTRY = {}
+_JIT_REGISTRY: dict[int, dict[str, Any]] = {}
 
 
-def toggle_jit(enable: bool) -> None:
+# Public API (exported via __all__); changing the call convention could break external callers.
+def toggle_jit(enable: bool) -> None:  # noqa: FBT001
     """Globally enable/disable JIT compilation at runtime."""
-    global USE_NUMBA
+    global USE_NUMBA  # noqa: PLW0603 -- USE_NUMBA is deliberately module-level global state, toggled process-wide.
     old_setting = USE_NUMBA
     USE_NUMBA = enable
 
@@ -222,8 +223,8 @@ def toggle_jit(enable: bool) -> None:
     )
 
 
-def conditional_jit(*args, **kwargs) -> Callable:
-    """Decorator that allows runtime JIT toggling."""
+def conditional_jit(*args: Any, **kwargs: Any) -> Callable:
+    """Build a decorator that JIT-compiles the wrapped function, toggleable at runtime."""
     turn_on = kwargs.pop("turn_on", USE_NUMBA)
 
     def decorator(func: Callable) -> Callable:
@@ -243,17 +244,16 @@ def conditional_jit(*args, **kwargs) -> Callable:
         if turn_on:
             LOGGER.info(f"JIT ENABLED for {func.__name__}")
             return jit(*args, **kwargs)(func)
-        else:
-            LOGGER.info(f"JIT DISABLED for {func.__name__}")
-            return func
+        LOGGER.info(f"JIT DISABLED for {func.__name__}")
+        return func
 
     return decorator
 
 
-_PROFILE_REGISTRY = {}
+_PROFILE_REGISTRY: dict[str, Profile] = {}
 
 
-def get_profile(name, **kwargs) -> Profile:
+def get_profile(name: str, **kwargs: Any) -> Profile:
     """Get a named Profile instance, create if missing."""
     if name not in _PROFILE_REGISTRY:
         _PROFILE_REGISTRY[name] = Profile(**kwargs, name=name)

@@ -1,3 +1,5 @@
+"""Numba-accelerated tensor/geometry ops shared by detector models: letterboxing, NMS, SAHI slicing."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -11,7 +13,7 @@ from neudc.utils import USE_NUMBA, conditional_jit
 if TYPE_CHECKING:
     from neudc.utils.types import FloatBBoxesWithCls, ImageShape
 
-__all__ = ("letterbox", "postprocess_yolo_outputs", "calculate_slices_coordinates")
+__all__ = ("calculate_slices_coordinates", "letterbox", "postprocess_yolo_outputs")
 
 
 @conditional_jit(
@@ -58,6 +60,7 @@ def calculate_slices_coordinates(
     crop_overlap: tuple[int, int],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Adjust the image size to be divisible by crop size and overlap.
+
     Image size should be more than crop_overlap!.
 
     Args:
@@ -124,12 +127,12 @@ def calculate_slices_coordinates(
     inline="always",
     turn_on=USE_NUMBA,
 )
-def compute_letterbox_params(
+def compute_letterbox_params(  # noqa: PLR0917 - positional order is fixed by the numba signature above
     shape: tuple[int, int],
     new_shape: tuple[int, int],
-    auto: bool,
-    scale_fill: bool,
-    scaleup: bool,
+    auto: bool,  # noqa: FBT001 - positional order/types must match the numba signature declared above
+    scale_fill: bool,  # noqa: FBT001
+    scaleup: bool,  # noqa: FBT001
     stride: int = 32,
 ) -> tuple[tuple[float, float], tuple[int, int], float, float]:
     """Compute letterbox parameters.
@@ -152,10 +155,10 @@ def compute_letterbox_params(
     if not scaleup:
         r = min(r, 1.0)
 
-    new_unpad = (int(round(shape[0] * r)), int(round(shape[1] * r)))
+    new_unpad = (round(shape[0] * r), round(shape[1] * r))
 
-    dw = new_shape[1] - new_unpad[1]
-    dh = new_shape[0] - new_unpad[0]
+    dw: float = new_shape[1] - new_unpad[1]
+    dh: float = new_shape[0] - new_unpad[0]
 
     ratio = (r, r)
     if auto:
@@ -172,13 +175,13 @@ def compute_letterbox_params(
     return ratio, new_unpad, dh, dw
 
 
-def letterbox(
+def letterbox(  # noqa: PLR0917 - mirrors compute_letterbox_params' parameter list
     img: np.ndarray,
     new_shape: ImageShape = (640, 640),
     color: tuple[int, int, int] = (114, 114, 114),
-    auto: bool = False,
-    scale_fill: bool = False,
-    scaleup: bool = False,
+    auto: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
+    scale_fill: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
+    scaleup: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
     stride: int = 32,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Resize + pad image (letterbox) for maintaining proportions.
@@ -216,8 +219,8 @@ def letterbox(
             interpolation=cv2.INTER_LINEAR,
         )
 
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    top, bottom = round(dh - 0.1), round(dh + 0.1)
+    left, right = round(dw - 0.1), round(dw + 0.1)
 
     img = cv2.copyMakeBorder(
         src=img,
@@ -276,6 +279,7 @@ def apply_nms(
         boxes (np.ndarray): List of boxes.
         scores (np.ndarray): List of scores.
         iou (float): IoU threshold.
+        max_det (int): Maximum number of detections to keep.
 
     Returns:
     -------
@@ -361,7 +365,7 @@ def decode_output(
 
 
 @jit(nopython=True, fastmath=True, inline="always")
-def postprocess_yolo_outputs(
+def postprocess_yolo_outputs(  # noqa: PLR0917 - one parameter per decode/NMS tunable, matches decode_output + apply_nms
     predictions: np.ndarray,
     conf: float = 0.2,
     iou: float = 0.7,
@@ -369,13 +373,14 @@ def postprocess_yolo_outputs(
     ratio: tuple[float, float] = (1.0, 1.0),
     pad: tuple[float, float] = (0.0, 0.0),
 ) -> FloatBBoxesWithCls:
-    """Performs decode + NMS.
+    """Decode raw YOLO outputs and apply NMS.
 
     Args:
     ----
         predictions (np.ndarray): Predictions.
         conf (float): Confidence threshold.
         iou (float): IoU threshold.
+        max_det (int): Maximum number of detections to keep.
         ratio (tuple[float, float]): Ratio of the image.
         pad (tuple[float, float]): Padding of the image.
 

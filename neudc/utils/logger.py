@@ -43,7 +43,7 @@ USE_NUMBA = True
 _VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 
-def _resolve_level(verbose: bool) -> int:
+def _resolve_level(*, verbose: bool) -> int:
     """Resolve the log level from the NEUDC_LOG_LEVEL env var, falling back to verbosity.
 
     The environment variable takes precedence so the hot path can be quieted in
@@ -84,7 +84,7 @@ def set_logging(
         - Adds both stream and rotating file handlers.
 
     """
-    level = _resolve_level(verbose)
+    level = _resolve_level(verbose=verbose)
     formatter = logging.Formatter("%(message)s")
 
     if WINDOWS and hasattr(sys.stdout, "encoding") and sys.stdout.encoding != "utf-8":

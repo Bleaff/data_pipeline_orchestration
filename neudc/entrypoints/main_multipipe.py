@@ -1,14 +1,28 @@
+"""Multi-pipeline entry point: runs every pipe declared under a config's `pipes` key as a service."""
+
+from __future__ import annotations
+
 import logging
 import signal
 import time
+from typing import TYPE_CHECKING
 
 from neudc.core.utils.config_loader import load_config
 from neudc.core.utils.config_schema import ConfigError, validate_pipeline_config
 from neudc.service.pipeline_manager import PipelineServiceManager
 
+if TYPE_CHECKING:
+    from types import FrameType
+
 
 def main(config_path: str) -> None:
-    """Main entrypoint to run multiple pipelines as services."""
+    """Run every pipeline declared under the config's `pipes` key as a managed service.
+
+    Args:
+    ----
+        config_path (str): Path to the YAML configuration file.
+
+    """
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("main")
 
@@ -24,7 +38,7 @@ def main(config_path: str) -> None:
     # Graceful shutdown hook
     is_stopping = False
 
-    def shutdown_handler(signum, frame):
+    def shutdown_handler(_signum: int | None, _frame: FrameType | None) -> None:
         nonlocal is_stopping
         if is_stopping:
             return
@@ -46,10 +60,10 @@ def main(config_path: str) -> None:
             validate_pipeline_config({"nodes": nodes})  # fail fast on a bad pipe
             manager.start_pipeline(name=name, nodes_config=nodes, task_config=task)
             logger.info(f"Started pipeline: {name}")
-        except ConfigError as e:
-            logger.error(f"Invalid config for pipeline '{name}': {e}")
-        except Exception as e:
-            logger.exception(f"Failed to start pipeline {name}: {e}")
+        except ConfigError:
+            logger.exception(f"Invalid config for pipeline '{name}'")
+        except Exception:  # best-effort startup loop: one bad pipe must not abort the others.
+            logger.exception(f"Failed to start pipeline {name}")
 
     # Keep alive
     try:

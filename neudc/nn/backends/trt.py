@@ -1,23 +1,29 @@
+"""TensorRT inference backend (engine loading, pinned buffer allocation, execution)."""
+
 from __future__ import annotations
 
 import ctypes
 import json
-from typing import TYPE_CHECKING, Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import tensorrt as trt
 from cuda import cuda, cudart
 
-from neudc.nn import BaseBackend
+from neudc.nn.backends.base import BaseBackend
 from neudc.utils import LOGGER, PROFILE_FREQ, Profile, TensorRTLogger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from neudc.utils.types import FloatFeaturesBatch, FloatImagesBatch
 
 __all__ = ("TensorRTBackend",)
 
 
-def check_cuda_err(err) -> None:
+def check_cuda_err(err: cuda.CUresult | cudart.cudaError_t) -> None:
+    """Raise if a CUDA driver/runtime API result indicates failure."""
     if isinstance(err, cuda.CUresult) and err != cuda.CUresult.CUDA_SUCCESS:
         msg = f"Cuda Error: {err}"
         raise RuntimeError(msg)
@@ -27,10 +33,12 @@ def check_cuda_err(err) -> None:
             raise RuntimeError(msg)
     else:
         msg = f"Unknown error type: {err}"
-        raise RuntimeError(msg)
+        # Kept as RuntimeError for consistency with the CUDA-failure branches above.
+        raise RuntimeError(msg)  # noqa: TRY004
 
 
-def cuda_call(call):
+def cuda_call(call: tuple[Any, ...]) -> Any:
+    """Unwrap a `(status, *results)` cuda-python API return value, raising on failure."""
     err, res = call[0], call[1:]
     check_cuda_err(err)
     if len(res) == 1:
@@ -45,8 +53,18 @@ class HostDeviceMem:
         self,
         size: int,
         shape: tuple[int, ...],
-        dtype: np.dtype = np.dtype(np.uint8),
-    ) -> HostDeviceMem:
+        dtype: np.dtype | None = None,
+    ) -> None:
+        """Allocate `size` elements of pinned host memory and matching device memory.
+
+        Args:
+        ----
+            size (int): Number of elements to allocate.
+            shape (tuple[int, ...]): Logical shape the host buffer is reshaped to.
+            dtype (np.dtype | None): Element dtype; defaults to `np.uint8`.
+
+        """
+        dtype = np.dtype(np.uint8) if dtype is None else dtype
         nbytes = size * dtype.itemsize
         host_mem = cuda_call(cudart.cudaMallocHost(nbytes))
         pointer_type = ctypes.POINTER(np.ctypeslib.as_ctypes_type(dtype))
@@ -141,17 +159,32 @@ def do_inference_base(
     return [out.host for out in outputs]
 
 
-def do_inference_old(
+def do_inference_old(  # noqa: PLR0917 - fixed TensorRT execution signature, mirrors do_inference_new
     context: trt.IExecutionContext,
-    engine: trt.ICudaEngine,
+    engine: trt.ICudaEngine,  # noqa: ARG001 - kept for signature parity with do_inference_new (interchangeable)
     bindings: list[int],
     inputs: list[HostDeviceMem],
     outputs: list[HostDeviceMem],
     stream: ctypes.c_void_p,
 ) -> list[np.ndarray]:
-    """This function is generalized for multiple inputs/outputs.
-    inputs and outputs are expected to be lists of HostDeviceMem objects.
-    Warning: only for TensorRT < 10.0.
+    """Run inference for TensorRT < 10.0.
+
+    Generalized for multiple inputs/outputs; inputs and outputs are expected to be
+    lists of HostDeviceMem objects.
+
+    Args:
+    ----
+        context (trt.IExecutionContext): Execution context to run inference with.
+        engine (trt.ICudaEngine): Unused here; kept for signature parity with `do_inference_new`.
+        bindings (list[int]): Device pointers for each binding, in binding order.
+        inputs (list[HostDeviceMem]): Input host/device buffer pairs.
+        outputs (list[HostDeviceMem]): Output host/device buffer pairs.
+        stream (ctypes.c_void_p): CUDA stream to run the async transfers/execution on.
+
+    Returns:
+    -------
+        list[np.ndarray]: Host-side output arrays.
+
     """
 
     def execute_async_func() -> None:
@@ -168,7 +201,7 @@ def do_inference_old(
     )
 
 
-def do_inference_new(
+def do_inference_new(  # noqa: PLR0917 - fixed TensorRT execution signature, mirrors do_inference_old
     context: trt.IExecutionContext,
     engine: trt.ICudaEngine,
     bindings: list[int],
@@ -176,9 +209,24 @@ def do_inference_new(
     outputs: list[HostDeviceMem],
     stream: ctypes.c_void_p,
 ) -> list[np.ndarray]:
-    """This function is generalized for multiple inputs/outputs.
-    inputs and outputs are expected to be lists of HostDeviceMem objects.
-    Warning: only for TensorRT >= 10.0.
+    """Run inference for TensorRT >= 10.0.
+
+    Generalized for multiple inputs/outputs; inputs and outputs are expected to be
+    lists of HostDeviceMem objects.
+
+    Args:
+    ----
+        context (trt.IExecutionContext): Execution context to run inference with.
+        engine (trt.ICudaEngine): Engine used to resolve tensor names/addresses.
+        bindings (list[int]): Device pointers for each binding, in binding order.
+        inputs (list[HostDeviceMem]): Input host/device buffer pairs.
+        outputs (list[HostDeviceMem]): Output host/device buffer pairs.
+        stream (ctypes.c_void_p): CUDA stream to run the async transfers/execution on.
+
+    Returns:
+    -------
+        list[np.ndarray]: Host-side output arrays.
+
     """
 
     def execute_async_func() -> None:
@@ -198,6 +246,7 @@ def do_inference_new(
 
 
 class TensorRTBackend(BaseBackend):
+    """Runs inference through a deserialized TensorRT engine, using pinned host/device buffers."""
 
     cuda = True
     cpu = False
@@ -207,7 +256,7 @@ class TensorRTBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
-    ) -> TensorRTBackend:
+    ) -> None:
         """Init of TensorRT backend.
 
         Args:
@@ -224,7 +273,7 @@ class TensorRTBackend(BaseBackend):
 
         engine, metadata = None, None
         LOGGER.info(f"Loading {path} for TensorRT inference for device_id {device_id}...")
-        with open(path, "rb") as f, trt.Runtime(logger) as runtime:
+        with Path(path).open("rb") as f, trt.Runtime(logger) as runtime:
             try:
                 meta_len = int.from_bytes(f.read(4), byteorder="little")  # read metadata length
                 metadata = json.loads(f.read(meta_len).decode("utf-8"))  # read metadata
@@ -239,11 +288,12 @@ class TensorRTBackend(BaseBackend):
                 if k in {"stride", "batch"}:
                     metadata[k] = int(v)
                 elif k in {"imgsz", "names"} and isinstance(v, str):
-                    metadata[k] = eval(v)
+                    # Trusted metadata from export time; ast.literal_eval could reject reprs eval currently accepts.
+                    metadata[k] = eval(v)  # noqa: S307
         else:
             LOGGER.warning(f"WARNING ⚠️ Metadata not found for {path}")
 
-        self.metadata = metadata
+        self.metadata = metadata if isinstance(metadata, dict) else {}
 
         # Model context
         try:
@@ -257,7 +307,7 @@ class TensorRTBackend(BaseBackend):
 
         self.do_inference = do_inference_new if is_trt10 else do_inference_old
 
-    @Profile(use_cuda=True, logger=LOGGER, freq=PROFILE_FREQ, name="engine")
+    @Profile(use_cuda=True, freq=PROFILE_FREQ, name="engine")
     def __call__(
         self,
         input: FloatImagesBatch,
@@ -273,7 +323,7 @@ class TensorRTBackend(BaseBackend):
             list[FloatFeaturesBatch]: Output features.
 
         """
-        # TODO check input shapes
+        # TODO: check input shapes  # noqa: FIX002, TD002, TD003 - pre-existing, no tracked issue to reference
         self.inputs[0].host = input
 
         return self.do_inference(
@@ -326,13 +376,13 @@ class TensorRTBackend(BaseBackend):
             # Allocate host and device buffers
             try:
                 dtype = np.dtype(trt_type)
-                bindingMemory = HostDeviceMem(size, shape, dtype)
+                binding_memory = HostDeviceMem(size, shape, dtype)
             except TypeError:  # no numpy support: create a byte array instead (BF16, FP8, INT4)
                 size = int(size * trt_type.itemsize)
-                bindingMemory = HostDeviceMem(size, shape)
+                binding_memory = HostDeviceMem(size, shape)
 
             # Append the device buffer to device bindings.
-            bindings.append(int(bindingMemory.device))
+            bindings.append(int(binding_memory.device))
 
             if is_trt10:
                 is_input = engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT
@@ -341,11 +391,11 @@ class TensorRTBackend(BaseBackend):
 
             # Append to the appropriate list.
             if is_input:
-                inputs.append(bindingMemory)
+                inputs.append(binding_memory)
                 if trt_type == np.float16:
                     fp16 = True
             else:
-                outputs.append(bindingMemory)
+                outputs.append(binding_memory)
 
         return inputs, outputs, bindings, stream, fp16
 

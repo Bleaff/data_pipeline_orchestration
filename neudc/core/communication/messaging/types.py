@@ -12,10 +12,13 @@ segmentation masks, keypoints.
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
-import numpy as np  # noqa
+import numpy as np  # noqa: TC002 -- used as a real pydantic field type, must stay importable at runtime
 from pydantic import BaseModel, ConfigDict
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # === Base Attribute ===
 
@@ -158,11 +161,14 @@ class Batch(BaseModel, Generic[MessageT]):
 
     frames: list[MessageT]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[MessageT]:  # type: ignore[override]
+        """Iterate over the messages in this batch (intentionally shadows BaseModel.__iter__)."""
         return iter(self.frames)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of messages in this batch."""
         return len(self.frames)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> MessageT:
+        """Return the message at ``index``."""
         return self.frames[index]

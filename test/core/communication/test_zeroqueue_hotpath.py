@@ -18,7 +18,7 @@ def test_put_does_not_call_time_sleep(monkeypatch) -> None:
     monkeypatch.setattr("neudc.core.communication.zero_queue.zero_queue.zmq.Poller", lambda: poller_mock)
 
     sleep_calls: list = []
-    monkeypatch.setattr(time, "sleep", lambda *a, **k: sleep_calls.append(a))
+    monkeypatch.setattr(time, "sleep", lambda *a, **_k: sleep_calls.append(a))
 
     pub = ZeroQueue(port=5555, mode=ZeroQueueMode.PUB, contype=ZeroQueueConnectionType.CONNECT)
     sleep_calls.clear()

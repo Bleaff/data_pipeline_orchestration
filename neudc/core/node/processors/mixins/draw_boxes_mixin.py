@@ -14,12 +14,13 @@ class DrawBoxesLogicMixin:
     """Mixin class for drawing boxes on Frame objects."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the mixin, forwarding all arguments to the next class in the MRO."""
         super().__init__(*args, **kwargs)
 
     def draw_boxes(self, frame: Frame) -> Frame:
         """Draw boxes on the image in the Frame object."""
         for box in frame.boxes:
-            cv2.rectangle(frame.image, (box.x1, box.y1), (box.x2, box.y2), (0, 255, 0), 2)
+            cv2.rectangle(frame.image, (int(box.x1), int(box.y1)), (int(box.x2), int(box.y2)), (0, 255, 0), 2)
         return frame
 
     def process(self, frame: Frame) -> Frame:
