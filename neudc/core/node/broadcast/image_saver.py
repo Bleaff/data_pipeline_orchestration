@@ -20,14 +20,14 @@ if TYPE_CHECKING:
 class SaveImageNode(BaseThreadedNode):
     """A node that saves incoming Frame images to disk in the specified directory."""
 
-    def __init__(self, mailbox: Any, save_dir: str) -> SaveImageNode:
+    def __init__(self, mailbox: Any, save_dir: str) -> None:
         """Initialize the SaveImageNode."""
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         super().__init__(mailbox=mailbox)
 
     @classmethod
-    def from_config(cls: SaveImageNode, config: dict[str, Any]) -> SaveImageNode:
+    def from_config(cls: type[SaveImageNode], config: dict[str, Any]) -> SaveImageNode:
         """Create SaveImageNode from configuration.
 
         Args:

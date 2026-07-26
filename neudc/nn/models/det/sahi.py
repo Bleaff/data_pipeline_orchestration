@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
         UInt8HWC,
     )
 
+    from .yolo import YOLOv8
+
 __all__ = ("SAHIDetector",)
 
 
@@ -31,11 +33,11 @@ class SAHIDetector(BaseDetector):
 
     def __init__(
         self,
-        detector: BaseDetector,
+        detector: YOLOv8,
         crop_size: ImageShape = (640, 640),
         crop_overlap: ImageShape = (100, 100),
         batch: int = 16,
-    ) -> SAHIDetector:
+    ) -> None:
         """Initialize the SAHI detector.
 
         Args:
@@ -54,7 +56,9 @@ class SAHIDetector(BaseDetector):
 
         # validate imgsz from detector
         if self.detector.imgsz[0] != crop_size[0] or self.detector.imgsz[1] != crop_size[1]:
-            LOGGER.warning(f"WARNING ⚠️ Detector imgsz {self.detector.imgsz} is not equal to the crop size {crop_size}.")
+            LOGGER.warning(
+                f"WARNING ⚠️ Detector imgsz {self.detector.imgsz} is not equal to the crop size {crop_size}.",
+            )
             self.crop_size = self.detector.imgsz
         else:
             self.crop_size = crop_size
@@ -84,7 +88,8 @@ class SAHIDetector(BaseDetector):
             crop_size=crop_size,
             crop_overlap=crop_overlap,
         )
-        for y1, x1, y2, x2 in zip(*slice_indexes):
+        # numba nopython mode does not support zip(strict=...); these arrays are always equal length by construction.
+        for y1, x1, y2, x2 in zip(*slice_indexes):  # noqa: B905
             crop = im[y1:y2, x1:x2, :]
             crop_images.append(crop)
             crop_params.append(np.array([1, 1, 0, 0, im_id, y1, x1], dtype=np.float32))
@@ -95,23 +100,24 @@ class SAHIDetector(BaseDetector):
     def pre_transform(
         self,
         ims: list[UInt8HWC],
-    ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
+    ) -> tuple[FloatImagesBatch, LetterboxParams]:
         """Pre-transform input image in BGR format before inference.
 
         Args:
         ----
-            im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
+            ims (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
 
         Returns:
         -------
             (tuple): A list of transformed images, letterbox params, and origins.
 
         """
-        crop_params, crop_images = [], []
+        crop_params: LetterboxParams = []
+        crop_images = []
 
         for im_id, im in enumerate(ims):
-            # step 1. adjust img to crop & overlap
-            im = cv2.cvtColor(src=im, code=cv2.COLOR_BGR2RGB, dst=im)
+            # step 1. adjust img to crop & overlap (in-place BGR->RGB conversion)
+            cv2.cvtColor(src=im, code=cv2.COLOR_BGR2RGB, dst=im)
 
             # step 2. letterbox img to crop
             letterbox_im, letterbox_param = letterbox(
@@ -138,18 +144,19 @@ class SAHIDetector(BaseDetector):
                 crop_params.extend(params)
                 crop_images.extend(crops)
 
-        crop_images = self.detector._pre_transform_normalize(
+        # SAHIDetector deliberately reuses its wrapped detector's private normalize step.
+        crop_images_arr = self.detector._pre_transform_normalize(  # noqa: SLF001
             ims=crop_images,
             fp16=self.detector.backend.fp16,
         )
 
-        return crop_images, crop_params
+        return crop_images_arr, crop_params
 
     @staticmethod
     @conditional_jit(nopython=True, fastmath=True, parallel=False, inline="always", turn_on=USE_NUMBA)
-    def _post_transform(
+    def _post_transform(  # noqa: PLR0917 - numba-jitted postprocess, one parameter per decode/NMS tunable
         predictions: list[FloatFeaturesBatch],
-        letterbox_params: list[LetterboxParams],
+        letterbox_params: LetterboxParams,
         n_ims: int,
         conf: float = 0.1,
         iou: float = 0.7,
@@ -172,7 +179,7 @@ class SAHIDetector(BaseDetector):
 
         """
         b = len(predictions)
-        output = [np.zeros((max_det, 6), dtype=predictions.dtype) for _ in range(n_ims)]
+        output = [np.zeros((max_det, 6), dtype=predictions[0].dtype) for _ in range(n_ims)]
         counts = np.zeros(n_ims, dtype=np.int64)
         for i in range(b):
             ry, rx, py, px, image_id, oy, ox = letterbox_params[i]
@@ -208,7 +215,7 @@ class SAHIDetector(BaseDetector):
     def post_transform(
         self,
         predictions: FloatFeaturesBatch,
-        letterbox_params: list[LetterboxParams],
+        letterbox_params: LetterboxParams,
         n_ims: int,
     ) -> list[FloatBBoxesWithCls]:
         """Post-transform input image before inference.
@@ -237,7 +244,7 @@ class SAHIDetector(BaseDetector):
         self,
         ims: list[UInt8HWC],
     ) -> list[FloatBBoxesWithCls]:
-        """Runs inference on the YOLOv8 model.
+        """Run SAHI-tiled inference using the wrapped detector.
 
         Args:
         ----
@@ -256,14 +263,14 @@ class SAHIDetector(BaseDetector):
                 predictions = self.detector.backend(batch_ims)[0]
             else:
                 # We break the list of crops into batches of size self.batch
-                predictions = []
+                pred_chunks = []
                 for i in range(0, tmp_batch, self.batch):
                     chunk = batch_ims[i : i + self.batch]
                     # Run the detector on the chunk
                     pred_chunk = self.detector.backend(chunk)[0]
-                    predictions.append(pred_chunk)
+                    pred_chunks.append(pred_chunk)
                 # Concatenate along the batch dimension (axis=0)
-                predictions = np.concatenate(predictions, axis=0)
+                predictions = np.concatenate(pred_chunks, axis=0)
 
         return self.post_transform(
             predictions=predictions,
@@ -271,7 +278,7 @@ class SAHIDetector(BaseDetector):
             n_ims=len(ims),
         )
 
-    @NoProfile
+    @NoProfile  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
     def warmup(
         self,
         iters: int = 10,
@@ -284,7 +291,7 @@ class SAHIDetector(BaseDetector):
 
         """
         # First, warm up the underlying detector.
-        self.detector.warmup(iters=iters)
+        self.detector.warmup(iters=iters)  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
 
         # Then, warm up the SAHI detector.
         im = [
@@ -297,10 +304,13 @@ class SAHIDetector(BaseDetector):
         for _ in range(iters):
             self(im)  # warmup
 
-    def plot(self, *args, **kwargs) -> None:
+    # Transparent passthrough to the wrapped detector's plot().
+    def plot(self, *args: Any, **kwargs: Any) -> None:
+        """Delegate plotting to the wrapped detector; see `BaseDetector.plot`."""
         self.detector.plot(*args, **kwargs)
 
     def __repr__(self) -> str:
+        """Return a string representation of the model."""
         return (
             f"SAHI("
             f"detector={self.detector.__repr__()}, "

@@ -37,6 +37,7 @@ copy is also writable, which those in-place mutations require.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pickle
 import sys
@@ -64,7 +65,7 @@ SHM_MIN_BYTES = int(os.environ.get("NEUDC_SHM_MIN_BYTES", "65536"))
 _SHM_HAS_TRACK = sys.version_info >= (3, 13)
 
 
-def dumps(obj: Any, use_shm: bool = False) -> bytes:
+def dumps(obj: Any, *, use_shm: bool = False) -> bytes:
     """Serialize a message object to a single tagged ``bytes`` blob.
 
     Args:
@@ -87,7 +88,7 @@ def loads(raw: bytes) -> Any:
     tag = view[0]
     body = view[1:]
     if tag == _TAG_PLAIN:
-        return pickle.loads(body)
+        return pickle.loads(body)  # noqa: S301 -- deliberate wire format, see module docstring
     if tag == _TAG_SHM:
         return _loads_shm(body)
     msg = f"Unknown codec frame tag: {tag}"
@@ -112,7 +113,7 @@ def _dumps_shm(obj: Any) -> bytes:
         raw = buffer.raw()
         nbytes = raw.nbytes
         shm = _create_segment(nbytes)
-        shm.buf[:nbytes] = raw
+        shm.buf[:nbytes] = raw  # type: ignore[index]  # buf is non-None right after create
         shm.close()  # unmap here; the segment stays alive until the consumer unlinks it
         segments.append((shm.name, nbytes))
 
@@ -122,15 +123,15 @@ def _dumps_shm(obj: Any) -> bytes:
 
 def _loads_shm(body: memoryview) -> Any:
     """Reconstruct an object whose large buffers live in shared-memory segments."""
-    envelope = pickle.loads(body)
+    envelope = pickle.loads(body)  # noqa: S301 -- deliberate wire format, see module docstring
     buffers = [_consume_segment(name, nbytes) for name, nbytes in envelope["segments"]]
-    return pickle.loads(envelope["meta"], buffers=buffers)
+    return pickle.loads(envelope["meta"], buffers=buffers)  # noqa: S301 -- deliberate wire format, see module docstring
 
 
 def _create_segment(nbytes: int) -> shared_memory.SharedMemory:
     """Create a segment the producer owns but does not track (the consumer unlinks it)."""
     if _SHM_HAS_TRACK:
-        return shared_memory.SharedMemory(create=True, size=nbytes, track=False)
+        return shared_memory.SharedMemory(create=True, size=nbytes, track=False)  # type: ignore[call-arg]
     shm = shared_memory.SharedMemory(create=True, size=nbytes)
     _untrack(shm)
     return shm
@@ -139,16 +140,16 @@ def _create_segment(nbytes: int) -> shared_memory.SharedMemory:
 def _consume_segment(name: str, nbytes: int) -> bytearray:
     """Open a segment, copy it into owned (writable) memory, then close and unlink it."""
     shm = (
-        shared_memory.SharedMemory(name=name, track=False) if _SHM_HAS_TRACK else shared_memory.SharedMemory(name=name)
+        shared_memory.SharedMemory(name=name, track=False)  # type: ignore[call-arg]
+        if _SHM_HAS_TRACK
+        else shared_memory.SharedMemory(name=name)
     )
     try:
-        return bytearray(shm.buf[:nbytes])
+        return bytearray(shm.buf[:nbytes])  # type: ignore[index]  # buf is non-None right after attach
     finally:
         shm.close()
-        try:
+        with contextlib.suppress(FileNotFoundError):  # already gone; nothing to leak
             shm.unlink()
-        except FileNotFoundError:
-            pass  # already gone; nothing to leak
         if not _SHM_HAS_TRACK:
             # On 3.11/3.12 unlink() does not unregister; clear the tracker ourselves.
             _untrack(shm)
@@ -157,6 +158,6 @@ def _consume_segment(name: str, nbytes: int) -> bytearray:
 def _untrack(shm: shared_memory.SharedMemory) -> None:
     """Remove a segment from this process's resource_tracker (best effort)."""
     try:
-        resource_tracker.unregister(shm._name, "shared_memory")  # noqa: SLF001
+        resource_tracker.unregister(shm._name, "shared_memory")  # type: ignore[attr-defined]  # noqa: SLF001
     except Exception as exc:  # noqa: BLE001 - tracker state is best-effort, never fatal
         LOGGER.debug(f"resource_tracker.unregister failed for {shm.name}: {exc!r}")

@@ -169,3 +169,13 @@ nodes:
 ```
 
 ---
+
+## 📈 Метрики достаются бесплатно
+
+Очередь, throughput, latency, ошибки/ретраи/дропы и health уже собираются в базовых
+классах (`BaseNode`, `BaseProcessNode`, `ZMQMailbox`, `ErrorPolicy`) и не требуют
+никакого кода в твоей ноде или миксине — просто реализуй `process()`, остальное
+подхватится само. Полный список метрик и как их включить — в README (раздел
+про Prometheus) и в `docs/grafana/neudc-dashboard.json`.
+
+---

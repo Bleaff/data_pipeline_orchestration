@@ -7,13 +7,14 @@ cross-process readiness path is exercised indirectly by the multipipe manager te
 
 from __future__ import annotations
 
-from typing import Any
-
-import pytest
+from typing import TYPE_CHECKING, Any
 
 from neudc.core.base.base_node import BaseNode
 from neudc.core.base.base_process import BaseProcessNode
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class _EchoProcessNode(BaseProcessNode):
@@ -75,7 +76,9 @@ def test_start_afterwords_does_not_start_a_second_consumer_loop(monkeypatch: pyt
     node = _EchoProcessNode(mailbox, id="echo")
 
     init_runtime_calls: list[BaseNode] = []
-    monkeypatch.setattr(BaseNode, "init_runtime", lambda self: init_runtime_calls.append(self))
+    # Not inlinable to `init_runtime_calls.append`: that's already a bound method, so setting
+    # it directly as a class attribute would not rebind to `self` when called as node.init_runtime().
+    monkeypatch.setattr(BaseNode, "init_runtime", lambda self: init_runtime_calls.append(self))  # noqa: PLW0108
 
     try:
         node._start_afterwords()

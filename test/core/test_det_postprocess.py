@@ -6,6 +6,8 @@ schema rejects (it requires class_id_name + class_id_num). This verifies the fix
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
@@ -14,7 +16,7 @@ from neudc.core.node.model.proc_det_inference import ProcessDetInference
 
 
 class _StubModel:
-    names = {0: "cat", 1: "dog"}
+    names: ClassVar = {0: "cat", 1: "dog"}
 
 
 def _frame() -> Frame:

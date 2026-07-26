@@ -1,4 +1,5 @@
-# profiler_metrics.py
+"""Shared Prometheus metric objects used by the profiler decorators in this package."""
+
 from prometheus_client import Counter, Gauge
 
 EXEC_TIME_GAUGE = Gauge("node_execution_time_seconds", "Execution time per node", ["node"])

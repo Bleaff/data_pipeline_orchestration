@@ -1,0 +1,167 @@
+{
+  "title": "NEUDC Pipeline Observability",
+  "uid": "neudc-pipeline",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {}
+      },
+      {
+        "name": "node",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(neudc_node_health, node)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Node health",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "neudc_node_health{node=~\"$node\"}",
+          "legendFormat": "{{node}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "unhealthy", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "healthy", "color": "green" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "textMode": "value_and_name", "colorMode": "background" }
+    },
+    {
+      "id": 2,
+      "title": "Throughput (messages/sec)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "rate(neudc_node_messages_processed_total{node=~\"$node\"}[1m])",
+          "legendFormat": "{{node}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 3,
+      "title": "process() latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(neudc_node_process_latency_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))",
+          "legendFormat": "{{node}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(neudc_node_process_latency_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))",
+          "legendFormat": "{{node}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(neudc_node_process_latency_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))",
+          "legendFormat": "{{node}} p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 4,
+      "title": "Queue depth vs. high-water mark",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "neudc_node_queue_depth{node=~\"$node\"}",
+          "legendFormat": "{{node}} depth",
+          "refId": "A"
+        },
+        {
+          "expr": "neudc_node_queue_hwm{node=~\"$node\"}",
+          "legendFormat": "{{node}} HWM",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 5,
+      "title": "Errors, drops and retries (per sec)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "rate(neudc_node_errors_total{node=~\"$node\"}[1m])",
+          "legendFormat": "{{node}} errors",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(neudc_node_retries_total{node=~\"$node\"}[1m])",
+          "legendFormat": "{{node}} retries",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(neudc_node_dropped_total{node=~\"$node\"}[1m])",
+          "legendFormat": "{{node}} dropped",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(neudc_node_dead_lettered_total{node=~\"$node\"}[1m])",
+          "legendFormat": "{{node}} dead-lettered",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 6,
+      "title": "Node failures (on_error: fail)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "increase(neudc_node_failures_total{node=~\"$node\"}[5m])",
+          "legendFormat": "{{node}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    }
+  ]
+}

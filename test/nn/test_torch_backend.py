@@ -26,7 +26,7 @@ class _Scale(nn.Module):
         return x * self.w
 
 
-@pytest.fixture()
+@pytest.fixture
 def backend(tmp_path):
     path = tmp_path / "scale.torchscript"
     torch.jit.save(torch.jit.script(_Scale()), str(path))

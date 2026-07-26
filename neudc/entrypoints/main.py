@@ -43,10 +43,12 @@ blocks until a shutdown signal arrives.
 
 from __future__ import annotations
 
+import os
 import signal
 import threading
+from typing import TYPE_CHECKING, Any
 
-from prometheus_client import start_http_server
+from prometheus_client import CollectorRegistry, start_http_server
 
 from neudc.core.base import BaseProcessNode
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
@@ -54,6 +56,9 @@ from neudc.core.node.node_factory import NodeFactory
 from neudc.core.utils.config_loader import load_config
 from neudc.core.utils.config_schema import validate_pipeline_config
 from neudc.utils.logger import LOGGER
+
+if TYPE_CHECKING:
+    from types import FrameType
 
 # How long to wait for a process node to report readiness before starting producers.
 STARTUP_READY_TIMEOUT_SEC = 30.0
@@ -63,11 +68,82 @@ FAILURE_POLL_INTERVAL_SEC = 0.5
 
 
 def _maybe_start_prometheus(config: dict) -> None:
-    """Start the Prometheus HTTP server if enabled in the config."""
+    """Start the Prometheus HTTP server if enabled in the config.
+
+    Process nodes (``BaseProcessNode``) run in a separate OS process, so metrics they
+    record live in that process's own private `prometheus_client` registry by default —
+    invisible to this one. If the deployer set ``PROMETHEUS_MULTIPROC_DIR`` (per
+    `prometheus_client`'s own multiprocess-mode contract: a writable, empty directory,
+    set *before* the pipeline starts), every node's metrics are read back from files in
+    that directory instead of this process's in-memory registry, so process-node metrics
+    show up too. Without it, only same-process (``BaseThreadedNode``) metrics are visible
+    — the historical, single-process behaviour.
+    """
     prometheus_config = config.get("prometheus")
-    if prometheus_config and prometheus_config.get("port") and prometheus_config.get("enable"):
+    if not (prometheus_config and prometheus_config.get("port") and prometheus_config.get("enable")):
+        return
+
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if multiproc_dir:
+        from prometheus_client import multiprocess
+
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry, path=multiproc_dir)
+        start_http_server(prometheus_config["port"], registry=registry)
+        LOGGER.info(
+            f"Prometheus metrics server started on port {prometheus_config['port']} "
+            f"(multiprocess mode, dir={multiproc_dir})"
+        )
+    else:
         start_http_server(prometheus_config["port"])
         LOGGER.info(f"Prometheus metrics server started on port {prometheus_config['port']}")
+
+
+def _build_nodes(config: dict[str, Any], mailbox_map: dict[str, Any]) -> tuple[list[Any], list[Any]]:
+    """Build every node exactly once and split them by execution model.
+
+    Args:
+    ----
+        config (dict[str, Any]): The validated pipeline configuration.
+        mailbox_map (dict[str, Any]): Per-node mailbox, keyed by node id.
+
+    Returns:
+    -------
+        tuple[list[Any], list[Any]]: The process nodes and the threaded nodes, respectively.
+
+    """
+    process_nodes: list[Any] = []
+    threaded_nodes: list[Any] = []
+    for node_config in config["nodes"]:
+        node = NodeFactory.create(node_config, mailbox=mailbox_map[node_config["id"]])
+        (process_nodes if isinstance(node, BaseProcessNode) else threaded_nodes).append(node)
+    return process_nodes, threaded_nodes
+
+
+def _start_process_nodes(process_nodes: list[Any]) -> None:
+    """Start process nodes and wait until each has bound its mailbox.
+
+    Waiting for readiness ensures no producer sends into a not-yet-listening consumer.
+    """
+    for node in process_nodes:
+        node.start()
+    for node in process_nodes:
+        if not node.wait_ready(timeout=STARTUP_READY_TIMEOUT_SEC):
+            LOGGER.warning(f"Process node '{node.id}' did not report readiness in time; starting anyway.")
+
+
+def _watch_for_failed_nodes(all_nodes: list[Any], stop_event: threading.Event) -> None:
+    """Poll nodes for a `fail`-policy failure and trigger shutdown when one is found.
+
+    A node whose error policy is `fail` only flags itself; bringing the pipeline down
+    is the owner's job, which here is this entry point.
+    """
+    while not stop_event.wait(FAILURE_POLL_INTERVAL_SEC):
+        broken = [node.id for node in all_nodes if node.failed()]
+        if broken:
+            LOGGER.critical(f"Node(s) {broken} failed under their error policy; shutting down.")
+            stop_event.set()
+            return
 
 
 def main(config_path: str) -> None:
@@ -87,49 +163,27 @@ def main(config_path: str) -> None:
     mailbox_map = router.create_mailboxes()
 
     # 2. Build every node exactly once and split by execution model.
-    process_nodes: list = []
-    threaded_nodes: list = []
-    for node_config in config["nodes"]:
-        node = NodeFactory.create(node_config, mailbox=mailbox_map[node_config["id"]])
-        (process_nodes if isinstance(node, BaseProcessNode) else threaded_nodes).append(node)
-
+    process_nodes, threaded_nodes = _build_nodes(config, mailbox_map)
     all_nodes = process_nodes + threaded_nodes
 
-    # 3. Start process nodes first and wait until each has bound its mailbox,
-    #    so no producer sends into a not-yet-listening consumer.
-    for node in process_nodes:
-        node.start()
-    for node in process_nodes:
-        if not node.wait_ready(timeout=STARTUP_READY_TIMEOUT_SEC):
-            LOGGER.warning(f"Process node '{node.id}' did not report readiness in time; starting anyway.")
-
-    # 4. Start threaded nodes (readers/producers/light processors).
+    # 3. Start process nodes first, then threaded nodes (readers/producers/light processors).
+    _start_process_nodes(process_nodes)
     for node in threaded_nodes:
         node.start()
 
     LOGGER.info(f"Pipeline running with {len(all_nodes)} nodes. Waiting for shutdown signal...")
 
-    # 5. Block until interrupted, without a busy loop.
+    # 4. Block until interrupted, without a busy loop.
     stop_event = threading.Event()
 
-    def _handle_signal(signum, _frame) -> None:
+    def _handle_signal(signum: int, _frame: FrameType | None) -> None:
         LOGGER.info(f"Received signal {signum}; shutting down...")
         stop_event.set()
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # 6. A node whose error policy is `fail` only flags itself; bringing the pipeline
-    #    down is the owner's job, which here is this entry point.
-    def _watch_for_failed_nodes() -> None:
-        while not stop_event.wait(FAILURE_POLL_INTERVAL_SEC):
-            broken = [node.id for node in all_nodes if node.failed()]
-            if broken:
-                LOGGER.critical(f"Node(s) {broken} failed under their error policy; shutting down.")
-                stop_event.set()
-                return
-
-    threading.Thread(target=_watch_for_failed_nodes, daemon=True).start()
+    threading.Thread(target=_watch_for_failed_nodes, args=(all_nodes, stop_event), daemon=True).start()
 
     try:
         stop_event.wait()

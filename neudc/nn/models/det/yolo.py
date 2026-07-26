@@ -30,24 +30,25 @@ __all__ = ("YOLOv8",)
 class YOLOv8(BaseDetector):
     """YOLOv8 with multiple backends and numba postprocess."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0917 - detector config constructor, one flag per tunable
         self,
         path: str,
-        backend: BaseBackend,
-        extract_embeddings: bool = False,
+        backend: type[BaseBackend],
+        extract_embeddings: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
         device_id: int = 0,
         imgsz: ImageShape | None = None,
         names: list | dict | None = None,
         conf: float = 0.2,
         iou: float = 0.7,
         max_det: int = 100,
-    ) -> YOLOv8:
+    ) -> None:
         """Initialize the YOLOv8 for inference.
 
         Args:
         ----
             path (str): Path to the model weights file.
             backend (BaseBackend): Backend for inference the model
+            extract_embeddings (bool): Whether to also return intermediate-layer embeddings.
             device_id (int): device id, -1 for cpu device
             imgsz: (int | tuple[int, int]): Image size for the inference height x width.
             names: (list): Class names for the visualisation.
@@ -56,37 +57,39 @@ class YOLOv8(BaseDetector):
             max_det (int): Maximum number of detections to return
 
         """
-        super().__init__(path=path, backend=backend, device_id=device_id)
-        backend = backend(
+        super().__init__(path=path, backend=backend, device_id=device_id)  # type: ignore[safe-super]
+        backend_instance = backend(
             path=path,
             device_id=device_id,
         )
         # Check names
-        if not names and "names" not in backend.metadata:  # names missing
+        if not names and "names" not in backend_instance.metadata:  # names missing
             names = default_class_names()
-        elif "names" in backend.metadata:
-            LOGGER.warning(f"WARNING ⚠️ Overwrite names from {names} to {backend.metadata['names']}.")
-            names = backend.metadata["names"]
+        elif "names" in backend_instance.metadata:
+            LOGGER.warning(f"WARNING ⚠️ Overwrite names from {names} to {backend_instance.metadata['names']}.")
+            names = backend_instance.metadata["names"]
 
+        assert names is not None
         self.names = check_class_names(names)
 
         # Check imgsz
-        if not imgsz and "imgsz" not in backend.metadata:  # imgsz missing
+        if not imgsz and "imgsz" not in backend_instance.metadata:  # imgsz missing
             msg = "imgsz is not initialized."
             raise NotImplementedError(msg)
-        elif "imgsz" in backend.metadata:
-            LOGGER.warning(f"WARNING ⚠️ Overwrite imgsz from {imgsz} to {backend.metadata['imgsz']}.")
-            imgsz = backend.metadata["imgsz"]
+        if "imgsz" in backend_instance.metadata:
+            LOGGER.warning(f"WARNING ⚠️ Overwrite imgsz from {imgsz} to {backend_instance.metadata['imgsz']}.")
+            imgsz = backend_instance.metadata["imgsz"]
+        assert imgsz is not None
         self.imgsz = to_tuple(imgsz)
 
         # Init conf and iou
         self.conf = conf
         self.iou = iou
         self.max_det = max_det
-        self.stride = backend.metadata.get("stride", 32)
+        self.stride = backend_instance.metadata.get("stride", 32)
 
         # Set backend
-        self.backend = backend
+        self.backend = backend_instance
         self.path = path
         self.device_id = device_id
         self.extract_embeddings = extract_embeddings
@@ -94,23 +97,23 @@ class YOLOv8(BaseDetector):
     @staticmethod
     def _pre_transform_normalize(
         ims: list[UInt8HWC],
-        fp16: bool = False,
+        fp16: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
     ) -> FloatImagesBatch:
         """YOLO-like normalize for images."""
-        ims = np.stack(ims)
-        ims = ims.transpose((0, 3, 1, 2))  # BHWC to BCHW, (n, 3, h, w)
-        ims = ims.astype(np.float16 if fp16 else np.float32)  # float
-        np.divide(ims, 255, out=ims, dtype=ims.dtype)  # 0 - 255 to 0.0 - 1.0
+        arr = np.stack(ims)
+        arr = arr.transpose((0, 3, 1, 2))  # BHWC to BCHW, (n, 3, h, w)
+        arr = arr.astype(np.float16 if fp16 else np.float32)  # float
+        np.divide(arr, 255, out=arr, dtype=arr.dtype)  # 0 - 255 to 0.0 - 1.0
 
-        return ims
+        return arr
 
     @staticmethod
     def _pre_transform(
         ims: list[UInt8HWC],
-        imgsz: list[ImageShape],
+        imgsz: ImageShape,
         stride: int = 32,
-        fp16: bool = False,
-    ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
+        fp16: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
+    ) -> tuple[FloatImagesBatch, LetterboxParams]:
         """Pre-transform input image in BGR format before inference.
 
         Args:
@@ -125,7 +128,8 @@ class YOLOv8(BaseDetector):
             (tuple): A list of transformed images in (n, 3, h, w) format and letterbox params.
 
         """
-        letterbox_params, letterbox_images = [], []
+        letterbox_params: LetterboxParams = []
+        letterbox_images = []
 
         for im in ims:
             letterbox_im, letterbox_param = letterbox(img=im, auto=False, stride=stride, new_shape=imgsz)
@@ -133,23 +137,23 @@ class YOLOv8(BaseDetector):
             letterbox_params.append(letterbox_param)
             letterbox_images.append(letterbox_im)
 
-        letterbox_images = YOLOv8._pre_transform_normalize(
+        letterbox_images_arr = YOLOv8._pre_transform_normalize(
             ims=letterbox_images,
             fp16=fp16,
         )
 
-        return letterbox_images, letterbox_params
+        return letterbox_images_arr, letterbox_params
 
     @Profile(use_cuda=False, freq=PROFILE_FREQ)
     def pre_transform(
         self,
         ims: list[UInt8HWC],
-    ) -> tuple[FloatImagesBatch, list[LetterboxParams]]:
+    ) -> tuple[FloatImagesBatch, LetterboxParams]:
         """Pre-transform input image in BGR format before inference.
 
         Args:
         ----
-            im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
+            ims (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
 
         Returns:
         -------
@@ -167,7 +171,7 @@ class YOLOv8(BaseDetector):
     @conditional_jit(nopython=True, fastmath=True, parallel=False, inline="always", turn_on=USE_NUMBA)
     def _post_transform(
         predictions: list[FloatFeaturesBatch],
-        letterbox_params: list[LetterboxParams],
+        letterbox_params: LetterboxParams,
         conf: float,
         iou: float,
         max_det: int,
@@ -205,7 +209,7 @@ class YOLOv8(BaseDetector):
     def post_transform(
         self,
         predictions: FloatFeaturesBatch,
-        letterbox_params: list[LetterboxParams],
+        letterbox_params: LetterboxParams,
     ) -> list[FloatBBoxesWithCls]:
         """Post-transform input image before inference.
 
@@ -231,7 +235,7 @@ class YOLOv8(BaseDetector):
         self,
         ims: list[UInt8HWC],
     ) -> list[FloatBBoxesWithCls]:
-        """Runs inference on the YOLOv8 model.
+        """Run inference on the YOLOv8 model.
 
         Args:
         ----
@@ -244,23 +248,24 @@ class YOLOv8(BaseDetector):
         """
         batch_ims, batch_params = self.pre_transform(ims)
         if self.extract_embeddings:
-            predictions, embs = self.backend(batch_ims)
+            embed_predictions, embs = self.backend(batch_ims)
 
-            return (
+            # extract_embeddings mode returns (bboxes, embeddings), wider than the declared
+            # list[FloatBBoxesWithCls] return type shared with the non-embedding path.
+            return (  # type: ignore[return-value]
                 self.post_transform(
-                    predictions=predictions,
+                    predictions=embed_predictions,
                     letterbox_params=batch_params,
                 ),
                 embs,
             )
-        else:
-            predictions = self.backend(batch_ims)
-            return self.post_transform(
-                predictions=predictions,
-                letterbox_params=batch_params,
-            )
+        predictions = self.backend(batch_ims)
+        return self.post_transform(
+            predictions=predictions,
+            letterbox_params=batch_params,
+        )
 
-    @NoProfile
+    @NoProfile  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
     def warmup(
         self,
         iters: int = 10,
@@ -294,6 +299,7 @@ class YOLOv8(BaseDetector):
         ----
             image (np.ndarray): image to plot the bboxes.
             bboxes (tuple(np.ndarray, ...)): bboxes which consists of (bboxs, scores, cls_id)
+            save_path (str | None): Optional path to save the plotted image to; if None, not saved.
 
         Returns:
         -------
@@ -338,25 +344,16 @@ class YOLOv8(BaseDetector):
             if ymin - total_text_height >= 0:
                 # Place above bbox
                 text_y = ymin - baseline  # Baseline at top of bbox
-                if xmin + text_width > img_width:  # Right-align if needed
-                    text_org = (max(0, xmax - text_width), text_y)
-                else:  # Left-align
-                    text_org = (xmin, text_y)
+                text_org = (max(0, xmax - text_width), text_y) if xmin + text_width > img_width else (xmin, text_y)
             # Check space below
             elif ymax + total_text_height <= img_height:
                 # Place below bbox
                 text_y = ymax + text_height  # Baseline below bbox
-                if xmin + text_width > img_width:  # Right-align if needed
-                    text_org = (max(0, xmax - text_width), text_y)
-                else:  # Left-align
-                    text_org = (xmin, text_y)
+                text_org = (max(0, xmax - text_width), text_y) if xmin + text_width > img_width else (xmin, text_y)
             else:
                 # Not enough space above or below - place inside top
                 text_y = ymin + text_height  # Baseline inside bbox
-                if xmin + text_width > img_width:  # Right-align if needed
-                    text_org = (max(0, xmax - text_width), text_y)
-                else:  # Left-align
-                    text_org = (xmin, text_y)
+                text_org = (max(0, xmax - text_width), text_y) if xmin + text_width > img_width else (xmin, text_y)
 
             cv2.putText(
                 img=image,
@@ -376,6 +373,7 @@ class YOLOv8(BaseDetector):
                 LOGGER.warning(f"WARNING ⚠️ Failed to save image to {save_path}")
 
     def __repr__(self) -> str:
+        """Return a string representation of the model."""
         return (
             f"YOLOv8("
             f"path={self.path}, "

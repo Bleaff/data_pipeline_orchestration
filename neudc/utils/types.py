@@ -1,26 +1,26 @@
-from typing import Union
+"""Shared jaxtyping/NumPy type aliases used across model and pre/post-processing code."""
 
 import numpy as np
 from jaxtyping import Bool, Float, UInt8
 
 __all__ = (
-    "ImageShape",
-    "UInt8HWC",
-    "FloatImagesBatch",
-    "FloatFeaturesBatch",
-    "FloatBBoxesWithCls",
-    "LetterboxParams",
     "BoolMask",
+    "FloatBBoxesWithCls",
+    "FloatFeaturesBatch",
+    "FloatImagesBatch",
+    "ImageShape",
+    "LetterboxParams",
+    "UInt8HWC",
 )
 
 # Boolean mask
 BoolMask = Bool[np.ndarray, "..."]
 
 # Letterbox Params Nx4 or Nx7 (ratio_x ratio_y, pad_x, pad_y, Optional[image_index, origin_x, origin_y])
-LetterboxParams = list[Union[Float[np.ndarray, "4"], Float[np.ndarray, "7"]]]
+LetterboxParams = list[Float[np.ndarray, "4"] | Float[np.ndarray, "7"]]
 
 # Image shape
-ImageShape = Union[int, tuple[int, int]]
+ImageShape = int | tuple[int, int]
 
 # Basic Uint8 image as input to object detector
 UInt8HWC = UInt8[np.ndarray, "H W C"]

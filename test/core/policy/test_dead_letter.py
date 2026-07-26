@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import pickle
+from pathlib import Path
 
 import numpy as np
 
@@ -35,7 +36,8 @@ def _read_records(path) -> list[dict]:
 def test_record_captures_error_and_message_identity(tmp_path) -> None:
     sink = DeadLetterSink(tmp_path)
     try:
-        raise ValueError("model exploded")
+        # Raise-and-catch (rather than a helper) so the captured traceback is a real one.
+        raise ValueError("model exploded")  # noqa: TRY301, TRY003, EM101
     except ValueError as error:
         sink.record("detector", _frame(), error)
 
@@ -85,8 +87,8 @@ def test_store_payload_writes_a_replayable_pickle(tmp_path) -> None:
     DeadLetterSink(tmp_path, store_payload=True).record("detector", _frame(3), RuntimeError("x"))
 
     entry = _read_records(tmp_path / "detector.jsonl")[0]
-    with open(entry["payload_file"], "rb") as handle:
-        restored = pickle.load(handle)
+    with Path(entry["payload_file"]).open("rb") as handle:
+        restored = pickle.load(handle)  # noqa: S301 -- loading a pickle this same test just wrote
 
     assert restored.frame_id == 3
     assert np.array_equal(restored.image, np.zeros((2, 2, 3), dtype=np.uint8))

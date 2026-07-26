@@ -32,7 +32,7 @@ def test_from_state_rebuilds_a_working_mailbox() -> None:
     state = receiver.__getstate__()
     receiver.stop()  # explicit hand-off: free the bound port for the rebuilt mailbox
 
-    rebuilt = ZMQMailbox.from_state(ZMQMailbox, state)
+    rebuilt = ZMQMailbox.from_state(state)
     assert rebuilt.consume_port == port
 
     sender = ZMQMailbox()

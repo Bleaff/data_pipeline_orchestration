@@ -1,3 +1,5 @@
+"""Abstract interface every classifier model (BlurClassification, EmbeddingFilter, ...) implements."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -15,9 +17,13 @@ __all__ = ("BaseClsModel",)
 
 
 class BaseClsModel(ABC):
+    """Base class for all classification models."""
+
+    metadata: dict[str, Any]
+    names: list | dict
 
     @abstractmethod
-    def __init__(
+    def __init__(  # noqa: PLR0917 - classifier config constructor, one flag per tunable
         self,
         path: str,
         backend: type[BaseBackend],
@@ -25,7 +31,7 @@ class BaseClsModel(ABC):
         imgsz: ImageShape | None = None,
         names: list | dict | None = None,
         conf: float = 0.2,
-    ) -> BaseClsModel:
+    ) -> None:
         """Initialize the BaseClsModel for inference.
 
         Args:
@@ -41,6 +47,7 @@ class BaseClsModel(ABC):
 
     @property
     def get_metadata(self) -> dict[str, Any]:
+        """Return backend metadata (e.g. input size, class names) collected at load time."""
         return self.metadata
 
     @abstractmethod
@@ -81,13 +88,14 @@ class BaseClsModel(ABC):
     def __call__(
         self,
         ims: list[UInt8HWC],
-        return_embeddings: bool = False,
+        return_embeddings: bool = False,  # noqa: FBT001, FBT002 - established ML-config convention
     ) -> list[int | FloatFeaturesBatch]:
-        """Runs inference on the YOLOv8 model.
+        """Run inference on the YOLOv8 model.
 
         Args:
         ----
             ims (List(np.ndarray)): [(H, W, C) x N] for list.
+            return_embeddings (bool): Whether to also return intermediate-layer embeddings.
 
         Returns:
         -------
@@ -95,7 +103,7 @@ class BaseClsModel(ABC):
 
         """
 
-    @NoProfile
+    @NoProfile  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
     @abstractmethod
     def warmup(
         self,

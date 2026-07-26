@@ -8,10 +8,33 @@ from __future__ import annotations
 
 import threading
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Protocol
 
+from neudc.core.observability.metrics import HEALTH
 from neudc.core.policy import ErrorPolicy, NodeFailure
 from neudc.utils import LOGGER
+
+
+class EventLike(Protocol):
+    """Structural type shared by `threading.Event` and `multiprocessing.synchronize.Event`.
+
+    `BaseNode` uses `threading.Event`, but `BaseProcessNode` swaps in an
+    `mp.Event()` instead (it must be shared with the child process across spawn).
+    Both expose the same `set`/`is_set`/`wait` surface, so this Protocol lets
+    both subclasses satisfy the same attribute type.
+    """
+
+    def set(self) -> None:
+        """Set the internal flag to true."""
+        ...
+
+    def is_set(self) -> bool:
+        """Return whether the internal flag is true."""
+        ...
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Block until the flag is true, or ``timeout`` seconds elapse."""
+        ...
 
 
 class BaseNode(ABC):
@@ -40,13 +63,13 @@ class BaseNode(ABC):
     By default you can use just `init_runtime` method to make your node work.
     """
 
-    def __init__(self, mailbox: Any, id: str = "BaseNode", _join_timeout: float = 0.1) -> BaseNode:
+    def __init__(self, mailbox: Any, id: str = "BaseNode", _join_timeout: float = 0.1) -> None:
         """Initialize the node with a mailbox and a logger.
 
         Args:
         ----
             mailbox (Any): The mailbox to use for communication with other nodes.
-            _id (str): The ID of the node.
+            id (str): The ID of the node.
             _join_timeout (float): The timeout for joining the thread.
 
         """
@@ -57,10 +80,10 @@ class BaseNode(ABC):
         self.is_running = False
         self.id = id
         self.is_ready = False
-        self._stop_event = threading.Event()
+        self._stop_event: EventLike = threading.Event()
         # Set when the node gives up under an ErrorAction.FAIL policy, so the pipeline
         # can tell "stopped because it was told to" from "stopped because it broke".
-        self._failed_event = threading.Event()
+        self._failed_event: EventLike = threading.Event()
         # Replaced by the factory with the policy from the node's config; the default
         # is the historical behaviour (log the exception and drop the message).
         self.error_policy = ErrorPolicy()
@@ -71,7 +94,7 @@ class BaseNode(ABC):
 
     @classmethod
     @abstractmethod
-    def from_config(cls: BaseNode, config: dict[str, Any]) -> BaseNode:
+    def from_config(cls: type[BaseNode], config: dict[str, Any]) -> BaseNode:
         """Create a node instance from the given configuration.
 
         Args:
@@ -140,6 +163,7 @@ class BaseNode(ABC):
     def _run(self) -> None:
         """Run the node processing loop."""
         self.is_ready = True
+        HEALTH.labels(node=self.id).set(1)
         while self.is_running:
             data = self._collect_data()
             if data is not None:
@@ -147,8 +171,9 @@ class BaseNode(ABC):
                 if result:
                     try:
                         self.mailbox.send(result)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 -- top-level node run-loop must never crash the thread.
                         self.is_ready = False
+                        HEALTH.labels(node=self.id).set(0)
                         LOGGER.exception("Error while sending result", exc_info=e)
 
     @abstractmethod
@@ -169,10 +194,11 @@ class BaseNode(ABC):
         LOGGER.info("Stopping node...")
         self.is_running = False
         self.is_ready = False
+        HEALTH.labels(node=self.id).set(0)
         self._stop_event.set()
         self.mailbox.stop()
         # prevent joining current thread
-        if threading.current_thread() != self.thread and self.thread.is_alive():
+        if self.thread is not None and threading.current_thread() != self.thread and self.thread.is_alive():
             self.thread.join(timeout=self._join_timeout)
         LOGGER.info("Node stopped.")
 

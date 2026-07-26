@@ -25,15 +25,26 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from neudc.core.observability.metrics import (
+    DEAD_LETTERED,
+    DROPPED,
+    ERRORS,
+    FAILURES,
+    MESSAGES_PROCESSED,
+    PROCESS_LATENCY,
+    RETRIES,
+)
 from neudc.core.policy.dead_letter import DeadLetterSink
 from neudc.utils import LOGGER
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class ErrorAction(StrEnum):
@@ -44,7 +55,8 @@ class ErrorAction(StrEnum):
     FAIL = "fail"
 
 
-class NodeFailure(RuntimeError):
+# Public API name (neudc.core.policy.NodeFailure); renaming to *Error would be a breaking change.
+class NodeFailure(RuntimeError):  # noqa: N818
     """Raised by the policy when the node must stop rather than continue.
 
     Only ``ErrorAction.FAIL`` produces it; the node's run loop turns it into a
@@ -110,6 +122,7 @@ class ErrorPolicy:
     _sink: DeadLetterSink | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        """Create the dead-letter sink if `config.dead_letter_dir` was configured."""
         if self.config.dead_letter_dir is not None:
             self._sink = DeadLetterSink(self.config.dead_letter_dir, store_payload=self.config.store_payload)
 
@@ -144,16 +157,20 @@ class ErrorPolicy:
         last_error: BaseException | None = None
 
         for attempt in range(attempts):
+            start = time.monotonic()
             try:
                 result = func(item)
             except Exception as error:  # noqa: BLE001 - the policy is the handler of last resort
+                PROCESS_LATENCY.labels(node=self.node_id).observe(time.monotonic() - start)
                 last_error = error
                 self.stats.errors += 1
+                ERRORS.labels(node=self.node_id).inc()
                 remaining = attempts - attempt - 1
                 if remaining == 0:
                     break
                 delay = self._backoff_delay(attempt)
                 self.stats.retries += 1
+                RETRIES.labels(node=self.node_id).inc()
                 LOGGER.warning(
                     f"[{self.node_id}] {type(error).__name__} in process(), "
                     f"retrying in {delay:.3f}s ({remaining} attempt(s) left): {error}"
@@ -162,9 +179,12 @@ class ErrorPolicy:
                     # Stopping mid-backoff: abandon the message rather than block shutdown.
                     LOGGER.info(f"[{self.node_id}] stop requested during backoff, dropping message")
                     self.stats.dropped += 1
+                    DROPPED.labels(node=self.node_id).inc()
                     return None
             else:
+                PROCESS_LATENCY.labels(node=self.node_id).observe(time.monotonic() - start)
                 self.stats.processed += 1
+                MESSAGES_PROCESSED.labels(node=self.node_id).inc()
                 return result
 
         return self._give_up(item, last_error)
@@ -174,14 +194,17 @@ class ErrorPolicy:
         if self._sink is not None:
             self._sink.record(self.node_id, item, error)
             self.stats.dead_lettered += 1
+            DEAD_LETTERED.labels(node=self.node_id).inc()
 
         if self.config.on_error is ErrorAction.FAIL:
             self.stats.failures += 1
+            FAILURES.labels(node=self.node_id).inc()
             msg = f"[{self.node_id}] processing failed and error policy is 'fail': {error!r}"
             LOGGER.critical(msg)
             raise NodeFailure(msg) from error
 
         self.stats.dropped += 1
+        DROPPED.labels(node=self.node_id).inc()
         LOGGER.error(f"[{self.node_id}] dropping message after failed processing", exc_info=error)
         return None
 

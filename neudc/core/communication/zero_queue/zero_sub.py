@@ -25,7 +25,7 @@ class ZeroQueueSub(ZeroQueue):
         self,
         port: int = -1,
         contype: ZeroQueueConnectionType = ZeroQueueConnectionType.BIND,
-    ) -> "ZeroQueueSub":
+    ) -> None:
         """Initialize the ZeroQueueSub.
 
         This class is used to receive data from a ZeroQueuePublisher. It always binds to a random port.

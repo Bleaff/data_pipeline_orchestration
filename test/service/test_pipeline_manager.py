@@ -9,12 +9,15 @@ boundary, plus status()/stop_pipeline lifecycle.
 from __future__ import annotations
 
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from neudc.service.pipeline_manager import PipelineServiceManager
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_images(folder: Path, count: int) -> None:

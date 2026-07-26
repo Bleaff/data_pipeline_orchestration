@@ -1,3 +1,5 @@
+"""Base class for process-inference nodes: a `BaseProcessNode` that lazily loads a model."""
+
 from __future__ import annotations
 
 import copy
@@ -7,12 +9,13 @@ from multiprocessing import Event
 from typing import TYPE_CHECKING, Any
 
 from neudc.core.base.base_process import BaseProcessNode
-from neudc.core.communication.messaging.types import Frame
 from neudc.nn import ModelFactory
 from neudc.utils import LOGGER
 
 if TYPE_CHECKING:
     from neudc.core.communication.messaging.types import Frame
+    from neudc.nn.models.cls.base import BaseClsModel
+    from neudc.nn.models.det.base import BaseDetector
 
 
 class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
@@ -26,15 +29,18 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
 
     """
 
-    def __init__(self, model_config: dict, mailbox: Any, id: str = "BaseProcessInference") -> BaseProcessInference:
+    def __init__(self, model_config: dict, mailbox: Any, id: str = "BaseProcessInference") -> None:
         """Initialize the base inference node.
 
         Args:
         ----
+            model_config: Configuration used to build the model via `ModelFactory`.
             mailbox: Mailbox for inter-process communication.
+            id: Identifier for this node instance.
+
         """
         super().__init__(mailbox, id=id)
-        self.model = None
+        self.model: BaseClsModel | BaseDetector | None = None
         self.model_config = model_config
         self._model_initialized = Event()
         self.model_initialization_status = Event()
@@ -81,7 +87,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
         """
 
     @classmethod
-    def from_config(cls: type[BaseProcessNode], config: dict[str, Any]) -> BaseProcessNode:
+    def from_config(cls: type[BaseProcessInference], config: dict[str, Any]) -> BaseProcessInference:
         """From config-based constructor for building node with specified config.
 
         Args:
@@ -90,7 +96,7 @@ class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):
 
         Returns:
         -------
-            BaseProcessNode: Node instance created from the configuration.
+            BaseProcessInference: Node instance created from the configuration.
 
         """
         return cls(config["model_config"], config["mailbox"], id=config["id"])

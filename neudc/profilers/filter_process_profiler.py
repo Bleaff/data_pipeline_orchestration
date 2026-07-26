@@ -1,5 +1,4 @@
-"""
-Module contains a simple decorator for profiling of functions and methods.
+"""Module contains a simple decorator for profiling of functions and methods.
 
 Decorator is generating logging messages with information about function name,
 arguments and result of the function call.
@@ -21,7 +20,7 @@ from __future__ import annotations
 
 import time
 from functools import wraps
-from typing import Self
+from typing import TYPE_CHECKING, Any, Self
 
 from prometheus_client import Counter, Gauge
 
@@ -35,29 +34,12 @@ from neudc.profilers.profiler_metrics import (
 )
 from neudc.utils import LOGGER
 
-try:
-    pass
-
-    CUDA_PROFILE_ENABLE = True
-except ImportError:
-    CUDA_PROFILE_ENABLE = False
-    LOGGER.info("Cuda library is not installed. Check your installation carefully.")
-
-
-if CUDA_PROFILE_ENABLE:
-    pass
-
-import logging
-from functools import wraps
-from typing import Self
-
-logging.basicConfig(level=logging.DEBUG)
-LOGGER = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class FilterProcessProfiler(BaseProfiler):
-    """
-    Profiler for functions and methods.
+    """Profiler for functions and methods.
 
     This profiler generates logging messages with information about function name,
     arguments and result of the function call.
@@ -90,13 +72,11 @@ class FilterProcessProfiler(BaseProfiler):
         freq: int | None = None,
         max_calls: int = 100_000,
         enable_metrics: bool = True,
-    ):
-        """
-        Initialize the FilterProcessProfiler.
+    ) -> None:
+        """Initialize the FilterProcessProfiler.
 
         Args:
-            node_name (str, optional): Node name which will be used in log messages.
-                Defaults to None.
+        ----
             t (float, optional): Initial accumulated time. Defaults to 0.0.
             use_cuda (bool, optional): Whether to synchronize with CUDA device.
                 Defaults to True.
@@ -105,10 +85,12 @@ class FilterProcessProfiler(BaseProfiler):
             freq (int, optional): Log frequency (calls). None means no logging.
                 Defaults to None.
             max_calls (int, optional): Maximum calls before reset. Defaults to 100_000.
+            enable_metrics (bool, optional): Whether to register and update Prometheus metrics.
+                Defaults to True.
+
         """
-        self
-        self.start = None
-        self.cache = {"filtered": 0, "go_through": 0, "total": 0, "total_time": 0}
+        self.node_name: str | None = None
+        self.cache: dict[str, float] = {"filtered": 0, "go_through": 0, "total": 0, "total_time": 0}
         self.t = t
         self.use_cuda = use_cuda
         self.use_torch = use_torch
@@ -119,7 +101,7 @@ class FilterProcessProfiler(BaseProfiler):
         self.dt = 0.0
         self.enable_metrics = enable_metrics
 
-    def _init_metrics(self):
+    def _init_metrics(self) -> None:
         """Initialize Prometheus metrics."""
         metric_prefix = f"{self.node_name}".replace(" ", "_")
         self.exec_time_gauge = Gauge(f"{metric_prefix}_execution_time_seconds", "Execution time of the function")
@@ -127,24 +109,29 @@ class FilterProcessProfiler(BaseProfiler):
         self.filtered_frames_counter = Counter(f"{metric_prefix}_frames_filtered", "Number of filtered frames")
         self.go_through_counter = Counter(f"{metric_prefix}_frames_passed", "Number of passed frames")
 
-    def __call__(self, func):
+    def __call__(self, func: Callable[..., Any]) -> Callable[..., Any]:
+        """Wrap ``func`` so each call is timed and its result recorded as metrics."""
+
         @wraps(func)
-        def wrapper(method_self, *args, **kwargs):
-            """
-            Wraps a function to log its arguments and result.
+        def wrapper(method_self: Any, *args: Any, **kwargs: Any) -> Any:
+            """Time a single call to the wrapped function and update its metrics.
 
             Args:
-                *args: Function arguments.
-                **kwargs: Function keyword arguments.
+            ----
+                method_self: The node instance the wrapped method is bound to.
+                *args: Positional arguments forwarded to the wrapped function.
+                **kwargs: Keyword arguments forwarded to the wrapped function.
 
             Returns:
-                The result of the function call.
+            -------
+                The result of the wrapped function call.
+
             """
-            if not hasattr(self, "node_name"):
+            if self.node_name is None:
                 self.node_name = method_self.id
                 LOGGER.info(f"Node name is {self.node_name}")
                 self._init_metrics()
-            inside_argument = args[0] if len(args) else next(iter(kwargs.values()))
+            inside_argument = args[0] if args else next(iter(kwargs.values()))
             func_result = None
             with self:
                 func_result = func(method_self, inside_argument)
@@ -153,7 +140,7 @@ class FilterProcessProfiler(BaseProfiler):
 
         return wrapper
 
-    def _process_frame(self, frame_in, frame_out) -> None:
+    def _process_frame(self, frame_in: Batch | Frame, frame_out: Batch | Frame) -> None:
         """Update statistics for processed frames or batches."""
         if isinstance(frame_out, Frame):
             self.cache["total"] += 1
@@ -167,7 +154,8 @@ class FilterProcessProfiler(BaseProfiler):
                 FILTERED_FRAMES_COUNTER.labels(node=self.node_name).inc()
 
         elif isinstance(frame_out, Batch):
-            total_in = len(frame_in.frames)
+            # A Batch result always comes from a Batch input; the fallback is for typing only.
+            total_in = len(frame_in.frames) if isinstance(frame_in, Batch) else 1
             self.cache["total"] += total_in
             TOTAL_FRAMES_COUNTER.labels(node=self.node_name).inc(total_in)
             for frame in frame_out.frames:
@@ -188,7 +176,8 @@ class FilterProcessProfiler(BaseProfiler):
         self.start = self.time()
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_: object) -> None:
+        """Stop timing and, if metrics are enabled, record the elapsed time."""
         if self.start:
             self.dt = self.time() - self.start
             self.t += self.dt

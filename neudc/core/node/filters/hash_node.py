@@ -1,3 +1,5 @@
+"""Threaded node wiring `HashFilterMixin` perceptual-hash deduplication into the pipeline."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,7 +9,7 @@ from neudc.core.node.filters.mixins.hash_mixin import HashFilterMixin
 
 
 class HashNode(HashFilterMixin, BaseThreadedNode):
-    """A node that resizes incoming Frame objects to a target resolution."""
+    """A node that drops incoming Frame objects that are near-duplicates of a recent frame (perceptual hash)."""
 
     def __init__(
         self,
@@ -17,10 +19,10 @@ class HashNode(HashFilterMixin, BaseThreadedNode):
         id: str = "HashNode",
         *args: Any,
         **kwargs: Any,
-    ) -> HashNode:
+    ) -> None:
         """Initialize the HashNode with delta and type of hash."""
         HashFilterMixin.__init__(self, delta=delta, hash_type=hash_type, hash_size=hash_size)
-        BaseThreadedNode.__init__(self, id=id, *args, **kwargs)
+        BaseThreadedNode.__init__(self, *args, id=id, **kwargs)
         self.id = id
 
     @classmethod

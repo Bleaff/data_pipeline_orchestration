@@ -1,3 +1,5 @@
+"""Abstract interface every detector model (YOLOv8, SAHIDetector, ...) implements."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -15,17 +17,24 @@ __all__ = ("BaseDetector",)
 class BaseDetector(ABC):
     """Base class for all detectors."""
 
+    metadata: dict[str, Any]
+    imgsz: tuple[int, int]
+    names: dict[int, str]
+    conf: float
+    iou: float
+    backend: BaseBackend
+
     @abstractmethod
-    def __init__(
+    def __init__(  # noqa: PLR0917 - detector config constructor, one flag per tunable
         self,
         path: str,
-        backend: BaseBackend,
+        backend: type[BaseBackend],
         device_id: int = 0,
         imgsz: ImageShape | None = None,
         names: list | dict | None = None,
         conf: float = 0.2,
         iou: float = 0.7,
-    ) -> BaseDetector:
+    ) -> None:
         """Initialize the BaseDetector for inference.
 
         Args:
@@ -42,6 +51,7 @@ class BaseDetector(ABC):
 
     @property
     def get_metadata(self) -> dict[str, Any]:
+        """Return backend metadata (e.g. input size, class names) collected at load time."""
         return self.metadata
 
     @abstractmethod
@@ -85,7 +95,7 @@ class BaseDetector(ABC):
         self,
         ims: list[UInt8HWC],
     ) -> list[FloatBBoxesWithCls]:
-        """Runs inference on the YOLOv8 model.
+        """Run inference on the YOLOv8 model.
 
         Args:
         ----
@@ -97,7 +107,7 @@ class BaseDetector(ABC):
 
         """
 
-    @NoProfile
+    @NoProfile  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
     @abstractmethod
     def warmup(
         self,
@@ -124,6 +134,7 @@ class BaseDetector(ABC):
         ----
             image (np.ndarray): image to plot the bboxes.
             bboxes (tuple(np.ndarray, ...)): bboxes which consists of (bboxs, scores, cls_id)
+            save_path (str | None): Optional path to save the plotted image to; if None, not saved.
 
         Returns:
         -------
@@ -133,4 +144,4 @@ class BaseDetector(ABC):
 
     @abstractmethod
     def __repr__(self) -> str:
-        """String representation of the model."""
+        """Return a string representation of the model."""

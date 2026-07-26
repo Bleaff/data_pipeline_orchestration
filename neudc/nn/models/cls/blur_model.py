@@ -1,3 +1,5 @@
+"""Blur classification model: DCT-feature-based blur/sharp classifier."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -6,7 +8,7 @@ import cv2
 import numpy as np
 
 from neudc.nn.models.cls.feature_extractor import FeatureExtractor
-from neudc.utils import PROFILE_FREQ, Profile
+from neudc.utils import PROFILE_FREQ, NoProfile, Profile
 
 from .base import BaseClsModel
 
@@ -56,7 +58,7 @@ class BlurClassification(BaseClsModel):
             BlurClassification: Initialized blur classification instance
 
         """
-        super().__init__(path=path, backend=backend, device_id=device_id, conf=conf)
+        super().__init__(path=path, backend=backend, device_id=device_id, conf=conf)  # type: ignore[safe-super]
 
         self.backend = backend(path=path, device_id=device_id)
 
@@ -94,15 +96,16 @@ class BlurClassification(BaseClsModel):
         batch_feats: list[np.ndarray | None] = []
         for img in ims:
             fe = FeatureExtractor()
-            processed_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+            # 3 == HWC ndim here; reads clearly in context.
+            processed_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img  # noqa: PLR2004
             fe.resize_image(processed_img, *processed_img.shape[:2])
             fe.compute_roi()
             feats = fe.extract_feature()
             if not feats:
                 batch_feats.append(None)
             else:
-                feats = np.stack(feats).astype(np.float32) / 255.0
-                batch_feats.append(feats)
+                feats_arr = np.stack(feats).astype(np.float32) / 255.0
+                batch_feats.append(feats_arr)
         return batch_feats
 
     @Profile(use_cuda=False, freq=PROFILE_FREQ)
@@ -141,10 +144,11 @@ class BlurClassification(BaseClsModel):
 
         return blur_result
 
+    # return_embeddings is part of the BaseClsModel interface; blur classification has no embeddings to return.
     def __call__(
         self,
         ims: list[UInt8HWC],
-        return_embeddings: bool = False,
+        return_embeddings: bool = False,  # noqa: FBT001, FBT002, ARG002
     ) -> list[Any]:
         """Perform blur detection on a batch of images.
 
@@ -154,6 +158,7 @@ class BlurClassification(BaseClsModel):
         Args:
         ----
             ims (List[UInt8HWC]): List of input images in HWC format with uint8 values
+            return_embeddings (bool): Unused; blur classification has no embeddings to return.
 
         Returns:
         -------
@@ -192,5 +197,12 @@ class BlurClassification(BaseClsModel):
         """
         return f"BlurClassification(path={self.path}, device_id={self.device_id}, conf={self.conf})"
 
-    def warmup(self):
-        pass
+    @NoProfile  # type: ignore[call-arg]  # NoProfile is a singleton instance mistyped as a class by mypy
+    def warmup(self, iters: int = 10) -> None:
+        """No-op; blur classification currently has no warmup pass implemented.
+
+        Args:
+        ----
+            iters (int): Unused; kept for interface compatibility with `BaseClsModel.warmup`.
+
+        """

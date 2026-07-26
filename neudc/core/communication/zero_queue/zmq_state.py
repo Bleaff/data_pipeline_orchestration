@@ -1,16 +1,16 @@
 """Module contains the state of the ZeroQueue, such as the mode of the current queue."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ZeroQueueMode(str, Enum):
+class ZeroQueueMode(StrEnum):
     """Enum for ZeroQueue modes."""
 
     SUB = "SUB"
     PUB = "PUB"
 
 
-class ZeroQueueConnectionType(str, Enum):
+class ZeroQueueConnectionType(StrEnum):
     """Enum for ZeroQueue connection states.
 
     Connecting to an existing port or binding(hosting) to a new one.

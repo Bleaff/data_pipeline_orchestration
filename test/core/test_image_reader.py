@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.node.readers.image_reader import FolderImageNode
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_empty_folder_stops_without_crash(tmp_path: Path) -> None:

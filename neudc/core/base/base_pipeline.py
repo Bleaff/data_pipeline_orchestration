@@ -1,5 +1,4 @@
-"""
-Base class for pipeline.
+"""Base class for pipeline.
 
 This module contains the base class for a pipeline. A pipeline is a special type of node that
 can be used to run other nodes in separate processes, allowing for parallel execution of node graphs.
@@ -10,29 +9,52 @@ configuration to the pipeline.
 
 """
 
+from __future__ import annotations
+
 import logging
-import multiprocessing as mp
 import time
 from multiprocessing import Process
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from neudc.core.base.base_node import BaseNode, EventLike
 
 
 class BasePipeline(Process):
     """Base class for a pipeline.
+
     This class extends the Process class to allow for parallel execution of node graphs.
     """
 
-    def __init__(self, name: str, stop_event: mp.Event, nodes_config: list[dict], task_config: dict | None = None):
+    def __init__(
+        self,
+        name: str,
+        stop_event: EventLike,
+        nodes_config: list[dict[str, Any]],
+        task_config: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the pipeline process.
+
+        Args:
+        ----
+            name (str): Name of the pipeline, also used as the logger name.
+            stop_event (EventLike): Event signaling the pipeline to shut down.
+            nodes_config (list[dict[str, Any]]): Per-node configuration entries for the pipeline.
+            task_config (dict[str, Any] | None): Task-level configuration shared across nodes.
+
+        """
         super().__init__()
         self.name = name
         self.nodes_config = nodes_config
         self.task_config = task_config or {}
         self.stop_event = stop_event
-        self.nodes = []
+        self.nodes: list[BaseNode] = []
 
-    def run(self):
+    def run(self) -> None:
         """Run the pipeline process.
-        This method initializes the logging, sets up the routing, creates the nodes, and starts them.
-        It also keeps the process alive until interrupted.
+
+        Initializes logging, sets up the routing, creates the nodes, and starts them.
+        Also keeps the process alive until interrupted.
         """
         # Initialize logging
         logging.basicConfig(level=logging.INFO)
@@ -66,7 +88,7 @@ class BasePipeline(Process):
                 if broken:
                     logger.critical(f"Node(s) {broken} failed under their error policy; stopping pipeline.")
                     break
-                time.sleep(0.1)  # чтобы не сжирало CPU
+                time.sleep(0.1)  # avoid busy-spinning the CPU
         except KeyboardInterrupt:
             logger.warning("Pipeline interrupted by keyboard.")
         finally:

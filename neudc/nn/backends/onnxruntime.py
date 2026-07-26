@@ -1,3 +1,5 @@
+"""ONNX Runtime inference backend."""
+
 from __future__ import annotations
 
 import ast
@@ -15,6 +17,7 @@ __all__ = ("ONNXRuntimeBackend",)
 
 
 class ONNXRuntimeBackend(BaseBackend):
+    """Runs inference through an ONNX Runtime `InferenceSession`, CPU or CUDA."""
 
     cuda = False
     cpu = False
@@ -24,7 +27,7 @@ class ONNXRuntimeBackend(BaseBackend):
         self,
         path: str,
         device_id: int = 0,
-    ) -> ONNXRuntimeBackend:
+    ) -> None:
         """Init of ONNX Runtime backend.
 
         Args:
@@ -33,7 +36,7 @@ class ONNXRuntimeBackend(BaseBackend):
             device_id (int): Device id for the inference. -1 is cpu device.
 
         """
-        providers = ["CPUExecutionProvider"]
+        providers: list[str | tuple[str, dict]] = ["CPUExecutionProvider"]
         if device_id >= 0:
             if "CUDAExecutionProvider" not in ort.get_available_providers():
                 LOGGER.warning("WARNING ⚠️ CUDA is not available, switching to cpu.")

@@ -45,7 +45,7 @@ class ZeroQueue:
         port: int = -1,
         mode: ZeroQueueMode = ZeroQueueMode.SUB,
         contype: ZeroQueueConnectionType = ZeroQueueConnectionType.CONNECT,
-    ) -> ZeroQueue:
+    ) -> None:
         """Initialize the ZeroQueue.
 
         Args:
@@ -55,10 +55,12 @@ class ZeroQueue:
             contype (ZeroQueueConnectionType): Connection type (bind or connect). Default is CONNECT.
 
         """
-        self._port: int = port  # type: ignore[assignment]
+        self._port: int = port
         self.context: zmq.Context = zmq.Context()
         self.mode: ZeroQueueMode = mode
         self.contype: ZeroQueueConnectionType = contype
+        self.socket_pub: zmq.Socket | None = None
+        self.socket_sub: zmq.Socket | None = None
 
         if mode == ZeroQueueMode.SUB:
             self._init_sub(contype)
@@ -71,7 +73,7 @@ class ZeroQueue:
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_sub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
+    def _init_sub(self, contype: ZeroQueueConnectionType) -> None:
         """Initialize the consumer (PULL) socket. The port comes from initialization.
 
         Args:
@@ -79,14 +81,13 @@ class ZeroQueue:
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
 
         """
-        self.socket_pub: zmq.Context.socket | None = None
-        self.socket_sub: zmq.Context.socket | None = self.context.socket(zmq.PULL)
+        self.socket_sub = self.context.socket(zmq.PULL)
         self.socket_sub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_sub, contype)
         self.poller = zmq.Poller()
         self.poller.register(self.socket_sub, zmq.POLLIN)
 
-    def _init_pub(self, contype: ZeroQueueConnectionType) -> None:  # type: ignore[no-untyped-def]
+    def _init_pub(self, contype: ZeroQueueConnectionType) -> None:
         """Initialize the producer (PUSH) socket. The port comes from initialization.
 
         Args:
@@ -94,14 +95,13 @@ class ZeroQueue:
             contype (ZeroQueueConnectionType): Connection type (bind or connect).
 
         """
-        self.socket_pub: zmq.Context.socket | None = self.context.socket(zmq.PUSH)  # type: ignore[no-redef]
+        self.socket_pub = self.context.socket(zmq.PUSH)
         self.socket_pub.setsockopt(zmq.LINGER, 100)
         self._set_connection(self.socket_pub, contype)
-        self.socket_sub: zmq.Context.socket | None = None  # type: ignore[no-redef]
         # No "slow joiner" settle needed: a PUSH socket queues messages until a PULL
         # peer is connected, so nothing is lost when the producer starts first.
 
-    def _bind_port(self, port: int, socket: zmq.Context.socket) -> int:
+    def _bind_port(self, port: int, socket: zmq.Socket) -> int:
         """Bind the socket to a random port and return the port number."""
         if port != -1:
             socket.bind(f"tcp://*:{port}")
@@ -111,7 +111,7 @@ class ZeroQueue:
         LOGGER.info(f"ZeroQueue bound to random port {port}")
         return port
 
-    def _set_connection(self, socket: zmq.Context.socket, contype: ZeroQueueConnectionType) -> None:
+    def _set_connection(self, socket: zmq.Socket, contype: ZeroQueueConnectionType) -> None:
         """Set the connection type for the socket.
 
         Sets the connection type for the socket based on the provided

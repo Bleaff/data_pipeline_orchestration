@@ -27,7 +27,7 @@ class ZeroQueue(QueueLike):
     Suitable for inter-process message passing on a single machine.
     """
 
-    def __init__(self, port: int | None = None) -> ZeroQueue:
+    def __init__(self, port: int | None = None) -> None:
         """Initialize the ZeroQueue.
 
         Args:
@@ -120,7 +120,7 @@ class ZeroQueueConsumer(QueueLike):
     This class is used to receive messages from a producer.
     """
 
-    def __init__(self, port: int | None = None) -> ZeroQueueConsumer:
+    def __init__(self, port: int | None = None) -> None:
         """Initialize the ZeroQueueConsumer.
 
         This class is used to receive messages from a producer using the REQ/REP pattern.
@@ -162,9 +162,8 @@ class ZeroQueueConsumer(QueueLike):
             Optional[Any]: Received message, or None if timeout expired.
 
         """
-        if timeout:
-            timeout = timeout * 1000
-        if self.socket_sub in dict(self.poller.poll(timeout=timeout)):
+        timeout_millis = int(timeout * 1000) if timeout else None
+        if self.socket_sub in dict(self.poller.poll(timeout=timeout_millis)):
             data = self.socket_sub.recv_pyobj(zmq.NOBLOCK)
             self.socket_sub.send(b"0", zmq.NOBLOCK)
             return data
@@ -213,7 +212,7 @@ class ZeroQueueProducer(QueueLike):
     TIMEOUT_MS = 100
     TMP_N = 40
 
-    def __init__(self, port: int | None = None, deque_len: int | None = None) -> ZeroQueueProducer:
+    def __init__(self, port: int | None = None, deque_len: int | None = None) -> None:
         """Initialize the ZeroQueueProducer.
 
         Args:

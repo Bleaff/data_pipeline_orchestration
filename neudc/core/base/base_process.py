@@ -7,6 +7,7 @@ allowing for parallel execution of node graphs.
 
 from __future__ import annotations
 
+import atexit
 import multiprocessing as mp
 import os
 import threading
@@ -15,6 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from neudc.core.base.base_node import BaseNode
+from neudc.core.observability.metrics import HEALTH
 from neudc.utils import LOGGER
 
 mp.set_start_method("spawn", force=True)
@@ -32,14 +34,13 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     HEALTH_CHECK_INTERVAL = 5  # seconds
     HEALTH_TIMEOUT = 15  # seconds
 
-    def __init__(self, mailbox: Any, id="BaseProcessNode") -> BaseProcessNode:
+    def __init__(self, mailbox: Any, id: str = "BaseProcessNode") -> None:
         """Initialize the base process node.
 
         Args:
         ----
             mailbox: Mailbox for inter-process communication.
-            logger: Logger instance for logging messages.
-            config: Configuration dictionary for the node.
+            id: Identifier for this node instance.
 
         """
         # Initialize BaseNode and multiprocessing.Process
@@ -83,7 +84,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
         from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 
-        self.mailbox = ZMQMailbox.from_state(ZMQMailbox, self.mailbox_config)
+        self.mailbox = ZMQMailbox.from_state(self.mailbox_config)
 
     def init_process_runtime(self) -> None:
         """Initialize runtime resources for the process node."""
@@ -91,6 +92,13 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     def run(self) -> None:
         """Process entrypoint: start health monitor and processing loop."""
         LOGGER.info(f"Starting process node {self.id}...(PID: {os.getpid()})")
+        if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+            # Metrics this child records live in its own per-pid files (see
+            # neudc.entrypoints.main._maybe_start_prometheus); clean up on exit so a
+            # dead node's last-known values don't linger forever in future scrapes.
+            from prometheus_client import multiprocess
+
+            atexit.register(multiprocess.mark_process_dead, os.getpid())
         self.init_process_runtime()
         self._mark_running()
 
@@ -113,7 +121,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                 # update last success time
                 with self._last_success_time.get_lock():
                     self._last_success_time.value = time.time()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- top-level process run-loop must never crash the process.
                 LOGGER.exception("[BaseProcessNode] Exception", exc_info=e)
 
     def _mark_running(self) -> None:
@@ -126,6 +134,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
             self._healthy.value = self.HEALTH_NORMAL
         with self._last_success_time.get_lock():
             self._last_success_time.value = time.time()
+        HEALTH.labels(node=self.id).set(1)
 
     def wait_ready(self, timeout: float | None = None) -> bool:
         """Block until the child signals readiness (mailbox rebound, runtime up).
@@ -154,6 +163,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                 LOGGER.warning(f"Health {self.__class__.__name__} timeout exceeded!")
                 with self._healthy.get_lock():
                     self._healthy.value = False
+                HEALTH.labels(node=self.id).set(0)
 
     @abstractmethod
     def process(self, item: Any) -> Any:
@@ -162,6 +172,7 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
     @classmethod
     def from_config(cls: type[BaseProcessNode], config: dict[str, Any]) -> BaseProcessNode:
         """From config-based constructor for building node with specified config."""
+        raise NotImplementedError
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         """Set the state of the process node."""

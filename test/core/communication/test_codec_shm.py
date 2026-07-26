@@ -9,9 +9,9 @@ leaked, including across a real process boundary.
 
 from __future__ import annotations
 
-import glob
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -83,7 +83,7 @@ def test_small_buffers_stay_inline_no_segment() -> None:
 @posix_only
 def test_shm_roundtrip_leaves_no_segment() -> None:
     # After a full produce/consume cycle the segment must be unlinked (no leak).
-    before = set(glob.glob("/dev/shm/psm_*"))
+    before = set(Path("/dev/shm").glob("psm_*"))  # noqa: S108 -- inspecting real POSIX shm segments, not a temp-file
     img = _big_image()
 
     raw = codec.dumps(_make_frame(img), use_shm=True)
@@ -91,7 +91,7 @@ def test_shm_roundtrip_leaves_no_segment() -> None:
     # only assert the end state, which holds on every POSIX platform.
     codec.loads(raw)
 
-    after = set(glob.glob("/dev/shm/psm_*"))
+    after = set(Path("/dev/shm").glob("psm_*"))  # noqa: S108 -- inspecting real POSIX shm segments, not a temp-file
     assert after <= before, f"leaked shared-memory segments: {after - before}"
 
 
@@ -115,7 +115,7 @@ def test_shm_roundtrip_across_processes(tmp_path) -> None:
 
     assert ok, "child failed to reconstruct the frame from shared memory"
     assert first_pixel == int(img[0, 0, 0])
-    assert glob.glob("/dev/shm/psm_*") == [] or sys.platform == "darwin"
+    assert list(Path("/dev/shm").glob("psm_*")) == [] or sys.platform == "darwin"  # noqa: S108
 
 
 def _consume_in_child(raw: bytes, q) -> None:

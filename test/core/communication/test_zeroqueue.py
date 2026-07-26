@@ -15,7 +15,7 @@ from neudc.core.communication.zero_queue.zero_sub import ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType, ZeroQueueMode
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_zmq(monkeypatch):
     context_mock = MagicMock()
     socket_mock = MagicMock()
@@ -78,7 +78,7 @@ def test_zeroqueue_get_timeout_returns_none(mock_zmq) -> None:
 
 
 def test_zeroqueue_invalid_mode_raises() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid mode"):
         ZeroQueue(port=5555, mode="INVALID", contype=ZeroQueueConnectionType.CONNECT)
 
 
@@ -88,5 +88,5 @@ def test_zeroqueue_invalid_connection_type(monkeypatch) -> None:
     class FakeEnum:
         pass
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid connection type"):
         ZeroQueue(port=-1, mode=ZeroQueueMode.SUB, contype=FakeEnum)

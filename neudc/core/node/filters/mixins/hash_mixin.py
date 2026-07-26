@@ -37,7 +37,7 @@ class HashFilterMixin:
         delta: int = 5,
         hash_type: str = "dhash",
         hash_size: int = 8,
-    ) -> HashFilterMixin:
+    ) -> None:
         """Initialize the mixin.
 
         Args:
