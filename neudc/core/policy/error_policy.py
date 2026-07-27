@@ -19,10 +19,21 @@ Two properties worth knowing before configuring ``retry``:
   mutate the message in place (``DrawNode`` draws onto ``frame.image``) will retry
   on top of a half-modified message. Use ``skip`` for those unless the work is
   genuinely idempotent.
+
+``process()`` as a generator (#37)
+-----------------------------------
+A streaming node's ``process()`` may be a generator: each ``yield`` is delivered to
+the caller-supplied ``on_item`` callback immediately, instead of accumulating a full
+result first. Retry interacts with this differently from the atomic case: **a failure
+is only retried if it happens before the first yield.** Once anything has been
+delivered for an attempt, re-running ``process()`` from scratch would duplicate that
+output downstream, so a mid-stream failure goes straight to the same dead-letter/fail/
+drop handling a retry-exhausted message gets, without spending any remaining attempts.
 """
 
 from __future__ import annotations
 
+import inspect
 import random
 import time
 from dataclasses import asdict, dataclass, field
@@ -132,27 +143,46 @@ class ErrorPolicy:
         parsed = ErrorPolicyConfig(**config) if config else ErrorPolicyConfig()
         return cls(config=parsed, node_id=node_id)
 
-    def execute(self, func: Callable[[Any], Any], item: Any, wait: Callable[[float], bool] | None = None) -> Any:
+    def execute(
+        self,
+        func: Callable[[Any], Any],
+        item: Any,
+        wait: Callable[[float], bool] | None = None,
+        on_item: Callable[[Any], None] | None = None,
+    ) -> Any:
         """Run ``func(item)`` under the policy.
 
         Args:
         ----
-            func: The node's ``process`` (or anything with the same shape).
+            func: The node's ``process`` (or anything with the same shape). May be a
+                generator function (#37): see the module docstring for how retry
+                differs in that case.
             item: The message to process.
             wait: Optional interruptible sleep, normally a stop event's ``wait``:
                 called with the backoff delay, returning True when the node is
                 stopping. Without it the policy sleeps outright, which would make a
                 long backoff delay shutdown by that much.
+            on_item: Only meaningful when ``func`` is a generator function. Called
+                once per yielded value, immediately, so the caller can stream each
+                one out (e.g. to the mailbox) without waiting for the generator to
+                finish. If omitted, yielded values are collected into a list and
+                returned once the generator is exhausted, same as any other value.
 
         Returns:
         -------
-            Whatever ``func`` returned, or None if the message was dropped.
+            Whatever ``func`` returned, or None if the message was dropped. For a
+            generator ``func`` with ``on_item`` given, always None (everything was
+            already handed to ``on_item``); without ``on_item``, the list of yielded
+            values.
 
         Raises:
         ------
             NodeFailure: When the policy is ``fail`` and processing did not succeed.
 
         """
+        if inspect.isgeneratorfunction(func):
+            return self._execute_generator(func, item, wait, on_item)
+
         attempts = 1 + (self.config.max_retries if self.config.on_error is ErrorAction.RETRY else 0)
         last_error: BaseException | None = None
 
@@ -186,6 +216,73 @@ class ErrorPolicy:
                 self.stats.processed += 1
                 MESSAGES_PROCESSED.labels(node=self.node_id).inc()
                 return result
+
+        return self._give_up(item, last_error)
+
+    def _execute_generator(
+        self,
+        func: Callable[[Any], Any],
+        item: Any,
+        wait: Callable[[float], bool] | None,
+        on_item: Callable[[Any], None] | None,
+    ) -> Any:
+        """Drain a generator-valued ``process()``, streaming each yield out immediately.
+
+        Mirrors :meth:`execute`'s attempt/backoff loop, with one deliberate
+        difference: retry is only attempted for a failure *before* the first yield of
+        that attempt (see module docstring). A failure after any yield is terminal —
+        this attempt already delivered output, so re-running would duplicate it.
+        """
+        attempts = 1 + (self.config.max_retries if self.config.on_error is ErrorAction.RETRY else 0)
+        last_error: BaseException | None = None
+
+        for attempt in range(attempts):
+            start = time.monotonic()
+            yielded_count = 0
+            collected: list[Any] = []
+            try:
+                gen = func(item)
+                while True:
+                    value = next(gen)
+                    yielded_count += 1
+                    if on_item is not None:
+                        on_item(value)
+                    else:
+                        collected.append(value)
+            except StopIteration:
+                PROCESS_LATENCY.labels(node=self.node_id).observe(time.monotonic() - start)
+                self.stats.processed += 1
+                MESSAGES_PROCESSED.labels(node=self.node_id).inc()
+                return None if on_item is not None else collected
+            except Exception as error:  # noqa: BLE001 - the policy is the handler of last resort
+                PROCESS_LATENCY.labels(node=self.node_id).observe(time.monotonic() - start)
+                last_error = error
+                self.stats.errors += 1
+                ERRORS.labels(node=self.node_id).inc()
+
+                if yielded_count > 0:
+                    LOGGER.warning(
+                        f"[{self.node_id}] {type(error).__name__} in process() after "
+                        f"{yielded_count} item(s) already delivered; not retrying "
+                        f"(would duplicate downstream output): {error}"
+                    )
+                    return self._give_up(item, error)
+
+                remaining = attempts - attempt - 1
+                if remaining == 0:
+                    break
+                delay = self._backoff_delay(attempt)
+                self.stats.retries += 1
+                RETRIES.labels(node=self.node_id).inc()
+                LOGGER.warning(
+                    f"[{self.node_id}] {type(error).__name__} in process() before any yield, "
+                    f"retrying in {delay:.3f}s ({remaining} attempt(s) left): {error}"
+                )
+                if self._sleep(delay, wait):
+                    LOGGER.info(f"[{self.node_id}] stop requested during backoff, dropping message")
+                    self.stats.dropped += 1
+                    DROPPED.labels(node=self.node_id).inc()
+                    return None
 
         return self._give_up(item, last_error)
 

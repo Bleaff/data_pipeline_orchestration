@@ -139,6 +139,44 @@ class Frame(BaseMessage):
     frame_id_last: int
 
 
+# === Non-CV payloads (#34) ===
+
+
+class TextChunk(BaseMessage):
+    """A chunk of text: an ASR partial/final hypothesis, an LLM token stream chunk, etc."""
+
+    text: str
+    language: str | None = None
+
+
+class TokenTensor(BaseMessage):
+    """Token ids or logits from an LLM/tokenizer, as a tensor."""
+
+    data: np.ndarray
+
+
+class AudioChunk(BaseMessage):
+    """A chunk of PCM audio samples."""
+
+    samples: np.ndarray
+    sample_rate: int
+    channels: int = 1
+
+
+class VideoSegment(BaseMessage):
+    """A short run of raw video frames traveling as one message (pre-CV-processing).
+
+    Distinct from ``Batch[Frame]``: a batch is unrolled by the mailbox into individual
+    edge writes, while a ``VideoSegment`` is one atomic streaming unit (e.g. a fixed-size
+    window from a live source), matching how ``AudioChunk`` groups several audio samples
+    into one message.
+    """
+
+    images: list[np.ndarray]
+    start_frame_id: int
+    fps: float | None = None
+
+
 MessageT = TypeVar("MessageT", bound=BaseMessage)
 
 

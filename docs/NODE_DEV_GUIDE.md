@@ -179,3 +179,51 @@ nodes:
 про Prometheus) и в `docs/grafana/neudc-dashboard.json`.
 
 ---
+
+## 🔀 Не-CV payload'ы и контракт ноды
+
+Граф больше не завязан жёстко на `Frame`. Помимо `Frame` в
+`neudc/core/communication/messaging/types.py` есть `TextChunk`, `TokenTensor`,
+`AudioChunk` и `VideoSegment` — каждый наследует `BaseMessage`, так что codec, mailbox
+и `Batch` работают с ними без единой правки (кодек тянет крупные буферы через shared
+memory обобщённо, не завязываясь на конкретный класс).
+
+Любая нода объявляет, какие типы она принимает и отдаёт, двумя `ClassVar` на классе
+ноды (по умолчанию у `BaseNode` — `(Frame,)`, так что существующие CV-ноды ничего не
+меняют):
+
+```python
+class MyAsrNode(BaseThreadedNode):
+    accepts = (AudioChunk,)
+    emits = (TextChunk,)
+```
+
+Несовместимая пара `emits`/`accepts` на ребре графа — это явная `ConfigError` при
+валидации конфига (до старта пайплайна, не в рантайме): смотри
+`neudc/core/utils/config_schema.py`.
+
+---
+
+## 🌊 Потоковые ноды: `process()` как генератор
+
+Для стриминга (частичные гипотезы ASR, поток токенов LLM, чанки TTS-аудио) `process()`
+можно сделать генератором — тогда каждый `yield` уходит в mailbox сразу, а не после
+того как метод целиком отработает:
+
+```python
+def process(self, item: AudioChunk):
+    for partial in self._transcribe_incrementally(item):
+        yield TextChunk(timestamp=item.timestamp, text=partial, is_final=False)
+```
+
+Ничего больше менять не нужно — оба цикла (`BaseNode._run`, `BaseProcessNode.run`)
+поддерживают это одинаково через `ErrorPolicy.execute`. Обычный `process()` (одно
+значение, `Batch` или `None`) работает как раньше — это чисто аддитивная возможность.
+
+Важный нюанс для `on_error: retry`: retry безопасен только *до* первого `yield`. Как
+только генератор что-то отдал в mailbox, повторный запуск `process()` с нуля продублировал
+бы это сообщение у соседа — поэтому ошибка после первого `yield` **не ретраится**,
+а сразу уходит в dead-letter/fail/drop, как будто попытки кончились. Подробности и
+обоснование — в docstring `neudc/core/policy/error_policy.py`.
+
+---
