@@ -114,15 +114,29 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
 
                 # Same policy-aware path as the threaded loop (see BaseNode._handle):
                 # retries, dead-lettering and the fail action live in one place.
-                result = self._handle(data)
+                # `on_item=self._send_item` streams a generator process() (#37) out as
+                # each value is yielded, instead of waiting for the whole thing.
+                result = self._handle(data, on_item=self._send_item)
                 # check result is not None
                 if result:
-                    self.mailbox.send(result)
+                    self._send_item(result)
                 # update last success time
                 with self._last_success_time.get_lock():
                     self._last_success_time.value = time.time()
             except Exception as e:  # noqa: BLE001 -- top-level process run-loop must never crash the process.
                 LOGGER.exception("[BaseProcessNode] Exception", exc_info=e)
+
+    def _send_item(self, item: Any) -> None:
+        """Send one item to the mailbox and update the health-monitor's liveness timestamp.
+
+        Unlike `BaseNode._send_item`, a send failure here is **not** caught locally —
+        it propagates to this loop's own `except Exception` above, exactly as a
+        classic single-result send failure already did (and, matching that existing
+        behaviour, `_last_success_time` is then *not* updated for this iteration).
+        """
+        self.mailbox.send(item)
+        with self._last_success_time.get_lock():
+            self._last_success_time.value = time.time()
 
     def _mark_running(self) -> None:
         """Mark the node healthy and reset its last-success timestamp (child side).

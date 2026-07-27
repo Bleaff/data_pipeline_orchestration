@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
+from neudc.core.communication.messaging.types import BaseMessage, Frame
 from neudc.core.observability.metrics import HEALTH
 from neudc.core.policy import ErrorPolicy, NodeFailure
 from neudc.utils import LOGGER
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class EventLike(Protocol):
@@ -62,6 +66,13 @@ class BaseNode(ABC):
     The `start` method initializes the node and starts its processing thread.
     By default you can use just `init_runtime` method to make your node work.
     """
+
+    #: Payload types this node's `process()` can consume / produce (#35). Every
+    #: existing node is implicitly CV, so the default is `(Frame,)`; a non-CV node
+    #: overrides one or both on its own class, e.g. `emits = (TextChunk,)`. Checked at
+    #: pipeline-build time by `neudc.core.utils.config_schema`, not at runtime.
+    accepts: ClassVar[tuple[type[BaseMessage], ...]] = (Frame,)
+    emits: ClassVar[tuple[type[BaseMessage], ...]] = (Frame,)
 
     def __init__(self, mailbox: Any, id: str = "BaseNode", _join_timeout: float = 0.1) -> None:
         """Initialize the node with a mailbox and a logger.
@@ -133,18 +144,21 @@ class BaseNode(ABC):
         """
         return self._stop_event.wait(timeout)
 
-    def _handle(self, data: Any) -> Any:
+    def _handle(self, data: Any, on_item: Callable[[Any], None] | None = None) -> Any:
         """Run ``process`` on one message under this node's error policy.
 
         Both run loops — this class's thread loop and ``BaseProcessNode.run`` — go
         through here, so the two cannot drift apart the way they did in #12.
 
-        Returns the result to send, or None when the message was dropped. Only
+        ``on_item``, if given, is forwarded to the policy so a generator ``process()``
+        (#37) can stream each yielded value out immediately instead of waiting for the
+        whole thing. Returns the result to send, or None when the message was dropped
+        or (for a generator with ``on_item`` given) already streamed out in full. Only
         ``process`` is covered: the send that follows is deliberately outside the
         policy, since re-sending would deliver the message twice.
         """
         try:
-            return self.error_policy.execute(self.process, data, wait=self._wait_for_stop)
+            return self.error_policy.execute(self.process, data, wait=self._wait_for_stop, on_item=on_item)
         except NodeFailure:
             # Already logged as critical by the policy. Flag the failure and let the
             # loop fall out; deliberately *not* self.stop() — that tears down the ZMQ
@@ -160,6 +174,20 @@ class BaseNode(ABC):
         """Whether the node stopped because its error policy gave up on a message."""
         return self._failed_event.is_set()
 
+    def _send_item(self, item: Any) -> None:
+        """Send one item to the mailbox, logging (not raising) on failure.
+
+        Used both for the classic single-result path and, unchanged, as the
+        streaming callback for a generator ``process()`` (#37) — each yielded item
+        gets exactly this handling, one at a time, as it is produced.
+        """
+        try:
+            self.mailbox.send(item)
+        except Exception as e:  # noqa: BLE001 -- top-level node run-loop must never crash the thread.
+            self.is_ready = False
+            HEALTH.labels(node=self.id).set(0)
+            LOGGER.exception("Error while sending result", exc_info=e)
+
     def _run(self) -> None:
         """Run the node processing loop."""
         self.is_ready = True
@@ -167,14 +195,9 @@ class BaseNode(ABC):
         while self.is_running:
             data = self._collect_data()
             if data is not None:
-                result = self._handle(data)
+                result = self._handle(data, on_item=self._send_item)
                 if result:
-                    try:
-                        self.mailbox.send(result)
-                    except Exception as e:  # noqa: BLE001 -- top-level node run-loop must never crash the thread.
-                        self.is_ready = False
-                        HEALTH.labels(node=self.id).set(0)
-                        LOGGER.exception("Error while sending result", exc_info=e)
+                    self._send_item(result)
 
     @abstractmethod
     def start(self) -> None:

@@ -7,6 +7,9 @@ pipeline — and records what was lost either way.
 
 from __future__ import annotations
 
+import itertools
+import time
+
 import pytest
 from pydantic import ValidationError
 
@@ -212,3 +215,113 @@ def test_unknown_key_is_rejected() -> None:
 def test_negative_retries_is_rejected() -> None:
     with pytest.raises(ValidationError):
         ErrorPolicyConfig(max_retries=-1)
+
+
+# === Streaming process() as a generator (#37) ===
+
+
+def test_generator_delivers_items_incrementally_not_accumulated() -> None:
+    # The whole point of #37: each yield must reach on_item as it is produced, not
+    # all at once after the generator finishes. A sleep between yields makes the two
+    # cases distinguishable by wall-clock timing.
+    delay = 0.05
+
+    def stream(item):
+        for i in range(3):
+            time.sleep(delay)
+            yield f"{item}-{i}"
+
+    policy = ErrorPolicy(node_id="n")
+    timestamps: list[float] = []
+    result = policy.execute(stream, "msg", wait=_no_wait, on_item=lambda _v: timestamps.append(time.monotonic()))
+
+    assert result is None  # everything already went to on_item
+    assert len(timestamps) == 3
+    # Each item arrives roughly `delay` after the previous one, not all bunched at the end.
+    gaps = [b - a for a, b in itertools.pairwise(timestamps)]
+    assert all(gap >= delay * 0.5 for gap in gaps), gaps
+    assert policy.stats.processed == 1  # one input handled, not one per yielded item
+
+
+def test_generator_without_on_item_collects_into_a_list() -> None:
+    def stream(item):
+        yield f"{item}-a"
+        yield f"{item}-b"
+
+    policy = ErrorPolicy(node_id="n")
+
+    assert policy.execute(stream, "msg", wait=_no_wait) == ["msg-a", "msg-b"]
+
+
+def test_generator_failure_before_first_yield_is_retried() -> None:
+    calls = {"n": 0}
+
+    def flaky(item):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            msg = "boom before any yield"
+            raise _BoomError(msg)
+        yield item
+
+    policy = ErrorPolicy.from_config({"on_error": "retry", "max_retries": 2}, node_id="n")
+    collected: list = []
+
+    result = policy.execute(flaky, "msg", wait=_no_wait, on_item=collected.append)
+
+    assert result is None
+    assert collected == ["msg"]
+    assert calls["n"] == 2  # one failed attempt, one successful retry
+    assert policy.stats.retries == 1
+    assert policy.stats.dropped == 0
+
+
+def test_generator_failure_after_a_yield_is_never_retried() -> None:
+    calls = {"n": 0}
+
+    def partial_then_boom(item):
+        calls["n"] += 1
+        yield f"{item}-partial"
+        msg = "boom mid-stream"
+        raise _BoomError(msg)
+
+    policy = ErrorPolicy.from_config({"on_error": "retry", "max_retries": 5}, node_id="n")
+    collected: list = []
+
+    result = policy.execute(partial_then_boom, "msg", wait=_no_wait, on_item=collected.append)
+
+    assert result is None
+    assert collected == ["msg-partial"]  # already-yielded item was still delivered
+    assert calls["n"] == 1  # never retried, despite max_retries=5
+    assert policy.stats.retries == 0
+    assert policy.stats.dropped == 1
+
+
+def test_generator_failure_after_a_yield_still_dead_letters(tmp_path) -> None:
+    def partial_then_boom(item):
+        yield f"{item}-partial"
+        msg = "boom mid-stream"
+        raise _BoomError(msg)
+
+    policy = ErrorPolicy.from_config(
+        {"on_error": "retry", "max_retries": 3, "dead_letter_dir": str(tmp_path)},
+        node_id="detector",
+    )
+
+    policy.execute(partial_then_boom, "msg", wait=_no_wait, on_item=lambda _v: None)
+
+    assert (tmp_path / "detector.jsonl").exists()
+    assert policy.stats.dead_lettered == 1
+
+
+def test_generator_respects_fail_policy() -> None:
+    def boom_immediately(item):
+        msg = "boom"
+        raise _BoomError(msg)
+        yield item  # unreachable on purpose, keeps this a generator function
+
+    policy = ErrorPolicy.from_config({"on_error": "fail"}, node_id="detector")
+
+    with pytest.raises(NodeFailure):
+        policy.execute(boom_immediately, "msg", wait=_no_wait, on_item=lambda _v: None)
+
+    assert policy.stats.failures == 1

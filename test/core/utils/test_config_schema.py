@@ -97,3 +97,26 @@ def test_example_cpu_pipeline_config_is_valid() -> None:
     config_path = Path("assets/configs/example_cpu_pipeline.yaml")
     parsed = validate_pipeline_config(load_config(config_path))
     assert {n.id for n in parsed.nodes} == {"reader", "resize", "saver"}
+
+
+def test_default_frame_to_frame_edges_pass_payload_compat() -> None:
+    # Every registered node type defaults to accepts=emits=(Frame,) (#35), so an
+    # untouched config must keep validating exactly as before.
+    assert validate_pipeline_config(_VALID).nodes[0].id == "reader"
+
+
+def test_incompatible_payload_types_are_rejected(monkeypatch) -> None:
+    from neudc.core.communication.messaging.types import TextChunk
+    from neudc.core.node.node_factory import NodeFactory
+
+    reader_cls = NodeFactory._resolve("FolderImageNode")
+    monkeypatch.setattr(reader_cls, "emits", (TextChunk,))
+
+    cfg = {
+        "nodes": [
+            {"id": "reader", "type": "FolderImageNode", "outputs": ["saver"]},
+            {"id": "saver", "type": "SaveImageNode", "outputs": []},
+        ],
+    }
+    with pytest.raises(ConfigError, match=r"Node 'reader' emits .* but 'saver' only accepts"):
+        validate_pipeline_config(cfg)

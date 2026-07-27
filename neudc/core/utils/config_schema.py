@@ -6,7 +6,8 @@ the router and factory rely on:
 
 - there is a top-level ``nodes`` list;
 - every node has a unique ``id`` and a ``type`` known to the NodeFactory;
-- every entry in a node's ``outputs`` references an existing node ``id``.
+- every entry in a node's ``outputs`` references an existing node ``id``;
+- every edge's producer ``emits`` a payload type the consumer ``accepts`` (#35/#36).
 
 Node-specific parameters are preserved (``extra="allow"``) and checked later by each
 node's ``from_config``. Validation failures raise :class:`ConfigError` with a message
@@ -54,6 +55,7 @@ class PipelineConfig(BaseModel):
 
         known_types = set(NodeFactory.NODE_IMPORTS)
         id_set = set(ids)
+        id_to_node = {n.id: n for n in self.nodes}
         for node in self.nodes:
             if node.type not in known_types:
                 msg = f"Node '{node.id}': unknown type '{node.type}'. Known types: {sorted(known_types)}"
@@ -62,8 +64,24 @@ class PipelineConfig(BaseModel):
                 if target not in id_set:
                     msg = f"Node '{node.id}': output '{target}' does not reference any node id"
                     raise ConfigError(msg)
+                _check_payload_compat(node, id_to_node[target])
             _check_error_policy(node)
         return self
+
+
+def _check_payload_compat(node: NodeSpec, target: NodeSpec) -> None:
+    """Validate that ``node``'s declared ``emits`` is compatible with ``target``'s ``accepts`` (#35/#36).
+
+    Kept out of :class:`NodeSpec`, same reason as :func:`_check_error_policy`: the
+    message should name both node ids the user wrote, not a positional index.
+    """
+    emits = NodeFactory.get_emits(node.type)
+    accepts = NodeFactory.get_accepts(target.type)
+    if not any(issubclass(e, a) for e in emits for a in accepts):
+        emits_names = [t.__name__ for t in emits]
+        accepts_names = [t.__name__ for t in accepts]
+        msg = f"Node '{node.id}' emits {emits_names} but '{target.id}' only accepts {accepts_names}"
+        raise ConfigError(msg)
 
 
 def _check_error_policy(node: NodeSpec) -> None:

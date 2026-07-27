@@ -9,9 +9,12 @@ optional dependencies of unrelated nodes (torch, ultralytics, imagehash, ...).
 from __future__ import annotations
 
 import importlib
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from neudc.core.policy import ErrorPolicy
+
+if TYPE_CHECKING:
+    from neudc.core.communication.messaging.types import BaseMessage
 
 
 class NodeFactory:
@@ -43,6 +46,16 @@ class NodeFactory:
             raise ValueError(msg) from None
         module = importlib.import_module(module_path)
         return getattr(module, class_name)
+
+    @staticmethod
+    def get_accepts(node_type: str) -> tuple[type[BaseMessage], ...]:
+        """Return the payload types ``node_type`` declares it can consume (#35)."""
+        return NodeFactory._resolve(node_type).accepts
+
+    @staticmethod
+    def get_emits(node_type: str) -> tuple[type[BaseMessage], ...]:
+        """Return the payload types ``node_type`` declares it can produce (#35)."""
+        return NodeFactory._resolve(node_type).emits
 
     @staticmethod
     def create(config: dict[str, Any], mailbox: Any) -> Any:
