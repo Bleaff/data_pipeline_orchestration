@@ -11,13 +11,14 @@ no natural end and no fixed rate of its own — the device's blocking ``read`` c
 from __future__ import annotations
 
 import time
-from typing import Any, ClassVar, Protocol, runtime_checkable
-
-import numpy as np
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.messaging.types import AudioChunk, BaseMessage
 from neudc.utils import LOGGER
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 @runtime_checkable
@@ -103,6 +104,7 @@ class AudioReaderNode(BaseThreadedNode):
         device: AudioDevice,
         mailbox: Any,
         sample_rate: int,
+        *,
         channels: int = 1,
         chunk_duration: float = 0.5,
         source: str = "mic",
