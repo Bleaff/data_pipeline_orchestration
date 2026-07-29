@@ -144,6 +144,19 @@ class BaseNode(ABC):
         """
         return self._stop_event.wait(timeout)
 
+    def _is_cancelled(self, session_id: str | None, turn_id: int | None) -> bool:
+        """Whether ``(session_id, turn_id)`` was cancelled over the priority control channel (#41).
+
+        Defensive against a mailbox that has no ``is_cancelled`` (or no mailbox at
+        all, e.g. a ``BaseProcessNode`` before its mailbox is rebound in the child
+        process, see ``BaseProcessNode.__init__``): such a node is simply never seen
+        as cancelled, which preserves existing (pre-#41) behaviour exactly.
+        """
+        is_cancelled = getattr(self.mailbox, "is_cancelled", None)
+        if is_cancelled is None:
+            return False
+        return bool(is_cancelled(session_id, turn_id))
+
     def _handle(self, data: Any, on_item: Callable[[Any], None] | None = None) -> Any:
         """Run ``process`` on one message under this node's error policy.
 
@@ -156,9 +169,30 @@ class BaseNode(ABC):
         or (for a generator with ``on_item`` given) already streamed out in full. Only
         ``process`` is covered: the send that follows is deliberately outside the
         policy, since re-sending would deliver the message twice.
+
+        Before doing any work, checks whether ``data``'s ``(session_id, turn_id)`` was
+        already cancelled over the mailbox's priority control channel (#41): if so,
+        ``process`` is skipped entirely for this item, same as the existing ``drop``
+        convention. Otherwise an ``is_cancelled`` closure bound to this item's turn is
+        threaded into the error policy so a generator ``process()`` can be interrupted
+        mid-stream if cancellation arrives while it is running. ``data`` need not be a
+        ``BaseMessage`` (some nodes/tests hand ``process`` plain values); ``session_id``/
+        ``turn_id`` default to None via ``getattr``, so such data is simply never seen
+        as cancelled.
         """
+        session_id = getattr(data, "session_id", None)
+        turn_id = getattr(data, "turn_id", None)
+        if self._is_cancelled(session_id, turn_id):
+            LOGGER.debug(f"[{self.id}] skipping message: turn already cancelled (session_id={session_id!r})")
+            return None
         try:
-            return self.error_policy.execute(self.process, data, wait=self._wait_for_stop, on_item=on_item)
+            return self.error_policy.execute(
+                self.process,
+                data,
+                wait=self._wait_for_stop,
+                on_item=on_item,
+                is_cancelled=lambda: self._is_cancelled(session_id, turn_id),
+            )
         except NodeFailure:
             # Already logged as critical by the policy. Flag the failure and let the
             # loop fall out; deliberately *not* self.stop() — that tears down the ZMQ

@@ -13,6 +13,7 @@ from typing import Any
 from neudc.core.base.base_process import BaseProcessNode
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
+from neudc.core.communication.messaging.types import BaseMessage, ControlAction, ControlMessage
 
 
 class _StreamThreadedNode(BaseThreadedNode):
@@ -63,6 +64,17 @@ def _drain_with_timestamps(mailbox: ZMQMailbox, expected: int, timeout: float = 
     return received
 
 
+def _drain_all(mailbox: ZMQMailbox, timeout: float) -> list[Any]:
+    """Drain whatever arrives within the window, without a target count."""
+    received: list[Any] = []
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        msg = mailbox.receive(timeout=0.1)
+        if msg is not None:
+            received.append(msg)
+    return received
+
+
 # === Threaded loop ===
 
 
@@ -100,3 +112,95 @@ def test_process_node_handle_without_on_item_returns_collected_list() -> None:
     node = _StreamProcessNode(ZMQMailbox(), id="stream")
 
     assert node._handle("msg") == ["msg-0", "msg-1"]
+
+
+# === Turn cancellation / barge-in (#41) ===
+
+
+class _CancellableStreamNode(BaseThreadedNode):
+    """Threaded node whose single input yields many spaced-out items for one turn.
+
+    Each yielded output carries the same (session_id, turn_id) as the input, mirroring
+    a real streaming node (e.g. token-by-token LLM output for one turn).
+    """
+
+    def __init__(self, mailbox: Any, session_id: str = "s-1", turn_id: int = 1, n: int = 20, delay: float = 0.05):
+        super().__init__(mailbox, id="cancellable-stream")
+        self.session_id = session_id
+        self.turn_id = turn_id
+        self.n = n
+        self.delay = delay
+        self._sent = False
+
+    def _collect_data(self) -> Any:
+        if self._sent:
+            time.sleep(0.05)
+            return None
+        self._sent = True
+        return BaseMessage(timestamp=0.0, session_id=self.session_id, turn_id=self.turn_id)
+
+    def process(self, item: Any) -> Any:
+        for i in range(self.n):
+            time.sleep(self.delay)
+            yield BaseMessage(timestamp=float(i), session_id=self.session_id, turn_id=self.turn_id)
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> _CancellableStreamNode:
+        return cls(config["mailbox"])
+
+
+def test_cancellation_interrupts_the_generator_mid_stream_and_drops_the_tail() -> None:
+    """Issue #41, criterion 2.
+
+    A cancel signal stops a running generator at its current yield, without killing
+    the node's thread/loop and without emitting the rest of the (now-cancelled) turn.
+    """
+    receiver = ZMQMailbox()
+    node_mailbox = ZMQMailbox()
+    node_mailbox.add_publisher(receiver.consume_port)
+
+    controller = ZMQMailbox()
+    controller.add_control_publisher("node", node_mailbox.control_consume_port)
+
+    node = _CancellableStreamNode(node_mailbox, session_id="s-1", turn_id=1, n=20, delay=0.05)
+    try:
+        node.start()
+        # Let a couple of items through before cancelling.
+        time.sleep(0.15)
+        controller.send_control(
+            ControlMessage(timestamp=999.0, action=ControlAction.CANCEL, session_id="s-1", turn_id=1)
+        )
+
+        got = _drain_all(receiver, timeout=1.5)
+
+        assert 0 < len(got) < 20, "expected a partial, interrupted turn, not the full stream"
+        # Not killed: the node's own loop/thread is still alive and considers itself running.
+        assert node.is_running is True
+        assert node.thread is not None
+        assert node.thread.is_alive()
+
+        # No further items arrive afterwards - the tail of the cancelled turn is gone.
+        more = _drain_all(receiver, timeout=0.3)
+        assert more == []
+    finally:
+        node.stop()
+        receiver.stop()
+        controller.stop()
+
+
+def test_uncancelled_turn_streams_in_full_unaffected() -> None:
+    # Regression: a node with a wired-but-silent control channel must behave exactly
+    # like the plain streaming case in test_threaded_node_streams_generator_output_incrementally.
+    receiver = ZMQMailbox()
+    node_mailbox = ZMQMailbox()
+    node_mailbox.add_publisher(receiver.consume_port)
+    node = _CancellableStreamNode(node_mailbox, session_id="s-2", turn_id=2, n=4, delay=0.02)
+    try:
+        node.start()
+        got = _drain_with_timestamps(receiver, 4, timeout=5.0)
+
+        assert len(got) == 4
+        assert [msg.timestamp for msg, _ in got] == [0.0, 1.0, 2.0, 3.0]
+    finally:
+        node.stop()
+        receiver.stop()

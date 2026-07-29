@@ -36,6 +36,14 @@ class NodeSpec(BaseModel):
     id: str
     type: str
     outputs: list[str] = []
+    control_outputs: list[str] = []
+    """Optional priority control-plane edges (e.g. turn cancellation / barge-in, #41).
+
+    Wired by :class:`~neudc.core.communication.messaging.routing_factory.RoutingFactory`
+    into the target's control channel, independent of ``outputs``/the data FIFO. A node
+    with no ``control_outputs`` gets a control mailbox that is simply never wired to
+    anything, so an untouched config runs exactly as before.
+    """
 
 
 class PipelineConfig(BaseModel):
@@ -65,6 +73,10 @@ class PipelineConfig(BaseModel):
                     msg = f"Node '{node.id}': output '{target}' does not reference any node id"
                     raise ConfigError(msg)
                 _check_payload_compat(node, id_to_node[target])
+            for target in node.control_outputs:
+                if target not in id_set:
+                    msg = f"Node '{node.id}': control_output '{target}' does not reference any node id"
+                    raise ConfigError(msg)
             _check_error_policy(node)
         return self
 

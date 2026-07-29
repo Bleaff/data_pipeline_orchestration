@@ -9,6 +9,10 @@ The configuration must contain a list of node configurations.
 Each node configuration must contain an "id" parameter.
 The "outputs" parameter is optional and contains a list of target node_ids
 that the node should send messages to.
+The "control_outputs" parameter is optional and contains a list of target node_ids
+that the node should send priority control-plane messages to (e.g. turn
+cancellation / barge-in, #41) — wired into the target's control channel, entirely
+separate from "outputs"/the data FIFO.
 """
 
 from __future__ import annotations
@@ -48,5 +52,18 @@ class RoutingFactory:
                     raise ValueError(msg)
                 pub_port = mailboxes[target_node_id].consume_port
                 mailboxes[node_id].add_publisher(pub_port)
+
+        # 3. Wire priority control-plane connections (#41), independent of the data
+        # edges above. A node with no "control_outputs" simply never wires its control
+        # mailbox to anything, so an untouched config behaves exactly as before.
+        for node_cfg in self.config["nodes"]:
+            node_id = node_cfg["id"]
+            control_outputs = node_cfg.get("control_outputs", [])
+            for target_node_id in control_outputs:
+                if target_node_id not in mailboxes:
+                    msg = f"Target node '{target_node_id}' not found in mailboxes."
+                    raise ValueError(msg)
+                control_pub_port = mailboxes[target_node_id].control_consume_port
+                mailboxes[node_id].add_control_publisher(target_node_id, control_pub_port)
 
         return mailboxes
