@@ -21,3 +21,16 @@ def test_get_accepts_reflects_a_node_class_override(monkeypatch) -> None:
     monkeypatch.setattr(node_cls, "accepts", (TextChunk,))
 
     assert NodeFactory.get_accepts("HashNode") == (TextChunk,)
+
+
+def test_audio_reader_emits_audio_chunk() -> None:
+    from neudc.core.communication.messaging.types import AudioChunk
+
+    assert NodeFactory.get_emits("AudioReaderNode") == (AudioChunk,)
+
+
+def test_vad_node_accepts_and_emits_audio_chunk() -> None:
+    from neudc.core.communication.messaging.types import AudioChunk
+
+    assert NodeFactory.get_accepts("VadNode") == (AudioChunk,)
+    assert NodeFactory.get_emits("VadNode") == (AudioChunk,)

@@ -254,9 +254,11 @@ setting (`on_error: retry` with no retries) is rejected at startup, naming the n
 | Node | Runs as | What it does |
 |---|---|---|
 | `FolderImageNode` | thread | Reads images from a folder (`folder_path`, `mode`, `frame_delay`) |
+| `AudioReaderNode` | thread | Reads live audio from a pluggable device (`device`, `sample_rate`, `channels`, `chunk_duration`, `source`) |
 | `ResizeNode` | thread | Resizes frames (`target_width`, `target_height`) |
 | `ResizeProcessNode` | process | Same, isolated in its own process |
 | `HashNode` | thread | Perceptual-hash dedup filter (`delta`, `hash_size`, `hash_type`) |
+| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy (`energy_threshold`) |
 | `DrawNode` | thread | Draws detected boxes onto the frame |
 | `SaveImageNode` | thread | Writes frames to disk (`save_dir`) |
 | `ProcessDetInference` | process | Single-frame object detection (`model_config`) |
@@ -283,7 +285,8 @@ Run the tests:
 python3 -m pytest test
 ```
 
-Optional extras: `pip install -e ".[dev]"`, `".[trt]"` (TensorRT), `".[onnx]"` (ONNX Runtime).
+Optional extras: `pip install -e ".[dev]"`, `".[trt]"` (TensorRT), `".[onnx]"` (ONNX Runtime),
+`".[audio]"` (`sounddevice`, for a real-microphone `AudioReaderNode` backend).
 
 ## 🗺 Roadmap
 
