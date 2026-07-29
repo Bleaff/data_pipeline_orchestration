@@ -240,6 +240,52 @@ Two things to know before choosing `retry`:
 The block is validated with the rest of the config, so a typo or a contradictory
 setting (`on_error: retry` with no retries) is rejected at startup, naming the node.
 
+### Worker replicas & autoscale
+
+Any node may run as several independent instances instead of one, e.g. to spread a
+heavy inference node's load across more CPU/GPU workers:
+
+```yaml
+  - id: detector
+    type: ProcessDetInference
+    replicas: 3               # 3 independent instances of this node, default is 1
+    outputs: [saver]
+```
+
+Each replica gets its own mailbox; a producer's single `PUSH` socket connects to
+every replica's port, and ZeroMQ round-robins messages across them fairly — a
+replicated node's queue depth is naturally load-balanced without any extra code.
+Replica instances are named `<id>#0`, `<id>#1`, … so per-node metrics, health and
+dead-letter records never collide across replicas.
+
+An optional `autoscale` block lets the replica count grow or shrink at runtime based
+on how deep each replica's own inbound queue is:
+
+```yaml
+  - id: detector
+    type: ProcessDetInference
+    replicas: 2
+    autoscale:
+      min_replicas: 1
+      max_replicas: 4
+      queue_depth_high: 15    # scale up by one when every replica is at/above this
+      queue_depth_low: 2      # scale down by one when every replica is at/below this
+      check_interval_s: 5.0
+    outputs: [saver]
+```
+
+Scaling moves one replica at a time and only triggers when **every** current
+replica crosses the same threshold, so one busy worker does not spin up new ones
+while its siblings are idle. `min_replicas <= max_replicas` and
+`queue_depth_low < queue_depth_high` are enforced at config-validation time, the
+same way `error_policy` is.
+
+> **Status:** the decision engine (`ReplicaAutoscaler.check_and_scale`) is fully
+> implemented and unit-tested against injected queue-depth readers and a fake
+> replica pool. It is not yet wired into `main.py`/`BasePipeline`'s live run loop —
+> today, configuring `autoscale` validates but does not yet start a background
+> autoscaler thread. `replicas: N` (the static count) is fully wired end-to-end.
+
 ### Environment variables
 
 | Variable | Default | Purpose |

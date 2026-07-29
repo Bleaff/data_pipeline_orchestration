@@ -31,7 +31,15 @@ def _make_images(folder: Path, count: int) -> None:
 def _build(config: dict) -> list:
     router = RoutingFactory(config)
     mailboxes = router.create_mailboxes()
-    return [NodeFactory.create(nc, mailbox=mailboxes[nc["id"]]) for nc in config["nodes"]]
+    nodes = []
+    for nc in config["nodes"]:
+        replica_mailboxes = mailboxes[nc["id"]]
+        for i, mailbox in enumerate(replica_mailboxes):
+            node = NodeFactory.create(nc, mailbox=mailbox)
+            if len(replica_mailboxes) > 1:
+                node.id = f"{nc['id']}#{i}"
+            nodes.append(node)
+    return nodes
 
 
 def test_reader_resize_saver_pipeline(tmp_path: Path) -> None:

@@ -105,6 +105,94 @@ def test_default_frame_to_frame_edges_pass_payload_compat() -> None:
     assert validate_pipeline_config(_VALID).nodes[0].id == "reader"
 
 
+def test_default_replicas_is_one_and_behaves_as_before() -> None:
+    """Regression: a config that doesn't mention `replicas` parses exactly as before."""
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].replicas == 1
+
+
+def test_explicit_replicas_one_is_accepted() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "replicas": 1}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].replicas == 1
+
+
+def test_replicas_zero_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": 0}]}
+    with pytest.raises(ConfigError, match="Node 'detector': 'replicas' must be >= 1, got 0"):
+        validate_pipeline_config(cfg)
+
+
+def test_negative_replicas_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": -2}]}
+    with pytest.raises(ConfigError, match="'replicas' must be >= 1, got -2"):
+        validate_pipeline_config(cfg)
+
+
+def test_positive_replicas_is_accepted() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": 4}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].replicas == 4
+
+
+def test_valid_autoscale_block_passes() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "replicas": 2,
+                "autoscale": {
+                    "min_replicas": 1,
+                    "max_replicas": 4,
+                    "queue_depth_high": 15,
+                    "queue_depth_low": 2,
+                    "check_interval_s": 5.0,
+                },
+            },
+        ],
+    }
+    assert validate_pipeline_config(cfg).nodes[0].id == "detector"
+
+
+def test_autoscale_min_greater_than_max_is_rejected() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "autoscale": {"min_replicas": 5, "max_replicas": 2},
+            },
+        ],
+    }
+    with pytest.raises(ConfigError, match="Node 'detector': invalid 'autoscale'"):
+        validate_pipeline_config(cfg)
+
+
+def test_autoscale_queue_depth_low_must_be_below_high() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "autoscale": {"queue_depth_low": 10, "queue_depth_high": 5},
+            },
+        ],
+    }
+    with pytest.raises(ConfigError, match="Node 'detector': invalid 'autoscale'"):
+        validate_pipeline_config(cfg)
+
+
+def test_autoscale_must_be_a_mapping() -> None:
+    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "autoscale": "yes please"}]}
+    with pytest.raises(ConfigError, match="'autoscale' must be a mapping"):
+        validate_pipeline_config(cfg)
+
+
 def test_incompatible_payload_types_are_rejected(monkeypatch) -> None:
     from neudc.core.communication.messaging.types import TextChunk
     from neudc.core.node.node_factory import NodeFactory

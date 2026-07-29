@@ -69,7 +69,7 @@ def _drain_with_timestamps(mailbox: ZMQMailbox, expected: int, timeout: float = 
 def test_threaded_node_streams_generator_output_incrementally() -> None:
     receiver = ZMQMailbox()
     sender_mailbox = ZMQMailbox()
-    sender_mailbox.add_publisher(receiver.consume_port)
+    sender_mailbox.add_publisher("receiver", receiver.consume_port)
     node = _StreamThreadedNode(sender_mailbox, n=3, delay=0.05)
     try:
         node.start()

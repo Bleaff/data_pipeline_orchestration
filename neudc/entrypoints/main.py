@@ -100,12 +100,16 @@ def _maybe_start_prometheus(config: dict) -> None:
 
 
 def _build_nodes(config: dict[str, Any], mailbox_map: dict[str, Any]) -> tuple[list[Any], list[Any]]:
-    """Build every node exactly once and split them by execution model.
+    """Build every node instance and split them by execution model.
+
+    A node config with ``replicas: N`` (#15) yields N node instances, one per
+    mailbox in ``mailbox_map[node_id]``, each with a distinct id (`f"{id}#{i}"`) so
+    per-instance metrics/health/dead-letter records don't collide across replicas.
 
     Args:
     ----
         config (dict[str, Any]): The validated pipeline configuration.
-        mailbox_map (dict[str, Any]): Per-node mailbox, keyed by node id.
+        mailbox_map (dict[str, Any]): Per-node list of replica mailboxes, keyed by node id.
 
     Returns:
     -------
@@ -115,8 +119,13 @@ def _build_nodes(config: dict[str, Any], mailbox_map: dict[str, Any]) -> tuple[l
     process_nodes: list[Any] = []
     threaded_nodes: list[Any] = []
     for node_config in config["nodes"]:
-        node = NodeFactory.create(node_config, mailbox=mailbox_map[node_config["id"]])
-        (process_nodes if isinstance(node, BaseProcessNode) else threaded_nodes).append(node)
+        node_id = node_config["id"]
+        replica_mailboxes = mailbox_map[node_id]
+        for i, mailbox in enumerate(replica_mailboxes):
+            node = NodeFactory.create(node_config, mailbox=mailbox)
+            if len(replica_mailboxes) > 1:
+                node.id = f"{node_id}#{i}"
+            (process_nodes if isinstance(node, BaseProcessNode) else threaded_nodes).append(node)
     return process_nodes, threaded_nodes
 
 

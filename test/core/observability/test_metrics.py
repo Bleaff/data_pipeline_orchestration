@@ -118,7 +118,7 @@ def test_mailbox_reports_queue_depth_after_receive() -> None:
     receiver = ZMQMailbox(name=node_id)
     sender = ZMQMailbox(name=_node_id("depth-sender"))
     try:
-        sender.add_publisher(receiver.consume_port)
+        sender.add_publisher("receiver", receiver.consume_port)
         sender.send(BaseMessage(timestamp=0.0, source="test"))
 
         message = receiver.receive(timeout=2.0)

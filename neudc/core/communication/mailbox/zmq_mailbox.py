@@ -49,7 +49,11 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         _join_timeout: float = 0.1,
     ) -> None:
         """Initialize the ZeroMQ mailbox."""
-        self.pub_sockets: dict[int, ZeroQueuePub] = {}
+        # Keyed by the *logical* downstream target id, not by physical port: a replica
+        # group (#15) is one entry with one ZeroQueuePub connected to every replica's
+        # port, so fan-out to N node types still means len(pub_sockets) == N, which is
+        # what the SHM single-consumer invariant below relies on.
+        self.pub_sockets: dict[str, ZeroQueuePub] = {}
         self.sub_queue: ZeroQueueSub = ZeroQueueSub()
         self.consume_port: int = self.sub_queue.port
         self._message_queue: Queue = Queue(maxsize=message_queue_size)
@@ -144,19 +148,42 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
             message = None
         return message
 
-    def add_publisher(self, port: int) -> None:
-        """Connect a publisher to the mailbox. This method is not thread-safe.
+    def add_publisher(self, target_id: str, ports: int | list[int]) -> None:
+        """Connect a publisher to one logical downstream target. Not thread-safe.
+
+        ``target_id`` identifies the *node* being published to (e.g. its config id),
+        not a single port: when that target has several replicas (#15), pass all of
+        their ports and a single ``ZeroQueuePub`` is connected to every one of them,
+        so ZMQ round-robins messages across the replica group. Calling this again
+        with a ``target_id`` that is already registered grows the existing
+        ``ZeroQueuePub``'s connections instead of replacing it (used by autoscale
+        scale-up to add a freshly started replica's port).
 
         ``ZeroQueuePub`` performs a one-time "slow joiner" settle on connect, so
         the subscription has propagated by the time this returns.
         """
-        self.pub_sockets[port] = ZeroQueuePub(port=port)
-        LOGGER.debug(f"[{self.name}][Added publisher] → port:{port}")
+        port_list = [ports] if isinstance(ports, int) else list(ports)
+        if target_id in self.pub_sockets:
+            for port in port_list:
+                self.pub_sockets[target_id].connect_additional(port)
+        else:
+            self.pub_sockets[target_id] = ZeroQueuePub(ports=port_list)
+        LOGGER.debug(f"[{self.name}][Added publisher] → target:{target_id} ports:{port_list}")
 
-    def remove_publisher(self, port: int) -> None:
-        """Remove a publisher from the mailbox."""
-        rm_pub = self.pub_sockets.pop(port)
+    def remove_publisher(self, target_id: str) -> None:
+        """Remove a publisher (an entire replica group) from the mailbox."""
+        rm_pub = self.pub_sockets.pop(target_id)
+        rm_pub.stop()
         LOGGER.debug(f"[{self.name}][Removed publisher] → {rm_pub}")
+
+    @property
+    def queue_depth(self) -> int:
+        """Current depth of the internal inbound message queue.
+
+        Public accessor so the autoscaler (#15) can read live queue depth without
+        reaching into the private ``_message_queue`` from outside this module.
+        """
+        return self._message_queue.qsize()
 
     def __getstate__(self) -> dict[str, Any]:
         """Return a picklable snapshot of the mailbox.
@@ -172,7 +199,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         state["_running"] = False
         state["logger"] = None  # Avoid pickling the logger
         state["message_queue_size"] = self._message_queue.qsize()  # Store size instead of the queue itself
-        state["pub_sockets"] = list(self.pub_sockets.keys())
+        state["pub_sockets"] = {target_id: pub.ports for target_id, pub in self.pub_sockets.items()}
         state["consume_port"] = self.consume_port
         state["sub_queue"] = None
         state["_message_queue"] = None  # Avoid pickling the queue itself
@@ -184,7 +211,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         LOGGER.debug(f"[{self.name}][SET STATE] → {self.name}")
         self._message_queue = Queue(state["message_queue_size"])
 
-        self.pub_sockets = {port: ZeroQueuePub(port=port) for port in state["pub_sockets"]}
+        self.pub_sockets = {target_id: ZeroQueuePub(ports=ports) for target_id, ports in state["pub_sockets"].items()}
         self.sub_queue = ZeroQueueSub(port=state["consume_port"], contype=ZeroQueueConnectionType.BIND)
         self.consume_port = state["consume_port"]
         self._message_queue = Queue(state["message_queue_size"])
