@@ -265,6 +265,7 @@ setting (`on_error: retry` with no retries) is rejected at startup, naming the n
 | `ProcessEmbeddingInference` | process | Batched embedding extraction |
 | `ActiveLearning` | thread | Selects frames worth human labelling |
 | `CreateDataset` | thread | Assembles the resulting dataset |
+| `TextNormalizeNode` | thread | Non-CV: strips/lowercases `TextChunk.text` (`accepts`/`emits` = `TextChunk`) |
 
 Model-backed nodes take a `model_config` naming the backend (`TorchBackend`,
 `ONNXBackend`, `TRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
