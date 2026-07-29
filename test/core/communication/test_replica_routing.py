@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
@@ -108,12 +110,8 @@ def test_disconnect_additional_refuses_to_remove_the_last_port() -> None:
     sub = ZeroQueueSub()
     pub = ZeroQueuePub(port=sub.port)
     try:
-        try:
+        with pytest.raises(ValueError, match="only remaining port"):
             pub.disconnect_additional(sub.port)
-        except ValueError as exc:
-            assert "only remaining port" in str(exc)
-        else:
-            raise AssertionError("expected ValueError")
     finally:
         pub.stop()
         sub.stop()

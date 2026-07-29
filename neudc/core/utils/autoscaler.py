@@ -77,7 +77,7 @@ class ReplicaAutoscaler(Generic[T]):
     def check_and_scale(self) -> str | None:
         """Inspect queue depth once and scale by at most one replica if warranted.
 
-        Returns:
+        Returns
         -------
             str | None: ``"up"``, ``"down"``, or ``None`` if no scaling happened.
                 Mainly useful for tests and logging to assert on the outcome.
@@ -88,7 +88,10 @@ class ReplicaAutoscaler(Generic[T]):
                 return None
             depths = [self._queue_depth_reader(r) for r in self._replicas]
 
-            if all(d >= self.config.queue_depth_high for d in depths) and len(self._replicas) < self.config.max_replicas:
+            if (
+                all(d >= self.config.queue_depth_high for d in depths)
+                and len(self._replicas) < self.config.max_replicas
+            ):
                 new_replica = self._scale_up()
                 self._replicas.append(new_replica)
                 LOGGER.info(
