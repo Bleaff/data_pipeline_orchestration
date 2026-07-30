@@ -34,15 +34,43 @@ def test_control_outputs_are_wired_to_the_targets_control_port() -> None:
     router = RoutingFactory(config)
     mailboxes = router.create_mailboxes()
     try:
-        assert "controller" in mailboxes["reader"].control_pub_sockets
+        assert "controller" in mailboxes["reader"][0].control_pub_sockets
 
-        mailboxes["reader"].send_control(
+        mailboxes["reader"][0].send_control(
             ControlMessage(timestamp=1.0, action=ControlAction.CANCEL, session_id="s", turn_id=1)
         )
-        assert _wait_until(lambda: mailboxes["controller"].is_cancelled("s", 1))
+        assert _wait_until(lambda: mailboxes["controller"][0].is_cancelled("s", 1))
     finally:
-        for mailbox in mailboxes.values():
-            mailbox.stop()
+        for replicas in mailboxes.values():
+            for mailbox in replicas:
+                mailbox.stop()
+
+
+def test_control_output_to_a_replicated_target_reaches_every_replica() -> None:
+    # Interaction between #15 (replicas) and #41 (control channel): a control message
+    # can't be round-robined like data, since we don't know in advance which replica is
+    # processing the turn being cancelled. Every replica's control port must be wired.
+    config = {
+        "nodes": [
+            {"id": "reader", "type": "FolderImageNode", "outputs": [], "control_outputs": ["controller"]},
+            {"id": "controller", "type": "SaveImageNode", "outputs": [], "control_outputs": [], "replicas": 3},
+        ],
+    }
+    router = RoutingFactory(config)
+    mailboxes = router.create_mailboxes()
+    try:
+        assert len(mailboxes["controller"]) == 3
+        assert len(mailboxes["reader"][0].control_pub_sockets["controller"]) == 3
+
+        mailboxes["reader"][0].send_control(
+            ControlMessage(timestamp=1.0, action=ControlAction.CANCEL, session_id="s", turn_id=7)
+        )
+        for replica in mailboxes["controller"]:
+            assert _wait_until(lambda replica=replica: replica.is_cancelled("s", 7))
+    finally:
+        for replicas in mailboxes.values():
+            for mailbox in replicas:
+                mailbox.stop()
 
 
 def test_dangling_control_output_raises() -> None:
@@ -68,10 +96,11 @@ def test_no_control_outputs_configured_leaves_control_channel_unwired() -> None:
     router = RoutingFactory(config)
     mailboxes = router.create_mailboxes()
     try:
-        assert mailboxes["reader"].control_pub_sockets == {}
-        assert mailboxes["saver"].control_pub_sockets == {}
+        assert mailboxes["reader"][0].control_pub_sockets == {}
+        assert mailboxes["saver"][0].control_pub_sockets == {}
         # Data wiring is unaffected.
-        assert mailboxes["reader"].pub_sockets
+        assert mailboxes["reader"][0].pub_sockets
     finally:
-        for mailbox in mailboxes.values():
-            mailbox.stop()
+        for replicas in mailboxes.values():
+            for mailbox in replicas:
+                mailbox.stop()

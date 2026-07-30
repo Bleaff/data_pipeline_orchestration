@@ -49,7 +49,7 @@ def test_immediately_sent_messages_are_not_dropped() -> None:
 def test_mailbox_delivers_in_order_without_loss() -> None:
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
 
     n = 200
     for i in range(n):

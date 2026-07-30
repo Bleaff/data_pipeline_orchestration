@@ -108,7 +108,7 @@ def test_shm_transport_carries_an_audio_chunk() -> None:
 def test_mailbox_delivers_an_audio_chunk() -> None:
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
     try:
         samples = np.arange(64, dtype=np.int16)
         sender.send(AudioChunk(timestamp=1.0, source="mic", samples=samples, sample_rate=16000))

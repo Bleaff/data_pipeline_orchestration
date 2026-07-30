@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.policy import ErrorPolicyConfig
+from neudc.core.utils.autoscale import AutoscaleConfig
 
 
 class ConfigError(ValueError):
@@ -44,6 +45,11 @@ class NodeSpec(BaseModel):
     with no ``control_outputs`` gets a control mailbox that is simply never wired to
     anything, so an untouched config runs exactly as before.
     """
+    #: Number of worker replicas for this node (#15). 1 (default) is the historical,
+    #: single-instance behaviour. `autoscale` (an extra field, validated below the
+    #: same way `error_policy` is) may grow/shrink this at runtime between
+    #: `autoscale.min_replicas` and `autoscale.max_replicas`.
+    replicas: int = 1
 
 
 class PipelineConfig(BaseModel):
@@ -78,6 +84,8 @@ class PipelineConfig(BaseModel):
                     msg = f"Node '{node.id}': control_output '{target}' does not reference any node id"
                     raise ConfigError(msg)
             _check_error_policy(node)
+            _check_replicas(node)
+            _check_autoscale(node)
         return self
 
 
@@ -112,6 +120,32 @@ def _check_error_policy(node: NodeSpec) -> None:
         ErrorPolicyConfig(**raw)
     except ValidationError as exc:
         msg = f"Node '{node.id}': invalid 'error_policy': {exc}"
+        raise ConfigError(msg) from exc
+
+
+def _check_replicas(node: NodeSpec) -> None:
+    """Validate a node's ``replicas`` count, naming the node on failure (#15)."""
+    if node.replicas < 1:
+        msg = f"Node '{node.id}': 'replicas' must be >= 1, got {node.replicas}"
+        raise ConfigError(msg)
+
+
+def _check_autoscale(node: NodeSpec) -> None:
+    """Validate a node's optional ``autoscale`` block, naming the node on failure (#15).
+
+    Kept out of :class:`NodeSpec`, same reason as :func:`_check_error_policy`: the
+    message should point at the node id the user wrote, not a positional index.
+    """
+    raw = getattr(node, "autoscale", None)
+    if raw is None:
+        return
+    if not isinstance(raw, dict):
+        msg = f"Node '{node.id}': 'autoscale' must be a mapping, got {type(raw).__name__}"
+        raise ConfigError(msg)
+    try:
+        AutoscaleConfig(**raw)
+    except ValidationError as exc:
+        msg = f"Node '{node.id}': invalid 'autoscale': {exc}"
         raise ConfigError(msg) from exc
 
 

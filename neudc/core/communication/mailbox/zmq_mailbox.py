@@ -49,7 +49,11 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         _join_timeout: float = 0.1,
     ) -> None:
         """Initialize the ZeroMQ mailbox."""
-        self.pub_sockets: dict[int, ZeroQueuePub] = {}
+        # Keyed by the *logical* downstream target id, not by physical port: a replica
+        # group (#15) is one entry with one ZeroQueuePub connected to every replica's
+        # port, so fan-out to N node types still means len(pub_sockets) == N, which is
+        # what the SHM single-consumer invariant below relies on.
+        self.pub_sockets: dict[str, ZeroQueuePub] = {}
         self.sub_queue: ZeroQueueSub = ZeroQueueSub()
         self.consume_port: int = self.sub_queue.port
         self._message_queue: Queue = Queue(maxsize=message_queue_size)
@@ -60,8 +64,12 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
 
         # Priority control channel (#41): a second, independent PULL socket + thread,
         # never touching `_message_queue`/`_receiver_loop`, so a control message (e.g.
-        # turn cancellation) is never stuck behind a backlog on the data path.
-        self.control_pub_sockets: dict[str, ZeroQueuePub] = {}
+        # turn cancellation) is never stuck behind a backlog on the data path. Keyed by
+        # target id like `pub_sockets`, but each entry is a *list* of ZeroQueuePub (one
+        # per replica port) since control messages must broadcast to every replica of a
+        # target (#15) rather than round-robin: we can't know in advance which replica
+        # is processing the turn being cancelled.
+        self.control_pub_sockets: dict[str, list[ZeroQueuePub]] = {}
         self.control_sub_queue: ZeroQueueSub = ZeroQueueSub()
         self.control_consume_port: int = self.control_sub_queue.port
         self._cancelled_turns: set[tuple[str | None, int | None]] = set()
@@ -144,8 +152,9 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
 
         for pub_socket in self.pub_sockets.values():
             pub_socket.stop()
-        for control_pub_socket in self.control_pub_sockets.values():
-            control_pub_socket.stop()
+        for control_pubs in self.control_pub_sockets.values():
+            for control_pub_socket in control_pubs:
+                control_pub_socket.stop()
 
     def send(self, message: BaseMessage | Batch) -> None:
         """Send a message to every downstream edge.
@@ -188,44 +197,76 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
             message = None
         return message
 
-    def add_publisher(self, port: int) -> None:
-        """Connect a publisher to the mailbox. This method is not thread-safe.
+    def add_publisher(self, target_id: str, ports: int | list[int]) -> None:
+        """Connect a publisher to one logical downstream target. Not thread-safe.
+
+        ``target_id`` identifies the *node* being published to (e.g. its config id),
+        not a single port: when that target has several replicas (#15), pass all of
+        their ports and a single ``ZeroQueuePub`` is connected to every one of them,
+        so ZMQ round-robins messages across the replica group. Calling this again
+        with a ``target_id`` that is already registered grows the existing
+        ``ZeroQueuePub``'s connections instead of replacing it (used by autoscale
+        scale-up to add a freshly started replica's port).
 
         ``ZeroQueuePub`` performs a one-time "slow joiner" settle on connect, so
         the subscription has propagated by the time this returns.
         """
-        self.pub_sockets[port] = ZeroQueuePub(port=port)
-        LOGGER.debug(f"[{self.name}][Added publisher] → port:{port}")
+        port_list = [ports] if isinstance(ports, int) else list(ports)
+        if target_id in self.pub_sockets:
+            for port in port_list:
+                self.pub_sockets[target_id].connect_additional(port)
+        else:
+            self.pub_sockets[target_id] = ZeroQueuePub(ports=port_list)
+        LOGGER.debug(f"[{self.name}][Added publisher] → target:{target_id} ports:{port_list}")
 
-    def remove_publisher(self, port: int) -> None:
-        """Remove a publisher from the mailbox."""
-        rm_pub = self.pub_sockets.pop(port)
+    def remove_publisher(self, target_id: str) -> None:
+        """Remove a publisher (an entire replica group) from the mailbox."""
+        rm_pub = self.pub_sockets.pop(target_id)
+        rm_pub.stop()
         LOGGER.debug(f"[{self.name}][Removed publisher] → {rm_pub}")
+
+    @property
+    def queue_depth(self) -> int:
+        """Current depth of the internal inbound message queue.
+
+        Public accessor so the autoscaler (#15) can read live queue depth without
+        reaching into the private ``_message_queue`` from outside this module.
+        """
+        return self._message_queue.qsize()
 
     def send_control(self, message: ControlMessage) -> None:
         """Broadcast a control-plane message (e.g. cancellation) to every wired control edge.
 
         Goes out over ``control_pub_sockets``, entirely separate from the data-path
-        ``pub_sockets``/``send`` — it never touches the target's data FIFO.
+        ``pub_sockets``/``send`` — it never touches the target's data FIFO. Every
+        replica (#15) of every wired target gets its own copy: cancellation must reach
+        whichever replica happens to be processing the affected turn.
         """
         raw = codec.dumps(message)
-        for control_pub_socket in self.control_pub_sockets.values():
-            control_pub_socket.put_bytes(raw)
+        for control_pubs in self.control_pub_sockets.values():
+            for control_pub_socket in control_pubs:
+                control_pub_socket.put_bytes(raw)
 
-    def add_control_publisher(self, target_id: str, port: int) -> None:
-        """Connect a control-channel publisher to ``target_id``'s control port.
+    def add_control_publisher(self, target_id: str, ports: int | list[int]) -> None:
+        """Connect control-channel publishers to every one of ``target_id``'s replica ports.
 
         Mirrors :meth:`add_publisher`, but keyed by the target node id (rather than
         the port) since the control graph is typically much sparser than the data
-        graph and the id makes intent legible at a glance.
+        graph and the id makes intent legible at a glance. Unlike :meth:`add_publisher`,
+        each port gets its own ``ZeroQueuePub`` (broadcast), not a shared round-robin
+        socket: a control message must reach every replica, not just one of them.
         """
-        self.control_pub_sockets[target_id] = ZeroQueuePub(port=port)
-        LOGGER.debug(f"[{self.name}][Added control publisher] → {target_id} (port:{port})")
+        port_list = [ports] if isinstance(ports, int) else list(ports)
+        self.control_pub_sockets.setdefault(target_id, [])
+        self.control_pub_sockets[target_id].extend(ZeroQueuePub(port=port) for port in port_list)
+        LOGGER.debug(f"[{self.name}][Added control publisher] → {target_id} (ports:{port_list})")
 
     def remove_control_publisher(self, target_id: str) -> None:
-        """Remove a control-channel publisher."""
-        rm_pub = self.control_pub_sockets.pop(target_id)
-        LOGGER.debug(f"[{self.name}][Removed control publisher] → {rm_pub}")
+        """Remove all control-channel publishers wired to ``target_id``."""
+        rm_pubs = self.control_pub_sockets.pop(target_id)
+        for rm_pub in rm_pubs:
+            rm_pub.stop()
+        LOGGER.debug(f"[{self.name}][Removed control publisher] → {target_id}")
 
     def is_cancelled(self, session_id: str | None, turn_id: int | None) -> bool:
         """Whether a cancellation was received for ``(session_id, turn_id)``.
@@ -251,13 +292,15 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         state["_running"] = False
         state["logger"] = None  # Avoid pickling the logger
         state["message_queue_size"] = self._message_queue.qsize()  # Store size instead of the queue itself
-        state["pub_sockets"] = list(self.pub_sockets.keys())
+        state["pub_sockets"] = {target_id: pub.ports for target_id, pub in self.pub_sockets.items()}
         state["consume_port"] = self.consume_port
         state["sub_queue"] = None
         state["_message_queue"] = None  # Avoid pickling the queue itself
         # Control channel (#41): same treatment as the data path above.
         state["_control_thread"] = None
-        state["control_pub_sockets"] = {target_id: sock.port for target_id, sock in self.control_pub_sockets.items()}
+        state["control_pub_sockets"] = {
+            target_id: [pub.port for pub in pubs] for target_id, pubs in self.control_pub_sockets.items()
+        }
         state["control_consume_port"] = self.control_consume_port
         state["control_sub_queue"] = None
         state["_cancelled_turns"] = set(self._cancelled_turns)
@@ -270,7 +313,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         LOGGER.debug(f"[{self.name}][SET STATE] → {self.name}")
         self._message_queue = Queue(state["message_queue_size"])
 
-        self.pub_sockets = {port: ZeroQueuePub(port=port) for port in state["pub_sockets"]}
+        self.pub_sockets = {target_id: ZeroQueuePub(ports=ports) for target_id, ports in state["pub_sockets"].items()}
         self.sub_queue = ZeroQueueSub(port=state["consume_port"], contype=ZeroQueueConnectionType.BIND)
         self.consume_port = state["consume_port"]
         self._message_queue = Queue(state["message_queue_size"])
@@ -278,7 +321,8 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         # Control channel (#41): rebuild exactly like the data path above, so a
         # BaseProcessNode-derived node has a working control channel after fork too.
         self.control_pub_sockets = {
-            target_id: ZeroQueuePub(port=port) for target_id, port in state["control_pub_sockets"].items()
+            target_id: [ZeroQueuePub(port=port) for port in ports]
+            for target_id, ports in state["control_pub_sockets"].items()
         }
         self.control_sub_queue = ZeroQueueSub(port=state["control_consume_port"], contype=ZeroQueueConnectionType.BIND)
         self.control_consume_port = state["control_consume_port"]

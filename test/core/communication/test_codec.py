@@ -68,8 +68,8 @@ def test_fanout_serializes_once_and_delivers_to_all(monkeypatch) -> None:
     sender = ZMQMailbox()
     receiver_a = ZMQMailbox()
     receiver_b = ZMQMailbox()
-    sender.add_publisher(receiver_a.consume_port)
-    sender.add_publisher(receiver_b.consume_port)
+    sender.add_publisher("receiver_a", receiver_a.consume_port)
+    sender.add_publisher("receiver_b", receiver_b.consume_port)
 
     sender.send({"i": 42})
 

@@ -21,7 +21,7 @@ def test_getstate_does_not_stop_the_mailbox() -> None:
     assert mailbox._running is True
     assert isinstance(state, dict)
     assert state["consume_port"] == mailbox.consume_port
-    assert state["pub_sockets"] == []
+    assert state["pub_sockets"] == {}
 
     mailbox.stop()
 
@@ -36,7 +36,7 @@ def test_from_state_rebuilds_a_working_mailbox() -> None:
     assert rebuilt.consume_port == port
 
     sender = ZMQMailbox()
-    sender.add_publisher(rebuilt.consume_port)
+    sender.add_publisher("rebuilt", rebuilt.consume_port)
     sender.send({"x": 1})
 
     got = None

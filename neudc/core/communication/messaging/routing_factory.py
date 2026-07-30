@@ -13,6 +13,16 @@ The "control_outputs" parameter is optional and contains a list of target node_i
 that the node should send priority control-plane messages to (e.g. turn
 cancellation / barge-in, #41) — wired into the target's control channel, entirely
 separate from "outputs"/the data FIFO.
+
+Worker replicas (#15): a node config may set ``replicas: N`` to run N independent
+instances of the same node type, each with its own mailbox. ``create_mailboxes``
+always returns a ``list[ZMQMailbox]`` per node id (length 1 for the default,
+non-replicated case) so every caller has one uniform shape to iterate. Wiring a data
+edge to a replicated target connects every producer replica's ``ZeroQueuePub`` to
+*every* consumer replica's port, so ZMQ round-robins fairly across the whole group.
+Wiring a control edge instead broadcasts to every consumer replica's control port:
+a cancellation can't be round-robined, since we don't know in advance which replica
+is processing the affected turn.
 """
 
 from __future__ import annotations
@@ -27,43 +37,65 @@ class RoutingFactory:
         """Store the pipeline configuration used to build and wire mailboxes."""
         self.config = config
 
-    def create_mailboxes(self) -> dict[str, ZMQMailbox]:
+    def create_mailboxes(self) -> dict[str, list[ZMQMailbox]]:
         """Create mailboxes for all nodes and wire their output queues.
 
         Returns
         -------
-            Dict[str, ZMQMailbox]: Mapping of node_id to its ZMQMailbox instance.
+            dict[str, list[ZMQMailbox]]: Mapping of node_id to its list of ZMQMailbox
+            replicas (one entry unless the node config sets ``replicas > 1``).
 
         """
-        mailboxes: dict[str, ZMQMailbox] = {}
-
-        # 1. Create mailbox for every node
-        for node_cfg in self.config["nodes"]:
-            node_id = node_cfg["id"]
-            mailboxes[node_id] = ZMQMailbox(name=node_id)
-
-        # 2. Wire output connections
-        for node_cfg in self.config["nodes"]:
-            node_id = node_cfg["id"]
-            outputs = node_cfg.get("outputs", [])
-            for target_node_id in outputs:
-                if target_node_id not in mailboxes:
-                    msg = f"Target node '{target_node_id}' not found in mailboxes."
-                    raise ValueError(msg)
-                pub_port = mailboxes[target_node_id].consume_port
-                mailboxes[node_id].add_publisher(pub_port)
-
-        # 3. Wire priority control-plane connections (#41), independent of the data
-        # edges above. A node with no "control_outputs" simply never wires its control
-        # mailbox to anything, so an untouched config behaves exactly as before.
-        for node_cfg in self.config["nodes"]:
-            node_id = node_cfg["id"]
-            control_outputs = node_cfg.get("control_outputs", [])
-            for target_node_id in control_outputs:
-                if target_node_id not in mailboxes:
-                    msg = f"Target node '{target_node_id}' not found in mailboxes."
-                    raise ValueError(msg)
-                control_pub_port = mailboxes[target_node_id].control_consume_port
-                mailboxes[node_id].add_control_publisher(target_node_id, control_pub_port)
-
+        mailboxes = self._create_replica_mailboxes()
+        self._wire_data_outputs(mailboxes)
+        self._wire_control_outputs(mailboxes)
         return mailboxes
+
+    def _create_replica_mailboxes(self) -> dict[str, list[ZMQMailbox]]:
+        """Create one or more mailboxes per node, depending on `replicas` (#15)."""
+        mailboxes: dict[str, list[ZMQMailbox]] = {}
+        for node_cfg in self.config["nodes"]:
+            node_id = node_cfg["id"]
+            replicas = node_cfg.get("replicas", 1)
+            if replicas <= 1:
+                mailboxes[node_id] = [ZMQMailbox(name=node_id)]
+            else:
+                mailboxes[node_id] = [ZMQMailbox(name=f"{node_id}#{i}") for i in range(replicas)]
+        return mailboxes
+
+    def _wire_data_outputs(self, mailboxes: dict[str, list[ZMQMailbox]]) -> None:
+        """Wire "outputs": every producer replica connects to every consumer replica's
+        port, so PUSH round-robins fairly across the whole target group (#15).
+        """  # noqa: D205
+        for node_cfg in self.config["nodes"]:
+            node_id = node_cfg["id"]
+            for target_node_id in node_cfg.get("outputs", []):
+                target_mailboxes = self._require_target(mailboxes, target_node_id)
+                target_ports = [mb.consume_port for mb in target_mailboxes]
+                for producer_mailbox in mailboxes[node_id]:
+                    producer_mailbox.add_publisher(target_node_id, target_ports)
+
+    def _wire_control_outputs(self, mailboxes: dict[str, list[ZMQMailbox]]) -> None:
+        """Wire "control_outputs" (#41), independent of the data edges above.
+
+        A node with no "control_outputs" simply never wires its control mailbox to
+        anything, so an untouched config behaves exactly as before. Every producer
+        replica broadcasts to every consumer replica's control port (#15): a
+        cancellation can't be round-robined, since we don't know in advance which
+        replica is processing the affected turn.
+        """
+        for node_cfg in self.config["nodes"]:
+            node_id = node_cfg["id"]
+            for target_node_id in node_cfg.get("control_outputs", []):
+                target_mailboxes = self._require_target(mailboxes, target_node_id)
+                target_control_ports = [mb.control_consume_port for mb in target_mailboxes]
+                for producer_mailbox in mailboxes[node_id]:
+                    producer_mailbox.add_control_publisher(target_node_id, target_control_ports)
+
+    @staticmethod
+    def _require_target(mailboxes: dict[str, list[ZMQMailbox]], target_node_id: str) -> list[ZMQMailbox]:
+        """Look up a wiring target's mailboxes, or raise naming the missing id."""
+        if target_node_id not in mailboxes:
+            msg = f"Target node '{target_node_id}' not found in mailboxes."
+            raise ValueError(msg)
+        return mailboxes[target_node_id]
