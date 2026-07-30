@@ -3,7 +3,7 @@ stages:
 
 pre-commit:
   stage: lint
-  image: python:3.11
+  image: python:3.13
   variables:
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
   cache:
