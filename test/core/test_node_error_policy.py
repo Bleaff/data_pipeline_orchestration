@@ -184,6 +184,22 @@ def test_factory_wires_health_overrides_onto_the_node(tmp_path) -> None:
     # Same pop-then-wire pattern as error_policy (#39): the keys must not leak into
     # from_config's kwargs and must land on the constructed instance.
     node = NodeFactory.create(
+def test_factory_pops_queue_policy_keys_before_from_config(tmp_path, monkeypatch) -> None:
+    # `message_queue_size`/`queue_policy` (#38) are routing-only config, consumed by
+    # RoutingFactory when building the node's mailbox -- they must not leak into the
+    # node class's own `from_config`, same treatment as `replicas`/`autoscale`.
+    from neudc.core.node.readers.image_reader import FolderImageNode
+
+    captured: dict = {}
+    real_from_config = FolderImageNode.from_config
+
+    def spy(config):
+        captured.update(config)
+        return real_from_config(config)
+
+    monkeypatch.setattr(FolderImageNode, "from_config", staticmethod(spy))
+
+    NodeFactory.create(
         {
             "id": "reader",
             "type": "FolderImageNode",
@@ -191,6 +207,8 @@ def test_factory_wires_health_overrides_onto_the_node(tmp_path) -> None:
             "outputs": [],
             "health_timeout": 30,
             "health_check_interval": 2,
+            "message_queue_size": 5,
+            "queue_policy": "conflate",
         },
         mailbox=ZMQMailbox(),
     )
@@ -208,3 +226,5 @@ def test_factory_leaves_health_defaults_when_unconfigured(tmp_path) -> None:
     # BaseThreadedNode has no health_timeout attribute at all -- the factory must not
     # invent one when the config doesn't mention it.
     assert not hasattr(node, "health_timeout")
+    assert "message_queue_size" not in captured
+    assert "queue_policy" not in captured

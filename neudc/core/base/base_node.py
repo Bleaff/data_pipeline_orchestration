@@ -10,7 +10,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
-from neudc.core.communication.messaging.types import BaseMessage, Frame
+from neudc.core.communication.messaging.types import BaseMessage, Batch, Frame
 from neudc.core.observability.metrics import HEALTH
 from neudc.core.policy import ErrorPolicy, NodeFailure
 from neudc.utils import LOGGER
@@ -222,6 +222,26 @@ class BaseNode(ABC):
             HEALTH.labels(node=self.id).set(0)
             LOGGER.exception("Error while sending result", exc_info=e)
 
+    def _should_send(self, result: Any) -> bool:
+        """Whether a `_handle` result should be forwarded to the mailbox (#40).
+
+        Shared by this class's `_run` loop and `BaseProcessNode.run`, so the two
+        cannot drift apart the way `_handle` itself warns about (#12).
+
+        `None` means the message was dropped, or (for a streamed generator `process()`,
+        see #37) already sent item-by-item via `on_item`. An empty `Batch` is also
+        withheld, checked explicitly by its length rather than by truthiness, so this
+        stays correct regardless of whether `Batch.__bool__`/`__len__` ever changes.
+        Every other result is sent even if it happens to be falsy — an empty string, an
+        empty list, or a message type that overrides `__len__`/`__bool__` (e.g. a
+        zero-sample `AudioChunk` or an empty `TextChunk`, if either ever grows such a
+        method). Checking `bool(result)` here used to swallow those silently, with no
+        log and no metric (#40).
+        """
+        if result is None:
+            return False
+        return not (isinstance(result, Batch) and len(result) == 0)
+
     def _run(self) -> None:
         """Run the node processing loop."""
         self.is_ready = True
@@ -230,7 +250,7 @@ class BaseNode(ABC):
             data = self._collect_data()
             if data is not None:
                 result = self._handle(data, on_item=self._send_item)
-                if result:
+                if self._should_send(result):
                     self._send_item(result)
 
     @abstractmethod

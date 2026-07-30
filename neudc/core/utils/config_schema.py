@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
+from neudc.core.communication.mailbox.zmq_mailbox import QueuePolicy
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.policy import ErrorPolicyConfig
 from neudc.core.utils.autoscale import AutoscaleConfig
@@ -57,6 +58,14 @@ class NodeSpec(BaseModel):
     health_timeout: float | None = None
     health_check_interval: float | None = None
 
+    #: Capacity of this node's inbound mailbox queue (#38). 20 (default) matches the
+    #: historical hardcoded value in `ZMQMailbox.__init__`.
+    message_queue_size: int = 20
+    #: Behaviour when the inbound queue is full (#38): "block" (default, historical
+    #: lossless backpressure) | "drop_oldest" | "conflate". Validated below, same
+    #: pattern as `error_policy`, so the message names the node id the user wrote.
+    queue_policy: str = "block"
+
 
 class PipelineConfig(BaseModel):
     """A single pipeline: a list of nodes plus any extra top-level keys (e.g. prometheus)."""
@@ -93,6 +102,7 @@ class PipelineConfig(BaseModel):
             _check_replicas(node)
             _check_autoscale(node)
             _check_health_config(node)
+            _check_queue_policy(node)
         return self
 
 
@@ -169,6 +179,14 @@ def _check_health_config(node: NodeSpec) -> None:
         raise ConfigError(msg)
     if node.health_check_interval is not None and node.health_check_interval <= 0:
         msg = f"Node '{node.id}': 'health_check_interval' must be > 0, got {node.health_check_interval}"
+def _check_queue_policy(node: NodeSpec) -> None:
+    """Validate a node's ``queue_policy``/``message_queue_size``, naming the node on failure (#38)."""
+    valid_policies = [p.value for p in QueuePolicy]
+    if node.queue_policy not in valid_policies:
+        msg = f"Node '{node.id}': invalid 'queue_policy' {node.queue_policy!r}. Valid options: {valid_policies}"
+        raise ConfigError(msg)
+    if node.message_queue_size < 1:
+        msg = f"Node '{node.id}': 'message_queue_size' must be >= 1, got {node.message_queue_size}"
         raise ConfigError(msg)
 
 

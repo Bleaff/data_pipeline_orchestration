@@ -135,8 +135,8 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
                 # `on_item=self._send_item` streams a generator process() (#37) out as
                 # each value is yielded, instead of waiting for the whole thing.
                 result = self._handle(data, on_item=self._send_item)
-                # check result is not None
-                if result:
+                # Shared with BaseNode._run so the two loops cannot drift apart (#40, #12).
+                if self._should_send(result):
                     self._send_item(result)
                 # update last success time
                 with self._last_success_time.get_lock():
