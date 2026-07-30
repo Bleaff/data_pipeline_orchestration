@@ -105,6 +105,15 @@ def test_default_frame_to_frame_edges_pass_payload_compat() -> None:
     assert validate_pipeline_config(_VALID).nodes[0].id == "reader"
 
 
+def test_audio_reader_to_vad_node_payload_compat_passes() -> None:
+    cfg = {
+        "nodes": [
+            {"id": "mic", "type": "AudioReaderNode", "sample_rate": 16000, "outputs": ["vad"]},
+            {"id": "vad", "type": "VadNode", "energy_threshold": 0.02, "outputs": []},
+        ],
+    }
+    parsed = validate_pipeline_config(cfg)
+    assert [n.id for n in parsed.nodes] == ["mic", "vad"]
 def test_default_replicas_is_one_and_behaves_as_before() -> None:
     """Regression: a config that doesn't mention `replicas` parses exactly as before."""
     cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}

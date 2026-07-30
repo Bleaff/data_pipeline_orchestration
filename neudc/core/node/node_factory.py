@@ -23,12 +23,14 @@ class NodeFactory:
     # node type -> (module path, class name). Imported on demand in `_resolve`.
     NODE_IMPORTS: ClassVar[dict[str, tuple[str, str]]] = {
         "FolderImageNode": ("neudc.core.node.readers.image_reader", "FolderImageNode"),
+        "AudioReaderNode": ("neudc.core.node.readers.audio_reader", "AudioReaderNode"),
         "SaveImageNode": ("neudc.core.node.broadcast.image_saver", "SaveImageNode"),
         "ResizeProcessNode": ("neudc.core.node.processors.resize_process_node", "ResizeProcessNode"),
         "ResizeNode": ("neudc.core.node.processors.resize_node", "ResizeNode"),
         "ProcessDetInference": ("neudc.core.node.model.proc_det_inference", "ProcessDetInference"),
         "DrawNode": ("neudc.core.node.processors.draw_node", "DrawNode"),
         "HashNode": ("neudc.core.node.filters.hash_node", "HashNode"),
+        "VadNode": ("neudc.core.node.filters.vad_node", "VadNode"),
         "ProcessBlurInference": ("neudc.core.node.model.proc_blur_inference", "ProcessBlurInference"),
         "ProcessEmbeddingInference": ("neudc.core.node.model.proc_embedding_inference", "ProcessEmbeddingInference"),
         "ProcessDetBatchInference": ("neudc.core.node.model.proc_det_batch_inference", "ProcessDetBatchInference"),
