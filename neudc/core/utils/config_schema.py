@@ -179,6 +179,9 @@ def _check_health_config(node: NodeSpec) -> None:
         raise ConfigError(msg)
     if node.health_check_interval is not None and node.health_check_interval <= 0:
         msg = f"Node '{node.id}': 'health_check_interval' must be > 0, got {node.health_check_interval}"
+        raise ConfigError(msg)
+
+
 def _check_queue_policy(node: NodeSpec) -> None:
     """Validate a node's ``queue_policy``/``message_queue_size``, naming the node on failure (#38)."""
     valid_policies = [p.value for p in QueuePolicy]

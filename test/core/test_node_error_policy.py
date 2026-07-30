@@ -184,6 +184,32 @@ def test_factory_wires_health_overrides_onto_the_node(tmp_path) -> None:
     # Same pop-then-wire pattern as error_policy (#39): the keys must not leak into
     # from_config's kwargs and must land on the constructed instance.
     node = NodeFactory.create(
+        {
+            "id": "reader",
+            "type": "FolderImageNode",
+            "folder_path": str(tmp_path),
+            "outputs": [],
+            "health_timeout": 30,
+            "health_check_interval": 2,
+        },
+        mailbox=ZMQMailbox(),
+    )
+
+    assert node.health_timeout == 30
+    assert node.health_check_interval == 2
+
+
+def test_factory_leaves_health_defaults_when_unconfigured(tmp_path) -> None:
+    node = NodeFactory.create(
+        {"id": "reader", "type": "FolderImageNode", "folder_path": str(tmp_path), "outputs": []},
+        mailbox=ZMQMailbox(),
+    )
+
+    # BaseThreadedNode has no health_timeout attribute at all -- the factory must not
+    # invent one when the config doesn't mention it.
+    assert not hasattr(node, "health_timeout")
+
+
 def test_factory_pops_queue_policy_keys_before_from_config(tmp_path, monkeypatch) -> None:
     # `message_queue_size`/`queue_policy` (#38) are routing-only config, consumed by
     # RoutingFactory when building the node's mailbox -- they must not leak into the
@@ -205,26 +231,11 @@ def test_factory_pops_queue_policy_keys_before_from_config(tmp_path, monkeypatch
             "type": "FolderImageNode",
             "folder_path": str(tmp_path),
             "outputs": [],
-            "health_timeout": 30,
-            "health_check_interval": 2,
             "message_queue_size": 5,
             "queue_policy": "conflate",
         },
         mailbox=ZMQMailbox(),
     )
 
-    assert node.health_timeout == 30
-    assert node.health_check_interval == 2
-
-
-def test_factory_leaves_health_defaults_when_unconfigured(tmp_path) -> None:
-    node = NodeFactory.create(
-        {"id": "reader", "type": "FolderImageNode", "folder_path": str(tmp_path), "outputs": []},
-        mailbox=ZMQMailbox(),
-    )
-
-    # BaseThreadedNode has no health_timeout attribute at all -- the factory must not
-    # invent one when the config doesn't mention it.
-    assert not hasattr(node, "health_timeout")
     assert "message_queue_size" not in captured
     assert "queue_policy" not in captured
