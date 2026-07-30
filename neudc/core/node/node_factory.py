@@ -88,9 +88,19 @@ class NodeFactory:
         # Error handling is uniform across node types, so it is wired here instead of
         # in every from_config (see neudc.core.policy).
         error_policy = config.pop("error_policy", None)
+        # Per-node health monitor overrides (#39), same treatment as error_policy: popped
+        # here (so they don't leak into the node's own from_config kwargs) and wired onto
+        # the constructed instance below. Only BaseProcessNode subclasses have these
+        # attributes; other node types simply ignore the config keys.
+        health_timeout = config.pop("health_timeout", None)
+        health_check_interval = config.pop("health_check_interval", None)
         node_id = config.get("id") or node_type
 
         node = node_class.from_config(config)
         node.id = node_id
         node.error_policy = ErrorPolicy.from_config(error_policy, node_id=node_id)
+        if health_timeout is not None:
+            node.health_timeout = health_timeout
+        if health_check_interval is not None:
+            node.health_check_interval = health_check_interval
         return node

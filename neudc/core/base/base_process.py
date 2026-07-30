@@ -56,6 +56,18 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         # MUST mutate these Values, never reassign them (see _mark_running).
         self._healthy = mp.Value("b", self.HEALTH_INITIAL)
         self._last_success_time = mp.Value("d", 0.0)
+        # Liveness of the run() loop itself (#39), independent of whether anything was
+        # actually received/processed: updated unconditionally at the top of every pass
+        # through the loop, so an idle node (nothing to collect) keeps this fresh every
+        # ~0.1s (the mailbox's default receive timeout) while a node whose process()
+        # genuinely hangs stops updating it until that call returns. The health monitor
+        # uses this (not _last_success_time) to decide "is the node alive at all".
+        self._last_iteration_time = mp.Value("d", 0.0)
+        # HEALTH_TIMEOUT/HEALTH_CHECK_INTERVAL are class-level defaults; expose them as
+        # instance attributes so NodeFactory.create can override them per node from its
+        # YAML config, the same way error_policy/replicas/autoscale are wired (#39).
+        self.health_timeout = self.HEALTH_TIMEOUT
+        self.health_check_interval = self.HEALTH_CHECK_INTERVAL
         self.stop_event = mp.Event()
         # BaseNode.__init__ created threading primitives. A process node must use the
         # multiprocessing ones instead: they are shared with the child, and a
@@ -107,6 +119,12 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         LOGGER.info(f"Process node started, entering processing loop...Mailbox status:{self.mailbox.consume_port}")
 
         while not self.stop_event.is_set():
+            # Mark the loop as alive *before* collecting, unconditionally, so an idle
+            # pass (data is None -> continue below) still refreshes this every ~0.1s.
+            # A pass stuck inside _handle()/process() cannot reach here again until
+            # that call returns, so this timestamp correctly goes stale for a hang (#39).
+            with self._last_iteration_time.get_lock():
+                self._last_iteration_time.value = time.time()
             try:
                 data = self._collect_data()
                 if data is None:
@@ -148,6 +166,8 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
             self._healthy.value = self.HEALTH_NORMAL
         with self._last_success_time.get_lock():
             self._last_success_time.value = time.time()
+        with self._last_iteration_time.get_lock():
+            self._last_iteration_time.value = time.time()
         HEALTH.labels(node=self.id).set(1)
 
     def wait_ready(self, timeout: float | None = None) -> bool:
@@ -167,13 +187,33 @@ class BaseProcessNode(BaseNode, mp.Process, ABC):
         with self._healthy.get_lock():
             return bool(self._healthy.value)
 
+    def is_processing(self) -> bool:
+        """Whether the node last sent/processed a result within ``health_timeout`` (#39).
+
+        A second, optional signal distinct from :meth:`status` (loop liveness): this
+        one is only meaningful for a node with an actual incoming stream. An idle node
+        (nothing to process) will report ``False`` here indefinitely, which is expected
+        and does not affect :meth:`status` or the health monitor's verdict.
+        """
+        with self._last_success_time.get_lock():
+            delta = time.time() - self._last_success_time.value
+        return delta <= self.health_timeout
+
     def _health_monitor(self) -> None:
-        """Monitor if node continues to process over time."""
+        """Monitor if the node's run() loop is still cycling.
+
+        Liveness is judged by the last time the loop iterated (``_last_iteration_time``),
+        not by the last time it successfully processed something (#39): an idle node
+        (nothing arrived) keeps cycling its loop every ~0.1s and stays healthy
+        indefinitely, while a node whose ``process()`` call genuinely hangs blocks the
+        loop from returning, so this timestamp goes stale and the node is correctly
+        flagged unhealthy.
+        """
         while not self.stop_event.is_set():
-            time.sleep(self.HEALTH_CHECK_INTERVAL)
-            with self._last_success_time.get_lock():
-                delta = time.time() - self._last_success_time.value
-            if delta > self.HEALTH_TIMEOUT:
+            time.sleep(self.health_check_interval)
+            with self._last_iteration_time.get_lock():
+                delta = time.time() - self._last_iteration_time.value
+            if delta > self.health_timeout:
                 LOGGER.warning(f"Health {self.__class__.__name__} timeout exceeded!")
                 with self._healthy.get_lock():
                     self._healthy.value = False

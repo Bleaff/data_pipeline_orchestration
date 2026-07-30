@@ -51,6 +51,12 @@ class NodeSpec(BaseModel):
     #: same way `error_policy` is) may grow/shrink this at runtime between
     #: `autoscale.min_replicas` and `autoscale.max_replicas`.
     replicas: int = 1
+    #: Per-node override of BaseProcessNode.HEALTH_TIMEOUT / HEALTH_CHECK_INTERVAL
+    #: (#39). `None` (default) falls back to the class-constant defaults; wired onto
+    #: the constructed node by `NodeFactory.create`, same as `error_policy`. Only
+    #: meaningful for process nodes, but harmless (ignored) on other node types.
+    health_timeout: float | None = None
+    health_check_interval: float | None = None
 
     #: Capacity of this node's inbound mailbox queue (#38). 20 (default) matches the
     #: historical hardcoded value in `ZMQMailbox.__init__`.
@@ -95,6 +101,7 @@ class PipelineConfig(BaseModel):
             _check_error_policy(node)
             _check_replicas(node)
             _check_autoscale(node)
+            _check_health_config(node)
             _check_queue_policy(node)
         return self
 
@@ -159,6 +166,19 @@ def _check_autoscale(node: NodeSpec) -> None:
         raise ConfigError(msg) from exc
 
 
+def _check_health_config(node: NodeSpec) -> None:
+    """Validate a node's optional ``health_timeout``/``health_check_interval`` (#39).
+
+    Kept out of :class:`NodeSpec` as a field-level constraint, same reason as
+    :func:`_check_error_policy`: the message should name the node id the user wrote,
+    not a positional index. Both are optional; when omitted the node falls back to
+    `BaseProcessNode.HEALTH_TIMEOUT`/`HEALTH_CHECK_INTERVAL`.
+    """
+    if node.health_timeout is not None and node.health_timeout <= 0:
+        msg = f"Node '{node.id}': 'health_timeout' must be > 0, got {node.health_timeout}"
+        raise ConfigError(msg)
+    if node.health_check_interval is not None and node.health_check_interval <= 0:
+        msg = f"Node '{node.id}': 'health_check_interval' must be > 0, got {node.health_check_interval}"
 def _check_queue_policy(node: NodeSpec) -> None:
     """Validate a node's ``queue_policy``/``message_queue_size``, naming the node on failure (#38)."""
     valid_policies = [p.value for p in QueuePolicy]
