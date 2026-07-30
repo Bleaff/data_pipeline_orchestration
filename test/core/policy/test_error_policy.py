@@ -313,6 +313,98 @@ def test_generator_failure_after_a_yield_still_dead_letters(tmp_path) -> None:
     assert policy.stats.dead_lettered == 1
 
 
+# === Cancellation mid-stream (#41) ===
+
+
+def test_is_cancelled_closes_the_generator_before_the_next_yield() -> None:
+    calls = {"n": 0}
+
+    def stream(item):
+        for i in range(5):
+            calls["n"] += 1
+            yield i
+
+    policy = ErrorPolicy(node_id="n")
+    collected: list = []
+
+    def is_cancelled() -> bool:
+        return len(collected) >= 2
+
+    result = policy.execute(stream, "msg", wait=_no_wait, on_item=collected.append, is_cancelled=is_cancelled)
+
+    assert result is None
+    assert collected == [0, 1]  # the tail (2, 3, 4) was never emitted
+    assert calls["n"] == 2  # the generator was never resumed for a 3rd item
+    # Benign, expected termination: not an error, not dead-lettered, not a failure.
+    assert policy.stats.errors == 0
+    assert policy.stats.dropped == 0
+    assert policy.stats.failures == 0
+    assert policy.stats.processed == 1
+
+
+def test_cancellation_calls_generator_close_letting_it_clean_up() -> None:
+    cleanup = {"ran": False}
+
+    def stream(item):
+        try:
+            yield "a"
+            yield "b"
+            yield "c"
+        finally:
+            cleanup["ran"] = True
+
+    policy = ErrorPolicy(node_id="n")
+    collected: list = []
+
+    result = policy.execute(
+        stream,
+        "msg",
+        wait=_no_wait,
+        on_item=collected.append,
+        is_cancelled=lambda: len(collected) >= 1,
+    )
+
+    assert result is None
+    assert collected == ["a"]
+    assert cleanup["ran"] is True  # gen.close() raised GeneratorExit, the finally ran
+
+
+def test_is_cancelled_true_before_the_first_yield_emits_nothing() -> None:
+    def stream(item):
+        yield "should never be reached"
+
+    policy = ErrorPolicy(node_id="n")
+    collected: list = []
+
+    result = policy.execute(stream, "msg", wait=_no_wait, on_item=collected.append, is_cancelled=lambda: True)
+
+    assert result is None
+    assert collected == []
+    assert policy.stats.errors == 0
+    assert policy.stats.failures == 0
+
+
+def test_is_cancelled_never_returning_true_behaves_like_no_cancellation() -> None:
+    def stream(item):
+        yield "a"
+        yield "b"
+
+    policy = ErrorPolicy(node_id="n")
+
+    assert policy.execute(stream, "msg", wait=_no_wait, is_cancelled=lambda: False) == ["a", "b"]
+
+
+def test_omitting_is_cancelled_preserves_existing_generator_behaviour() -> None:
+    # Default None must not change anything for callers that predate #41.
+    def stream(item):
+        yield "a"
+        yield "b"
+
+    policy = ErrorPolicy(node_id="n")
+
+    assert policy.execute(stream, "msg", wait=_no_wait) == ["a", "b"]
+
+
 def test_generator_respects_fail_policy() -> None:
     def boom_immediately(item):
         msg = "boom"

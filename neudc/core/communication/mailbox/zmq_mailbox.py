@@ -27,7 +27,7 @@ from zmq.error import ZMQError
 
 from neudc.core.base.base_mailbox import BaseMailbox
 from neudc.core.communication.messaging import codec
-from neudc.core.communication.messaging.types import BaseMessage, Batch
+from neudc.core.communication.messaging.types import BaseMessage, Batch, ControlAction, ControlMessage
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType
 from neudc.core.observability.metrics import QUEUE_DEPTH, QUEUE_HWM
@@ -58,6 +58,16 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self._join_timeout = _join_timeout
         self.name = name
 
+        # Priority control channel (#41): a second, independent PULL socket + thread,
+        # never touching `_message_queue`/`_receiver_loop`, so a control message (e.g.
+        # turn cancellation) is never stuck behind a backlog on the data path.
+        self.control_pub_sockets: dict[str, ZeroQueuePub] = {}
+        self.control_sub_queue: ZeroQueueSub = ZeroQueueSub()
+        self.control_consume_port: int = self.control_sub_queue.port
+        self._cancelled_turns: set[tuple[str | None, int | None]] = set()
+        self._cancelled_turns_lock = threading.Lock()
+        self._control_thread: threading.Thread | None = None
+
         # Informational: the ZMQ default (1000) unless a future config path overrides it.
         # Read back from the socket rather than hardcoded, so it stays truthful either way.
         assert self.sub_queue.socket_sub is not None
@@ -86,22 +96,56 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
             except Exception as e:  # noqa: BLE001 -- top-level receiver thread loop must never crash.
                 LOGGER.exception("Error in receiver loop", exc_info=e)
 
+    def _control_receiver_loop(self) -> None:
+        """Thread loop draining the control PULL socket, independent of the data path.
+
+        Runs continuously regardless of how backed up `_message_queue` is: it never
+        reads from or writes to that queue, which is precisely what lets a control
+        message (e.g. cancellation) reach the node without waiting for the data
+        backlog to drain.
+        """
+        while self._running:
+            message = self.control_sub_queue.get(timeout=self._join_timeout)
+            if message is None:
+                continue
+            try:
+                if isinstance(message, ControlMessage):
+                    if message.action is ControlAction.CANCEL:
+                        with self._cancelled_turns_lock:
+                            self._cancelled_turns.add((message.session_id, message.turn_id))
+                    if LOGGER.isEnabledFor(logging.DEBUG):
+                        LOGGER.debug(
+                            f"[{self.name}][CONTROL] ← {message.action} "
+                            f"session_id={message.session_id} turn_id={message.turn_id}"
+                        )
+                else:
+                    LOGGER.warning(f"[{self.name}][CONTROL] ← unexpected message type {type(message)}, ignoring")
+            except Exception as e:  # noqa: BLE001 -- top-level receiver thread loop must never crash.
+                LOGGER.exception("Error in control receiver loop", exc_info=e)
+
     def start(self) -> None:
-        """Start the receiving thread."""
+        """Start the receiving threads (data and control)."""
         self._running = True
         self._thread = threading.Thread(target=self._receiver_loop, daemon=True)
         self._thread.start()
+        self._control_thread = threading.Thread(target=self._control_receiver_loop, daemon=True)
+        self._control_thread.start()
 
     def stop(self) -> None:
         """Stop the mailbox."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=self._join_timeout)
+        if self._control_thread:
+            self._control_thread.join(timeout=self._join_timeout)
 
         self.sub_queue.stop()
+        self.control_sub_queue.stop()
 
         for pub_socket in self.pub_sockets.values():
             pub_socket.stop()
+        for control_pub_socket in self.control_pub_sockets.values():
+            control_pub_socket.stop()
 
     def send(self, message: BaseMessage | Batch) -> None:
         """Send a message to every downstream edge.
@@ -158,6 +202,41 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         rm_pub = self.pub_sockets.pop(port)
         LOGGER.debug(f"[{self.name}][Removed publisher] → {rm_pub}")
 
+    def send_control(self, message: ControlMessage) -> None:
+        """Broadcast a control-plane message (e.g. cancellation) to every wired control edge.
+
+        Goes out over ``control_pub_sockets``, entirely separate from the data-path
+        ``pub_sockets``/``send`` — it never touches the target's data FIFO.
+        """
+        raw = codec.dumps(message)
+        for control_pub_socket in self.control_pub_sockets.values():
+            control_pub_socket.put_bytes(raw)
+
+    def add_control_publisher(self, target_id: str, port: int) -> None:
+        """Connect a control-channel publisher to ``target_id``'s control port.
+
+        Mirrors :meth:`add_publisher`, but keyed by the target node id (rather than
+        the port) since the control graph is typically much sparser than the data
+        graph and the id makes intent legible at a glance.
+        """
+        self.control_pub_sockets[target_id] = ZeroQueuePub(port=port)
+        LOGGER.debug(f"[{self.name}][Added control publisher] → {target_id} (port:{port})")
+
+    def remove_control_publisher(self, target_id: str) -> None:
+        """Remove a control-channel publisher."""
+        rm_pub = self.control_pub_sockets.pop(target_id)
+        LOGGER.debug(f"[{self.name}][Removed control publisher] → {rm_pub}")
+
+    def is_cancelled(self, session_id: str | None, turn_id: int | None) -> bool:
+        """Whether a cancellation was received for ``(session_id, turn_id)``.
+
+        Backed by the set the control receiver thread fills in independently of the
+        data path, so this reflects a cancel signal even while the data queue is
+        still backlogged.
+        """
+        with self._cancelled_turns_lock:
+            return (session_id, turn_id) in self._cancelled_turns
+
     def __getstate__(self) -> dict[str, Any]:
         """Return a picklable snapshot of the mailbox.
 
@@ -176,6 +255,13 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         state["consume_port"] = self.consume_port
         state["sub_queue"] = None
         state["_message_queue"] = None  # Avoid pickling the queue itself
+        # Control channel (#41): same treatment as the data path above.
+        state["_control_thread"] = None
+        state["control_pub_sockets"] = {target_id: sock.port for target_id, sock in self.control_pub_sockets.items()}
+        state["control_consume_port"] = self.control_consume_port
+        state["control_sub_queue"] = None
+        state["_cancelled_turns"] = set(self._cancelled_turns)
+        state["_cancelled_turns_lock"] = None
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -189,10 +275,22 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self.consume_port = state["consume_port"]
         self._message_queue = Queue(state["message_queue_size"])
 
+        # Control channel (#41): rebuild exactly like the data path above, so a
+        # BaseProcessNode-derived node has a working control channel after fork too.
+        self.control_pub_sockets = {
+            target_id: ZeroQueuePub(port=port) for target_id, port in state["control_pub_sockets"].items()
+        }
+        self.control_sub_queue = ZeroQueueSub(port=state["control_consume_port"], contype=ZeroQueueConnectionType.BIND)
+        self.control_consume_port = state["control_consume_port"]
+        self._cancelled_turns = set(state.get("_cancelled_turns", set()))
+        self._cancelled_turns_lock = threading.Lock()
+
         self._running = True
         self._thread = threading.Thread(target=self._receiver_loop, daemon=True)
+        self._control_thread = threading.Thread(target=self._control_receiver_loop, daemon=True)
         self._join_timeout = state["_join_timeout"]
         self._thread.start()
+        self._control_thread.start()
 
     @classmethod
     def from_state(cls, state: dict[str, Any]) -> ZMQMailbox:
