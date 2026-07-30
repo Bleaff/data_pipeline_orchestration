@@ -193,6 +193,31 @@ def test_autoscale_must_be_a_mapping() -> None:
         validate_pipeline_config(cfg)
 
 
+def test_control_outputs_defaults_to_empty() -> None:
+    # An untouched config (no control_outputs anywhere) must keep validating exactly
+    # as before this feature existed (#41, done-when criterion 3).
+    parsed = validate_pipeline_config(_VALID)
+    assert parsed.nodes[0].control_outputs == []
+    assert parsed.nodes[1].control_outputs == []
+
+
+def test_valid_control_outputs_reference_passes() -> None:
+    cfg = {
+        "nodes": [
+            {"id": "reader", "type": "FolderImageNode", "outputs": [], "control_outputs": ["controller"]},
+            {"id": "controller", "type": "SaveImageNode", "outputs": [], "control_outputs": []},
+        ],
+    }
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].control_outputs == ["controller"]
+
+
+def test_dangling_control_output_reference() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "control_outputs": ["ghost"]}]}
+    with pytest.raises(ConfigError, match="does not reference"):
+        validate_pipeline_config(cfg)
+
+
 def test_incompatible_payload_types_are_rejected(monkeypatch) -> None:
     from neudc.core.communication.messaging.types import TextChunk
     from neudc.core.node.node_factory import NodeFactory

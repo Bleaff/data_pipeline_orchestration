@@ -12,6 +12,7 @@ segmentation masks, keypoints.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 import numpy as np  # noqa: TC002 -- used as a real pydantic field type, must stay importable at runtime
@@ -126,6 +127,23 @@ class BaseMessage(BaseModel):
     session_id: str | None = None
     turn_id: int | None = None
     is_final: bool = True
+
+
+class ControlAction(StrEnum):
+    """Action carried by a :class:`ControlMessage`."""
+
+    CANCEL = "cancel"
+
+
+class ControlMessage(BaseMessage):
+    """A priority control-plane message (e.g. turn cancellation / barge-in).
+
+    Delivered out-of-band from the data FIFO — over the mailbox's dedicated control
+    channel (see :class:`~neudc.core.communication.mailbox.zmq_mailbox.ZMQMailbox`) —
+    so it is not stuck behind a backlog of data messages it is meant to interrupt.
+    """
+
+    action: ControlAction
 
 
 class Frame(BaseMessage):

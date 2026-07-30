@@ -153,6 +153,13 @@ The config is validated at startup, so mistakes fail fast and legibly: an unknow
 `type`, a duplicate `id`, or an `outputs` entry that points at no node are all rejected
 before a single frame moves.
 
+A node can optionally declare `control_outputs` — ids it sends priority control-plane
+messages to (e.g. turn cancellation / barge-in for streaming pipelines). These travel
+over a second channel, entirely independent of `outputs`/the data FIFO, so a cancel
+signal is never stuck behind a backlog of data it is meant to interrupt. A node with no
+`control_outputs` (the default, `[]`) simply has no control channel wired up and behaves
+exactly as before this existed.
+
 Optional metrics endpoint:
 
 ```yaml

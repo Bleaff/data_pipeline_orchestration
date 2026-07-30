@@ -11,6 +11,18 @@ explicit and configurable per node:
   backoff; if the last attempt still fails, dead-letter and drop.
 * ``fail``  — dead-letter and stop the node, which brings the pipeline down.
 
+Cancellation (#41)
+------------------
+A generator ``process()`` can also be interrupted mid-stream by an out-of-band signal
+(turn cancellation / barge-in), independent of retry/backoff. ``execute``/
+``_execute_generator`` accept an optional ``is_cancelled`` callable, checked before
+each ``next(gen)``; when it returns True the generator is closed (``gen.close()``,
+which raises ``GeneratorExit`` inside it at its current ``yield`` so a well-behaved
+generator can clean up) and draining stops. This is **not** an error: it is expected,
+benign termination of an interrupted turn, so it is never dead-lettered, never counted
+as a failure, and never raises :class:`NodeFailure` — unlike a genuine exception, which
+still goes through :meth:`ErrorPolicy._give_up`.
+
 Two properties worth knowing before configuring ``retry``:
 
 * **Only ``process()`` is retried**, never the send that follows it. Re-sending is
@@ -149,6 +161,7 @@ class ErrorPolicy:
         item: Any,
         wait: Callable[[float], bool] | None = None,
         on_item: Callable[[Any], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> Any:
         """Run ``func(item)`` under the policy.
 
@@ -167,6 +180,11 @@ class ErrorPolicy:
                 one out (e.g. to the mailbox) without waiting for the generator to
                 finish. If omitted, yielded values are collected into a list and
                 returned once the generator is exhausted, same as any other value.
+            is_cancelled: Only meaningful when ``func`` is a generator function (#41).
+                Checked before each ``next(gen)``; when it returns True the generator
+                is closed and draining stops without emitting the rest of the turn.
+                Defaults to None, which preserves all existing (non-cancellable)
+                behaviour unchanged.
 
         Returns:
         -------
@@ -181,7 +199,7 @@ class ErrorPolicy:
 
         """
         if inspect.isgeneratorfunction(func):
-            return self._execute_generator(func, item, wait, on_item)
+            return self._execute_generator(func, item, wait, on_item, is_cancelled)
 
         attempts = 1 + (self.config.max_retries if self.config.on_error is ErrorAction.RETRY else 0)
         last_error: BaseException | None = None
@@ -225,6 +243,7 @@ class ErrorPolicy:
         item: Any,
         wait: Callable[[float], bool] | None,
         on_item: Callable[[Any], None] | None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> Any:
         """Drain a generator-valued ``process()``, streaming each yield out immediately.
 
@@ -232,6 +251,10 @@ class ErrorPolicy:
         difference: retry is only attempted for a failure *before* the first yield of
         that attempt (see module docstring). A failure after any yield is terminal —
         this attempt already delivered output, so re-running would duplicate it.
+
+        ``is_cancelled`` (#41), when given, is checked before each ``next(gen)``; a
+        True result closes the generator and returns immediately, without emitting the
+        rest of the turn and without treating this as an error (see module docstring).
         """
         attempts = 1 + (self.config.max_retries if self.config.on_error is ErrorAction.RETRY else 0)
         last_error: BaseException | None = None
@@ -243,6 +266,13 @@ class ErrorPolicy:
             try:
                 gen = func(item)
                 while True:
+                    if is_cancelled is not None and is_cancelled():
+                        LOGGER.debug(f"[{self.node_id}] turn cancelled, closing generator mid-stream")
+                        gen.close()
+                        PROCESS_LATENCY.labels(node=self.node_id).observe(time.monotonic() - start)
+                        self.stats.processed += 1
+                        MESSAGES_PROCESSED.labels(node=self.node_id).inc()
+                        return None if on_item is not None else collected
                     value = next(gen)
                     yielded_count += 1
                     if on_item is not None:
