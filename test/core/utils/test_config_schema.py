@@ -254,6 +254,45 @@ def test_example_multimodal_pipeline_config_is_valid() -> None:
     assert {n.id for n in parsed.nodes} == {"normalize", "normalize_again"}
 
 
+def test_queue_policy_and_message_queue_size_default() -> None:
+    """Regression: an untouched config parses exactly as before this feature existed (#38)."""
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].queue_policy == "block"
+    assert parsed.nodes[0].message_queue_size == 20
+
+
+@pytest.mark.parametrize("policy", ["block", "drop_oldest", "conflate"])
+def test_valid_queue_policy_values_are_accepted(policy: str) -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "queue_policy": policy}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].queue_policy == policy
+
+
+def test_invalid_queue_policy_is_rejected_and_names_the_node() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "queue_policy": "yeet"}]}
+    with pytest.raises(ConfigError, match=r"Node 'reader': invalid 'queue_policy' 'yeet'"):
+        validate_pipeline_config(cfg)
+
+
+def test_message_queue_size_zero_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "message_queue_size": 0}]}
+    with pytest.raises(ConfigError, match=r"Node 'reader': 'message_queue_size' must be >= 1, got 0"):
+        validate_pipeline_config(cfg)
+
+
+def test_message_queue_size_negative_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "message_queue_size": -5}]}
+    with pytest.raises(ConfigError, match=r"'message_queue_size' must be >= 1, got -5"):
+        validate_pipeline_config(cfg)
+
+
+def test_message_queue_size_positive_is_accepted() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "message_queue_size": 500}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].message_queue_size == 500
+
+
 def test_real_incompatible_nodes_are_rejected_without_monkeypatch() -> None:
     # FolderImageNode emits (Frame,) and TextNormalizeNode only accepts (TextChunk,):
     # a genuinely incompatible pair using already-registered node classes, unlike

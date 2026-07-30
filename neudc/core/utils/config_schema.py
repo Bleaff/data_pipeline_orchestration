@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
+from neudc.core.communication.mailbox.zmq_mailbox import QueuePolicy
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.policy import ErrorPolicyConfig
 from neudc.core.utils.autoscale import AutoscaleConfig
@@ -50,6 +51,14 @@ class NodeSpec(BaseModel):
     #: same way `error_policy` is) may grow/shrink this at runtime between
     #: `autoscale.min_replicas` and `autoscale.max_replicas`.
     replicas: int = 1
+
+    #: Capacity of this node's inbound mailbox queue (#38). 20 (default) matches the
+    #: historical hardcoded value in `ZMQMailbox.__init__`.
+    message_queue_size: int = 20
+    #: Behaviour when the inbound queue is full (#38): "block" (default, historical
+    #: lossless backpressure) | "drop_oldest" | "conflate". Validated below, same
+    #: pattern as `error_policy`, so the message names the node id the user wrote.
+    queue_policy: str = "block"
 
 
 class PipelineConfig(BaseModel):
@@ -86,6 +95,7 @@ class PipelineConfig(BaseModel):
             _check_error_policy(node)
             _check_replicas(node)
             _check_autoscale(node)
+            _check_queue_policy(node)
         return self
 
 
@@ -147,6 +157,17 @@ def _check_autoscale(node: NodeSpec) -> None:
     except ValidationError as exc:
         msg = f"Node '{node.id}': invalid 'autoscale': {exc}"
         raise ConfigError(msg) from exc
+
+
+def _check_queue_policy(node: NodeSpec) -> None:
+    """Validate a node's ``queue_policy``/``message_queue_size``, naming the node on failure (#38)."""
+    valid_policies = [p.value for p in QueuePolicy]
+    if node.queue_policy not in valid_policies:
+        msg = f"Node '{node.id}': invalid 'queue_policy' {node.queue_policy!r}. Valid options: {valid_policies}"
+        raise ConfigError(msg)
+    if node.message_queue_size < 1:
+        msg = f"Node '{node.id}': 'message_queue_size' must be >= 1, got {node.message_queue_size}"
+        raise ConfigError(msg)
 
 
 def validate_pipeline_config(raw: Any) -> PipelineConfig:

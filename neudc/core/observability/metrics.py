@@ -25,6 +25,11 @@ QUEUE_HWM = Gauge(
     "Configured ZMQ high-water mark for a node's inbound mailbox socket",
     ["node"],
 )
+QUEUE_DROPS = Counter(
+    "neudc_node_queue_drops_total",
+    "Messages dropped from a node's inbound queue under a non-blocking queue policy",
+    ["node", "reason"],
+)
 
 # --- Throughput / latency -----------------------------------------------------------
 
