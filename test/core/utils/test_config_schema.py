@@ -114,6 +114,8 @@ def test_audio_reader_to_vad_node_payload_compat_passes() -> None:
     }
     parsed = validate_pipeline_config(cfg)
     assert [n.id for n in parsed.nodes] == ["mic", "vad"]
+
+
 def test_default_replicas_is_one_and_behaves_as_before() -> None:
     """Regression: a config that doesn't mention `replicas` parses exactly as before."""
     cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
