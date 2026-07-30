@@ -247,6 +247,28 @@ Two things to know before choosing `retry`:
 The block is validated with the rest of the config, so a typo or a contradictory
 setting (`on_error: retry` with no retries) is rejected at startup, naming the node.
 
+### Health monitor
+
+Process nodes (`BaseProcessNode`) run a background health monitor that judges
+liveness by whether the node's own run loop is still cycling, not by whether it has
+recently processed anything — an idle node (a scheduled reader, an event-driven node
+between events, anything without a constant stream) keeps iterating its loop every
+~0.1s even with nothing to collect, so it stays healthy indefinitely. A node whose
+`process()` call genuinely hangs blocks the loop from returning, so it is correctly
+flagged unhealthy once `health_timeout` elapses.
+
+```yaml
+  - id: detector
+    type: ProcessDetInference
+    health_timeout: 30          # seconds of a stalled loop before unhealthy, default 15
+    health_check_interval: 5    # how often the monitor checks, default 5
+    outputs: [saver]
+```
+
+Both keys are optional and fall back to `BaseProcessNode.HEALTH_TIMEOUT`/
+`HEALTH_CHECK_INTERVAL` when omitted; when set they must be `> 0`, validated with the
+rest of the config the same way `error_policy` is.
+
 ### Worker replicas & autoscale
 
 Any node may run as several independent instances instead of one, e.g. to spread a

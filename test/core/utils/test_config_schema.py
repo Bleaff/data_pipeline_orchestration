@@ -114,6 +114,8 @@ def test_audio_reader_to_vad_node_payload_compat_passes() -> None:
     }
     parsed = validate_pipeline_config(cfg)
     assert [n.id for n in parsed.nodes] == ["mic", "vad"]
+
+
 def test_default_replicas_is_one_and_behaves_as_before() -> None:
     """Regression: a config that doesn't mention `replicas` parses exactly as before."""
     cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
@@ -264,4 +266,43 @@ def test_real_incompatible_nodes_are_rejected_without_monkeypatch() -> None:
         ],
     }
     with pytest.raises(ConfigError, match=r"Node 'reader' emits .* but 'normalize' only accepts"):
+        validate_pipeline_config(cfg)
+
+
+def test_default_health_config_is_none_and_behaves_as_before() -> None:
+    """Regression: a config that doesn't mention health keys parses exactly as before (#39)."""
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].health_timeout is None
+    assert parsed.nodes[0].health_check_interval is None
+
+
+def test_valid_health_config_passes() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "health_timeout": 30,
+                "health_check_interval": 5,
+            },
+        ],
+    }
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].health_timeout == 30
+    assert parsed.nodes[0].health_check_interval == 5
+
+
+def test_zero_health_timeout_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "health_timeout": 0}]}
+    with pytest.raises(ConfigError, match="Node 'detector': 'health_timeout' must be > 0, got 0"):
+        validate_pipeline_config(cfg)
+
+
+def test_negative_health_check_interval_is_rejected() -> None:
+    cfg = {
+        "nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "health_check_interval": -1}],
+    }
+    with pytest.raises(ConfigError, match="Node 'detector': 'health_check_interval' must be > 0, got -1"):
         validate_pipeline_config(cfg)

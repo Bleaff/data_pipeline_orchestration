@@ -178,3 +178,33 @@ def test_factory_gives_an_unconfigured_node_the_historical_behaviour(tmp_path) -
 
     assert node.error_policy.config.on_error is ErrorAction.SKIP
     assert node.error_policy.config.max_retries == 0
+
+
+def test_factory_wires_health_overrides_onto_the_node(tmp_path) -> None:
+    # Same pop-then-wire pattern as error_policy (#39): the keys must not leak into
+    # from_config's kwargs and must land on the constructed instance.
+    node = NodeFactory.create(
+        {
+            "id": "reader",
+            "type": "FolderImageNode",
+            "folder_path": str(tmp_path),
+            "outputs": [],
+            "health_timeout": 30,
+            "health_check_interval": 2,
+        },
+        mailbox=ZMQMailbox(),
+    )
+
+    assert node.health_timeout == 30
+    assert node.health_check_interval == 2
+
+
+def test_factory_leaves_health_defaults_when_unconfigured(tmp_path) -> None:
+    node = NodeFactory.create(
+        {"id": "reader", "type": "FolderImageNode", "folder_path": str(tmp_path), "outputs": []},
+        mailbox=ZMQMailbox(),
+    )
+
+    # BaseThreadedNode has no health_timeout attribute at all -- the factory must not
+    # invent one when the config doesn't mention it.
+    assert not hasattr(node, "health_timeout")
