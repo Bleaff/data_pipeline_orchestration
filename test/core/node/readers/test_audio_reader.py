@@ -64,7 +64,7 @@ def test_reader_emits_correctly_shaped_audio_chunks_paced_by_the_device() -> Non
     chunk_duration = 0.05  # 50 ms chunks keep the test fast
     receiver = ZMQMailbox()
     sender_mailbox = ZMQMailbox()
-    sender_mailbox.add_publisher(receiver.consume_port)
+    sender_mailbox.add_publisher("receiver", receiver.consume_port)
     device = FakeAudioDevice(sample_rate=sample_rate)
     reader = AudioReaderNode(
         device=device,
