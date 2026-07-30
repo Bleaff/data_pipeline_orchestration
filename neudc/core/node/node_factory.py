@@ -34,6 +34,7 @@ class NodeFactory:
         "ProcessDetBatchInference": ("neudc.core.node.model.proc_det_batch_inference", "ProcessDetBatchInference"),
         "ActiveLearning": ("neudc.core.node.model.active_learning_node", "ActiveLearning"),
         "CreateDataset": ("neudc.core.node.processors.create_dataset_node", "CreateDataset"),
+        "TextNormalizeNode": ("neudc.core.node.processors.text_normalize_node", "TextNormalizeNode"),
     }
 
     @staticmethod
