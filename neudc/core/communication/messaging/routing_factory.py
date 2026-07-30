@@ -52,15 +52,30 @@ class RoutingFactory:
         return mailboxes
 
     def _create_replica_mailboxes(self) -> dict[str, list[ZMQMailbox]]:
-        """Create one or more mailboxes per node, depending on `replicas` (#15)."""
+        """Create one or more mailboxes per node, depending on `replicas` (#15).
+
+        `message_queue_size`/`queue_policy` (#38) are per-node config, defaulting to
+        the historical `20`/`"block"` so an untouched config behaves exactly as before.
+        """
         mailboxes: dict[str, list[ZMQMailbox]] = {}
         for node_cfg in self.config["nodes"]:
             node_id = node_cfg["id"]
             replicas = node_cfg.get("replicas", 1)
+            message_queue_size = node_cfg.get("message_queue_size", 20)
+            queue_policy = node_cfg.get("queue_policy", "block")
             if replicas <= 1:
-                mailboxes[node_id] = [ZMQMailbox(name=node_id)]
+                mailboxes[node_id] = [
+                    ZMQMailbox(name=node_id, message_queue_size=message_queue_size, queue_policy=queue_policy)
+                ]
             else:
-                mailboxes[node_id] = [ZMQMailbox(name=f"{node_id}#{i}") for i in range(replicas)]
+                mailboxes[node_id] = [
+                    ZMQMailbox(
+                        name=f"{node_id}#{i}",
+                        message_queue_size=message_queue_size,
+                        queue_policy=queue_policy,
+                    )
+                    for i in range(replicas)
+                ]
         return mailboxes
 
     def _wire_data_outputs(self, mailboxes: dict[str, list[ZMQMailbox]]) -> None:

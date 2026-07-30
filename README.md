@@ -174,6 +174,7 @@ Every node exposes a common set of Prometheus metrics, all labeled by `node`:
 |---|---|---|
 | `neudc_node_queue_depth` | Gauge | Current depth of the node's internal message queue |
 | `neudc_node_queue_hwm` | Gauge | Configured ZMQ high-water mark for the node's mailbox |
+| `neudc_node_queue_drops_total` | Counter | Messages dropped from the node's inbound queue under `queue_policy: drop_oldest`/`conflate`, labeled by `reason` |
 | `neudc_node_messages_processed_total` | Counter | Messages `process()` completed successfully |
 | `neudc_node_process_latency_seconds` | Histogram | `process()` wall-clock latency per attempt |
 | `neudc_node_errors_total` | Counter | `process()` exceptions raised (including retried attempts) |
@@ -292,6 +293,42 @@ same way `error_policy` is.
 > replica pool. It is not yet wired into `main.py`/`BasePipeline`'s live run loop —
 > today, configuring `autoscale` validates but does not yet start a background
 > autoscaler thread. `replicas: N` (the static count) is fully wired end-to-end.
+
+### Inbound queue policy
+
+Every node's mailbox has an internal inbound queue between the receiver thread and
+`process()`. By default it is **lossless**: a full queue blocks the receiver (with
+periodic wake-ups) so a slow consumer applies backpressure to its producer instead of
+silently dropping data — correct for batch/offline labelling, where a lost frame is a
+hole in the dataset.
+
+For realtime pipelines (e.g. live audio), a consumer that falls behind should instead
+discard stale data and keep working with the freshest — otherwise lag only compounds.
+Any node may opt into that per-edge:
+
+```yaml
+  - id: mic
+    type: AudioReaderNode
+    message_queue_size: 20    # capacity of the inbound queue, default 20
+    queue_policy: conflate    # block (default) | drop_oldest | conflate
+    outputs: [vad]
+```
+
+| `queue_policy` | Behaviour when the queue is full |
+|---|---|
+| `block` | Backpressure the producer until space frees up. Lossless. The default. |
+| `drop_oldest` | Discard the single oldest queued message to make room for the new one. |
+| `conflate` | Discard every currently-queued message, keeping only the newest. At most one message is ever queued. |
+
+Dropped messages are counted in `neudc_node_queue_drops_total{node, reason}` (`reason`
+is `drop_oldest` or `conflate`). Dropping only ever happens to an already-deserialized
+message sitting in the queue — never at the ZMQ socket level — so it is safe even with
+the shared-memory buffer transport (`NEUDC_SHM_IMAGES`): by the time a message is
+queued, any shared-memory segment backing it has already been copied out and unlinked.
+
+`message_queue_size`/`queue_policy` are validated with the rest of the config: an
+unknown `queue_policy` string or a non-positive `message_queue_size` is rejected at
+startup, naming the node.
 
 ### Environment variables
 

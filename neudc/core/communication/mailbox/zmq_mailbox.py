@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from enum import StrEnum
 from queue import Empty, Full, Queue
 from typing import Any
 
@@ -30,8 +31,32 @@ from neudc.core.communication.messaging import codec
 from neudc.core.communication.messaging.types import BaseMessage, Batch, ControlAction, ControlMessage
 from neudc.core.communication.zero_queue import ZeroQueuePub, ZeroQueueSub
 from neudc.core.communication.zero_queue.zmq_state import ZeroQueueConnectionType
-from neudc.core.observability.metrics import QUEUE_DEPTH, QUEUE_HWM
+from neudc.core.observability.metrics import QUEUE_DEPTH, QUEUE_DROPS, QUEUE_HWM
 from neudc.utils import LOGGER
+
+
+class QueuePolicy(StrEnum):
+    """Behaviour of a mailbox's inbound queue when it is full (#38).
+
+    Applied strictly in Python-land, on already-deserialized messages sitting in
+    ``_message_queue`` — never at the ZMQ socket level. By the time a message reaches
+    ``_message_queue`` any shared-memory segment backing it has already been copied out
+    and unlinked by :func:`codec.loads` (see that module's "Ownership contract"), so
+    dropping a queued message here is always safe and leaks no resources.
+    """
+
+    BLOCK = "block"
+    """Block the receiver thread (with periodic wake-ups) until space frees up.
+
+    Historical, lossless behaviour: applies backpressure to the producer instead of
+    dropping data. Correct for batch/offline pipelines where every message matters.
+    """
+
+    DROP_OLDEST = "drop_oldest"
+    """When full, discard the single oldest queued message to make room for the new one."""
+
+    CONFLATE = "conflate"
+    """When full, discard every currently-queued message, keeping only the newest."""
 
 
 class ZMQMailbox(BaseMailbox[BaseMessage]):
@@ -45,6 +70,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self,
         *,
         message_queue_size: int = 20,
+        queue_policy: QueuePolicy | str = QueuePolicy.BLOCK,
         name: str = "ZMQMailbox",
         _join_timeout: float = 0.1,
     ) -> None:
@@ -57,6 +83,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self.sub_queue: ZeroQueueSub = ZeroQueueSub()
         self.consume_port: int = self.sub_queue.port
         self._message_queue: Queue = Queue(maxsize=message_queue_size)
+        self.queue_policy = QueuePolicy(queue_policy)
         self._running = False
         self._thread: threading.Thread | None = None
         self._join_timeout = _join_timeout
@@ -90,19 +117,77 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
             if message is None:
                 continue
             try:
-                # Block with periodic wake-ups so a full queue applies backpressure
-                # instead of silently dropping the message (or injecting a bogus one).
-                while self._running:
-                    try:
-                        self._message_queue.put(message, timeout=self._join_timeout)
-                        break
-                    except Full:
-                        continue
+                self._enqueue(message)
                 QUEUE_DEPTH.labels(node=self.name).set(self._message_queue.qsize())
                 if LOGGER.isEnabledFor(logging.DEBUG):
                     LOGGER.debug(f"[RECV] ← message of type {type(message)}")
             except Exception as e:  # noqa: BLE001 -- top-level receiver thread loop must never crash.
                 LOGGER.exception("Error in receiver loop", exc_info=e)
+
+    def _enqueue(self, message: BaseMessage) -> None:
+        """Put ``message`` on ``_message_queue`` according to ``self.queue_policy``.
+
+        Operates only on already-deserialized Python objects sitting on this side of
+        ``codec.loads`` — see :class:`QueuePolicy` and the codec's "Ownership contract"
+        for why dropping a message here never leaks a shared-memory segment.
+        """
+        if self.queue_policy is QueuePolicy.BLOCK:
+            self._enqueue_block(message)
+        elif self.queue_policy is QueuePolicy.DROP_OLDEST:
+            self._enqueue_drop_oldest(message)
+        elif self.queue_policy is QueuePolicy.CONFLATE:
+            self._enqueue_conflate(message)
+        else:
+            msg = f"Unhandled queue policy: {self.queue_policy}"  # pragma: no cover -- exhaustive enum
+            raise AssertionError(msg)
+
+    def _enqueue_block(self, message: BaseMessage) -> None:
+        """Block with periodic wake-ups so a full queue applies backpressure instead of
+        silently dropping the message (or injecting a bogus one). Byte-for-byte the
+        historical behaviour.
+        """  # noqa: D205
+        while self._running:
+            try:
+                self._message_queue.put(message, timeout=self._join_timeout)
+            except Full:
+                continue
+            else:
+                return
+
+    def _enqueue_drop_oldest(self, message: BaseMessage) -> None:
+        """Make room for ``message`` by evicting the single oldest queued item."""
+        try:
+            self._message_queue.put_nowait(message)
+        except Full:
+            pass
+        else:
+            return
+
+        try:
+            self._message_queue.get_nowait()
+            QUEUE_DROPS.labels(node=self.name, reason="drop_oldest").inc()
+        except Empty:
+            # A concurrent receive() already drained the "oldest" item between our
+            # Full and this get_nowait(); retry the put once more before giving up.
+            pass
+
+        try:
+            self._message_queue.put_nowait(message)
+        except Full:
+            # Still full (e.g. another producer refilled it in the meantime): drop
+            # the new incoming message instead of blocking.
+            QUEUE_DROPS.labels(node=self.name, reason="drop_oldest").inc()
+            LOGGER.debug(f"[{self.name}] drop_oldest: dropped incoming message, queue still full")
+
+    def _enqueue_conflate(self, message: BaseMessage) -> None:
+        """Discard every currently-queued message, keeping only ``message``."""
+        while True:
+            try:
+                self._message_queue.get_nowait()
+                QUEUE_DROPS.labels(node=self.name, reason="conflate").inc()
+            except Empty:
+                break
+        self._message_queue.put_nowait(message)
 
     def _control_receiver_loop(self) -> None:
         """Thread loop draining the control PULL socket, independent of the data path.
@@ -312,6 +397,7 @@ class ZMQMailbox(BaseMailbox[BaseMessage]):
         self.name = f'PICKLED|{state.get("name", "ZMQMailbox")}'
         LOGGER.debug(f"[{self.name}][SET STATE] → {self.name}")
         self._message_queue = Queue(state["message_queue_size"])
+        self.queue_policy = QueuePolicy(state.get("queue_policy", QueuePolicy.BLOCK))
 
         self.pub_sockets = {target_id: ZeroQueuePub(ports=ports) for target_id, ports in state["pub_sockets"].items()}
         self.sub_queue = ZeroQueueSub(port=state["consume_port"], contype=ZeroQueueConnectionType.BIND)

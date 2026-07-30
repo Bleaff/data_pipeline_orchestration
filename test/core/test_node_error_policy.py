@@ -178,3 +178,34 @@ def test_factory_gives_an_unconfigured_node_the_historical_behaviour(tmp_path) -
 
     assert node.error_policy.config.on_error is ErrorAction.SKIP
     assert node.error_policy.config.max_retries == 0
+
+
+def test_factory_pops_queue_policy_keys_before_from_config(tmp_path, monkeypatch) -> None:
+    # `message_queue_size`/`queue_policy` (#38) are routing-only config, consumed by
+    # RoutingFactory when building the node's mailbox -- they must not leak into the
+    # node class's own `from_config`, same treatment as `replicas`/`autoscale`.
+    from neudc.core.node.readers.image_reader import FolderImageNode
+
+    captured: dict = {}
+    real_from_config = FolderImageNode.from_config
+
+    def spy(config):
+        captured.update(config)
+        return real_from_config(config)
+
+    monkeypatch.setattr(FolderImageNode, "from_config", staticmethod(spy))
+
+    NodeFactory.create(
+        {
+            "id": "reader",
+            "type": "FolderImageNode",
+            "folder_path": str(tmp_path),
+            "outputs": [],
+            "message_queue_size": 5,
+            "queue_policy": "conflate",
+        },
+        mailbox=ZMQMailbox(),
+    )
+
+    assert "message_queue_size" not in captured
+    assert "queue_policy" not in captured

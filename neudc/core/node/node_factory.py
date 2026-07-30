@@ -83,6 +83,8 @@ class NodeFactory:
         config.pop("outputs", None)  # routing-only key, not a node argument
         config.pop("replicas", None)  # routing-only key (#15), consumed by RoutingFactory
         config.pop("autoscale", None)  # routing-only key (#15), consumed by ReplicaAutoscaler
+        config.pop("message_queue_size", None)  # routing-only key (#38), consumed by RoutingFactory
+        config.pop("queue_policy", None)  # routing-only key (#38), consumed by RoutingFactory
         # Error handling is uniform across node types, so it is wired here instead of
         # in every from_config (see neudc.core.policy).
         error_policy = config.pop("error_policy", None)
