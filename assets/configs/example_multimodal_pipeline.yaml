@@ -1,0 +1,17 @@
+# Minimal non-CV pipeline: two TextNormalizeNode stages chained on TextChunk payloads.
+#
+# Demonstrates a genuinely valid non-Frame edge for the payload-compat check (#35/#36):
+# both nodes declare accepts=emits=(TextChunk,), so the edge between them type-checks
+# without any monkeypatching. Needs no folders or model weights, so it doubles as a
+# config-validation smoke test (see test/core/utils/test_config_schema.py).
+#
+# This config is not meant to be run standalone (nothing feeds TextChunk messages into
+# `normalize`); it exists to validate and to document a real non-CV node pair.
+nodes:
+  - id: normalize
+    type: TextNormalizeNode
+    outputs: [normalize_again]
+
+  - id: normalize_again
+    type: TextNormalizeNode
+    outputs: []

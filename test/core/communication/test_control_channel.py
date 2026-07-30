@@ -121,7 +121,7 @@ def test_control_signal_reaches_target_before_backlogged_data_queue_drains() -> 
     sender = ZMQMailbox()
     receiver = ZMQMailbox(message_queue_size=5)
     try:
-        sender.add_publisher(receiver.consume_port)
+        sender.add_publisher("receiver", receiver.consume_port)
         sender.add_control_publisher("receiver", receiver.control_consume_port)
 
         # Flood the data path; the receiver never calls receive(), so this backs up

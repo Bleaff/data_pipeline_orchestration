@@ -36,6 +36,7 @@ class NodeFactory:
         "ProcessDetBatchInference": ("neudc.core.node.model.proc_det_batch_inference", "ProcessDetBatchInference"),
         "ActiveLearning": ("neudc.core.node.model.active_learning_node", "ActiveLearning"),
         "CreateDataset": ("neudc.core.node.processors.create_dataset_node", "CreateDataset"),
+        "TextNormalizeNode": ("neudc.core.node.processors.text_normalize_node", "TextNormalizeNode"),
     }
 
     @staticmethod
@@ -80,6 +81,8 @@ class NodeFactory:
         config["mailbox"] = mailbox
         config.pop("type", None)
         config.pop("outputs", None)  # routing-only key, not a node argument
+        config.pop("replicas", None)  # routing-only key (#15), consumed by RoutingFactory
+        config.pop("autoscale", None)  # routing-only key (#15), consumed by ReplicaAutoscaler
         # Error handling is uniform across node types, so it is wired here instead of
         # in every from_config (see neudc.core.policy).
         error_policy = config.pop("error_policy", None)

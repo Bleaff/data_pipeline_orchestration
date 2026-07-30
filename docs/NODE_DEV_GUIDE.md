@@ -202,6 +202,13 @@ class MyAsrNode(BaseThreadedNode):
 валидации конфига (до старта пайплайна, не в рантайме): смотри
 `neudc/core/utils/config_schema.py`.
 
+Реальный (не мок) пример такой ноды — `TextNormalizeNode`
+(`neudc/core/node/processors/text_normalize_node.py` + mixin
+`neudc/core/node/processors/mixins/text_normalize_mixin.py`): `TextChunk -> TextChunk`,
+`accepts = emits = (TextChunk,)`. Пример валидного графа из двух таких нод —
+`assets/configs/example_multimodal_pipeline.yaml`; проверка несовместимой пары на
+реальных классах (без monkeypatch) — в `test/core/utils/test_config_schema.py`.
+
 ---
 
 ## 🌊 Потоковые ноды: `process()` как генератор

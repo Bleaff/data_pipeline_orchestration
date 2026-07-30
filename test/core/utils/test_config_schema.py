@@ -114,6 +114,92 @@ def test_audio_reader_to_vad_node_payload_compat_passes() -> None:
     }
     parsed = validate_pipeline_config(cfg)
     assert [n.id for n in parsed.nodes] == ["mic", "vad"]
+def test_default_replicas_is_one_and_behaves_as_before() -> None:
+    """Regression: a config that doesn't mention `replicas` parses exactly as before."""
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].replicas == 1
+
+
+def test_explicit_replicas_one_is_accepted() -> None:
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "replicas": 1}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].replicas == 1
+
+
+def test_replicas_zero_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": 0}]}
+    with pytest.raises(ConfigError, match="Node 'detector': 'replicas' must be >= 1, got 0"):
+        validate_pipeline_config(cfg)
+
+
+def test_negative_replicas_is_rejected() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": -2}]}
+    with pytest.raises(ConfigError, match="'replicas' must be >= 1, got -2"):
+        validate_pipeline_config(cfg)
+
+
+def test_positive_replicas_is_accepted() -> None:
+    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": 4}]}
+    parsed = validate_pipeline_config(cfg)
+    assert parsed.nodes[0].replicas == 4
+
+
+def test_valid_autoscale_block_passes() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "replicas": 2,
+                "autoscale": {
+                    "min_replicas": 1,
+                    "max_replicas": 4,
+                    "queue_depth_high": 15,
+                    "queue_depth_low": 2,
+                    "check_interval_s": 5.0,
+                },
+            },
+        ],
+    }
+    assert validate_pipeline_config(cfg).nodes[0].id == "detector"
+
+
+def test_autoscale_min_greater_than_max_is_rejected() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "autoscale": {"min_replicas": 5, "max_replicas": 2},
+            },
+        ],
+    }
+    with pytest.raises(ConfigError, match="Node 'detector': invalid 'autoscale'"):
+        validate_pipeline_config(cfg)
+
+
+def test_autoscale_queue_depth_low_must_be_below_high() -> None:
+    cfg = {
+        "nodes": [
+            {
+                "id": "detector",
+                "type": "ProcessDetInference",
+                "outputs": [],
+                "autoscale": {"queue_depth_low": 10, "queue_depth_high": 5},
+            },
+        ],
+    }
+    with pytest.raises(ConfigError, match="Node 'detector': invalid 'autoscale'"):
+        validate_pipeline_config(cfg)
+
+
+def test_autoscale_must_be_a_mapping() -> None:
+    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "autoscale": "yes please"}]}
+    with pytest.raises(ConfigError, match="'autoscale' must be a mapping"):
+        validate_pipeline_config(cfg)
 
 
 def test_control_outputs_defaults_to_empty() -> None:
@@ -155,4 +241,27 @@ def test_incompatible_payload_types_are_rejected(monkeypatch) -> None:
         ],
     }
     with pytest.raises(ConfigError, match=r"Node 'reader' emits .* but 'saver' only accepts"):
+        validate_pipeline_config(cfg)
+
+
+def test_example_multimodal_pipeline_config_is_valid() -> None:
+    # Two real TextNormalizeNode instances (TextChunk -> TextChunk), no monkeypatch:
+    # closes the #36 gap where the only passing non-Frame edge was mocked in tests.
+    config_path = Path("assets/configs/example_multimodal_pipeline.yaml")
+    parsed = validate_pipeline_config(load_config(config_path))
+    assert {n.id for n in parsed.nodes} == {"normalize", "normalize_again"}
+
+
+def test_real_incompatible_nodes_are_rejected_without_monkeypatch() -> None:
+    # FolderImageNode emits (Frame,) and TextNormalizeNode only accepts (TextChunk,):
+    # a genuinely incompatible pair using already-registered node classes, unlike
+    # test_incompatible_payload_types_are_rejected above which forces the mismatch
+    # via monkeypatch.
+    cfg = {
+        "nodes": [
+            {"id": "reader", "type": "FolderImageNode", "folder_path": "x", "outputs": ["normalize"]},
+            {"id": "normalize", "type": "TextNormalizeNode", "outputs": []},
+        ],
+    }
+    with pytest.raises(ConfigError, match=r"Node 'reader' emits .* but 'normalize' only accepts"):
         validate_pipeline_config(cfg)

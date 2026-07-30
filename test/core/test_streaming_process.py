@@ -81,7 +81,7 @@ def _drain_all(mailbox: ZMQMailbox, timeout: float) -> list[Any]:
 def test_threaded_node_streams_generator_output_incrementally() -> None:
     receiver = ZMQMailbox()
     sender_mailbox = ZMQMailbox()
-    sender_mailbox.add_publisher(receiver.consume_port)
+    sender_mailbox.add_publisher("receiver", receiver.consume_port)
     node = _StreamThreadedNode(sender_mailbox, n=3, delay=0.05)
     try:
         node.start()
@@ -157,7 +157,7 @@ def test_cancellation_interrupts_the_generator_mid_stream_and_drops_the_tail() -
     """
     receiver = ZMQMailbox()
     node_mailbox = ZMQMailbox()
-    node_mailbox.add_publisher(receiver.consume_port)
+    node_mailbox.add_publisher("receiver", receiver.consume_port)
 
     controller = ZMQMailbox()
     controller.add_control_publisher("node", node_mailbox.control_consume_port)
@@ -193,7 +193,7 @@ def test_uncancelled_turn_streams_in_full_unaffected() -> None:
     # like the plain streaming case in test_threaded_node_streams_generator_output_incrementally.
     receiver = ZMQMailbox()
     node_mailbox = ZMQMailbox()
-    node_mailbox.add_publisher(receiver.consume_port)
+    node_mailbox.add_publisher("receiver", receiver.consume_port)
     node = _CancellableStreamNode(node_mailbox, session_id="s-2", turn_id=2, n=4, delay=0.02)
     try:
         node.start()

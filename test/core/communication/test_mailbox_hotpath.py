@@ -28,7 +28,7 @@ def test_receive_dict_payload_does_not_crash() -> None:
     """A plain dict must round-trip without touching Frame-only attributes."""
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
 
     sender.send({"msg": "hello"})
     got = _drain(receiver, expected=1)
@@ -42,7 +42,7 @@ def test_full_internal_queue_applies_backpressure_without_none() -> None:
     """With a tiny internal queue, no message is lost and no None is injected."""
     sender = ZMQMailbox()
     receiver = ZMQMailbox(message_queue_size=1)
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
 
     n = 5
     for i in range(n):
@@ -60,7 +60,7 @@ def test_send_has_no_per_message_sleep() -> None:
     """Sending N messages must be far faster than the old 1ms-per-message floor."""
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
 
     n = 300
     start = time.time()

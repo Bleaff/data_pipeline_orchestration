@@ -156,7 +156,7 @@ def test_mailbox_single_consumer_uses_shm_and_delivers(monkeypatch) -> None:
 
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
     try:
         img = _big_image()
         sender.send(_make_frame(img))
@@ -178,8 +178,8 @@ def test_mailbox_fanout_falls_back_to_inline(monkeypatch) -> None:
     sender = ZMQMailbox()
     receiver_a = ZMQMailbox()
     receiver_b = ZMQMailbox()
-    sender.add_publisher(receiver_a.consume_port)
-    sender.add_publisher(receiver_b.consume_port)
+    sender.add_publisher("receiver_a", receiver_a.consume_port)
+    sender.add_publisher("receiver_b", receiver_b.consume_port)
     try:
         img = _big_image()
         sender.send(_make_frame(img))

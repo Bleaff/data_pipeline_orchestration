@@ -67,12 +67,18 @@ class BasePipeline(Process):
         router = RoutingFactory({"nodes": self.nodes_config})
         mailbox_map = router.create_mailboxes()
 
-        # 2. Node init
+        # 2. Node init. Each node id maps to a list of mailboxes: length 1 unless the
+        # node config sets `replicas > 1` (#15), in which case one node instance is
+        # built per replica mailbox and given a distinct, suffixed id so per-node
+        # metrics/health/dead-letter files do not collide across replicas.
         for node_config in self.nodes_config:
             node_id = node_config["id"]
-            mailbox = mailbox_map[node_id]
-            node = NodeFactory.create(node_config, mailbox=mailbox)
-            self.nodes.append(node)
+            replica_mailboxes = mailbox_map[node_id]
+            for i, mailbox in enumerate(replica_mailboxes):
+                node = NodeFactory.create(node_config, mailbox=mailbox)
+                if len(replica_mailboxes) > 1:
+                    node.id = f"{node_id}#{i}"
+                self.nodes.append(node)
 
         # Start all nodes
         logger.info(f"Starting pipeline '{self.name}' with {len(self.nodes)} nodes.")

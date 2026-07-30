@@ -164,7 +164,7 @@ def test_batch_of_non_frame_messages() -> None:
 def test_mailbox_delivers_a_non_frame_message() -> None:
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
     try:
         samples = np.arange(64, dtype=np.int16)
         sender.send(SamplesMessage(timestamp=1.0, source="mic", samples=samples))
@@ -182,7 +182,7 @@ def test_mailbox_delivers_a_non_frame_message() -> None:
 def test_mailbox_unrolls_a_batch_of_non_frame_messages() -> None:
     sender = ZMQMailbox()
     receiver = ZMQMailbox()
-    sender.add_publisher(receiver.consume_port)
+    sender.add_publisher("receiver", receiver.consume_port)
     try:
         sender.send(Batch(frames=[SamplesMessage(timestamp=float(i), samples=np.full(4, i)) for i in range(3)]))
 
