@@ -9,7 +9,7 @@ from neudc.nn.backends.llm.openai_compatible import OpenAICompatibleBackend
 __all__ = ("OpenRouterBackend",)
 
 _DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-_API_KEY_ENV_VAR = "OPENROUTER_API_KEY"
+_API_KEY_ENV_VAR = "OPENROUTER_API_KEY"  # pragma: allowlist secret
 
 
 class OpenRouterBackend(OpenAICompatibleBackend):

@@ -20,6 +20,7 @@ def test_accepts_base_url_without_api_key():
 
 
 def test_optional_api_key_is_kept_when_given():
-    backend = LocalLLMBackend("llama3.1", base_url="http://localhost:8000/v1", api_key="local-secret")
+    fake_api_key = "local-secret"  # pragma: allowlist secret
+    backend = LocalLLMBackend("llama3.1", base_url="http://localhost:8000/v1", api_key=fake_api_key)
 
-    assert backend.api_key == "local-secret"
+    assert backend.api_key == fake_api_key

@@ -13,15 +13,15 @@ def test_defaults_to_public_base_url_and_env_api_key(monkeypatch):
     backend = OpenRouterBackend("openai/gpt-4o")
 
     assert backend.base_url == "https://openrouter.ai/api/v1"
-    assert backend.api_key == "env-key"
+    assert backend.api_key == "env-key"  # pragma: allowlist secret
 
 
 def test_explicit_api_key_overrides_env(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "env-key")
 
-    backend = OpenRouterBackend("openai/gpt-4o", api_key="explicit-key")
+    backend = OpenRouterBackend("openai/gpt-4o", api_key="explicit-key")  # pragma: allowlist secret
 
-    assert backend.api_key == "explicit-key"
+    assert backend.api_key == "explicit-key"  # pragma: allowlist secret
 
 
 def test_missing_api_key_raises(monkeypatch):
