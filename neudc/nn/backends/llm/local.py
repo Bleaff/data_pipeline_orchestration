@@ -34,6 +34,8 @@ class LocalLLMBackend(OpenAICompatibleBackend):
 
         """
         if not base_url:
-            msg = "LocalLLMBackend requires a base_url pointing at your Ollama/vLLM/llama.cpp OpenAI-compatible endpoint"
+            msg = (
+                "LocalLLMBackend requires a base_url pointing at your Ollama/vLLM/llama.cpp OpenAI-compatible endpoint"
+            )
             raise ValueError(msg)
         super().__init__(model_id, base_url=base_url, api_key=api_key, timeout=timeout)

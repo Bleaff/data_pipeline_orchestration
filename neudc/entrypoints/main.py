@@ -80,9 +80,7 @@ def _maybe_start_prometheus(config: dict) -> None:
     registry = build_metrics_registry()
     if registry is not None:
         start_http_server(prometheus_config["port"], registry=registry)
-        LOGGER.info(
-            f"Prometheus metrics server started on port {prometheus_config['port']} (multiprocess mode)"
-        )
+        LOGGER.info(f"Prometheus metrics server started on port {prometheus_config['port']} (multiprocess mode)")
     else:
         start_http_server(prometheus_config["port"])
         LOGGER.info(f"Prometheus metrics server started on port {prometheus_config['port']}")

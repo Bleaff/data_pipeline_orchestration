@@ -78,8 +78,8 @@ def test_stream_yields_content_deltas_and_stops_at_done():
     backend = OpenAICompatibleBackend("test-model", base_url="http://fake.test/v1")
     lines = [
         "",  # keep-alive blank lines must be skipped
-        'data: {"choices": [{"delta": {"content": "Hel"}}]}',
-        'data: {"choices": [{"delta": {"content": "lo"}}]}',
+        'data: {"choices": [{"delta": {"content": "ab"}}]}',
+        'data: {"choices": [{"delta": {"content": "cd"}}]}',
         "data: [DONE]",
         'data: {"choices": [{"delta": {"content": "should not appear"}}]}',
     ]
@@ -87,7 +87,7 @@ def test_stream_yields_content_deltas_and_stops_at_done():
 
     out = list(backend.stream([ChatMessage(role="user", content="hi")]))
 
-    assert out == ["Hel", "lo"]
+    assert out == ["ab", "cd"]
     assert backend._session.last_call["json"]["stream"] is True
 
 

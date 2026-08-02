@@ -13,7 +13,7 @@ export default function DashboardPage() {
       <h1>neudc control plane</h1>
       <p className={styles.subtitle}>Read-only dashboard over the pipeline API.</p>
 
-      {error && <p className={styles.error}>Couldn&apos;t reach the control-plane API: {error}</p>}
+      {error && <p className={styles.error}>Could not reach the control-plane API: {error}</p>}
       {!error && loading && <p>Loading pipelines…</p>}
       {!error && !loading && pipelines.length === 0 && <p>No pipelines are currently managed.</p>}
 
