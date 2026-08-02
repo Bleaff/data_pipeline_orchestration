@@ -1,0 +1,38 @@
+# Audio pipeline: capture from the microphone and run it through energy-based VAD.
+#
+# Chain: reader (AudioReaderNode) -> vad (VadNode).
+# `vad` has no `outputs`, so this config only marks silent AudioChunks as droppable
+# (`chunk.drop = True`); it does not yet forward the surviving speech anywhere. Wire
+# a consumer's `id` into `vad.outputs` once you add one (e.g. an ASR node).
+#
+# IMPORTANT - AudioReaderNode needs a live `device` object (an AudioDevice), which
+# plain YAML cannot express (same reason `model_config.path` points at a file instead
+# of a loaded model). This config documents the node's parameters but is not meant to
+# be run via `python3 -m neudc.entrypoints.main` as-is: whatever builds the pipeline
+# must construct a real device and inject it into the `reader` node's config dict
+# before calling NodeFactory.create, e.g.:
+#
+#   from neudc.core.node.readers.audio_reader import SoundDeviceAudioDevice
+#   node_config["device"] = SoundDeviceAudioDevice(sample_rate=16000, channels=1)
+#
+# Requires the optional `audio` extra for real hardware: pip install -e ".[audio]"
+#
+# NOTE - no LLM node exists in the codebase yet. `LLMBackend` (roadmap #25) and the
+# ASR node needed to bridge AudioChunk -> TextChunk for it are both still open work;
+# see docs/ROADMAP.md ("Трек «LLM»" and the mic -> VAD -> ASR -> LLM -> TTS scenario).
+# Once an ASR node exists, chain it after `vad` and feed its TextChunk output into
+# the future LLM node.
+
+nodes:
+  - id: reader
+    type: AudioReaderNode
+    sample_rate: 16000
+    channels: 1
+    chunk_duration: 0.5
+    source: mic
+    outputs: [vad]
+
+  - id: vad
+    type: VadNode
+    energy_threshold: 0.01
+    outputs: []
