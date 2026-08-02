@@ -43,16 +43,16 @@ blocks until a shutdown signal arrives.
 
 from __future__ import annotations
 
-import os
 import signal
 import threading
 from typing import TYPE_CHECKING, Any
 
-from prometheus_client import CollectorRegistry, start_http_server
+from prometheus_client import start_http_server
 
 from neudc.core.base import BaseProcessNode
 from neudc.core.communication.messaging.routing_factory import RoutingFactory
 from neudc.core.node.node_factory import NodeFactory
+from neudc.core.observability.metrics import build_metrics_registry
 from neudc.core.utils.config_loader import load_config
 from neudc.core.utils.config_schema import validate_pipeline_config
 from neudc.utils.logger import LOGGER
@@ -70,29 +70,18 @@ FAILURE_POLL_INTERVAL_SEC = 0.5
 def _maybe_start_prometheus(config: dict) -> None:
     """Start the Prometheus HTTP server if enabled in the config.
 
-    Process nodes (``BaseProcessNode``) run in a separate OS process, so metrics they
-    record live in that process's own private `prometheus_client` registry by default —
-    invisible to this one. If the deployer set ``PROMETHEUS_MULTIPROC_DIR`` (per
-    `prometheus_client`'s own multiprocess-mode contract: a writable, empty directory,
-    set *before* the pipeline starts), every node's metrics are read back from files in
-    that directory instead of this process's in-memory registry, so process-node metrics
-    show up too. Without it, only same-process (``BaseThreadedNode``) metrics are visible
-    — the historical, single-process behaviour.
+    See `build_metrics_registry` for why process-node metrics need
+    `PROMETHEUS_MULTIPROC_DIR` to be visible from this process at all.
     """
     prometheus_config = config.get("prometheus")
     if not (prometheus_config and prometheus_config.get("port") and prometheus_config.get("enable")):
         return
 
-    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
-    if multiproc_dir:
-        from prometheus_client import multiprocess
-
-        registry = CollectorRegistry()
-        multiprocess.MultiProcessCollector(registry, path=multiproc_dir)
+    registry = build_metrics_registry()
+    if registry is not None:
         start_http_server(prometheus_config["port"], registry=registry)
         LOGGER.info(
-            f"Prometheus metrics server started on port {prometheus_config['port']} "
-            f"(multiprocess mode, dir={multiproc_dir})"
+            f"Prometheus metrics server started on port {prometheus_config['port']} (multiprocess mode)"
         )
     else:
         start_http_server(prometheus_config["port"])
