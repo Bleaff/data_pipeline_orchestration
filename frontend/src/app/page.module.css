@@ -1,0 +1,38 @@
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.subtitle {
+  opacity: 0.7;
+  margin-bottom: 1.5rem;
+}
+
+.error {
+  color: #d1453b;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.row a {
+  font-weight: 600;
+}
+
+.row a:hover {
+  text-decoration: underline;
+}

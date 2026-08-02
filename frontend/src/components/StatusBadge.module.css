@@ -1,0 +1,32 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.dot {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.running,
+.healthy {
+  color: #2e9e5b;
+}
+
+.stopped,
+.unhealthy {
+  color: #d1453b;
+}
+
+.unknown {
+  color: #8a8a8a;
+}
