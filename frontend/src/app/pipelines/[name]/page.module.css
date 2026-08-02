@@ -1,0 +1,33 @@
+.main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.back {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.wsIndicator {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin-left: auto;
+}
+
+.error {
+  color: #d1453b;
+}

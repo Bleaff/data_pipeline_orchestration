@@ -352,6 +352,39 @@ queued, any shared-memory segment backing it has already been copied out and unl
 unknown `queue_policy` string or a non-positive `message_queue_size` is rejected at
 startup, naming the node.
 
+### LLM backends
+
+`neudc.nn.backends.llm` provides a provider-agnostic `BaseLLMBackend` interface for
+chat/VLM models, the foundation for the upcoming VLM node and copilot. It is not yet
+wired into a pipeline node — for now it is built directly from a `LLMBackendConfig`:
+
+```python
+from neudc.nn.backends.llm import LLMBackendConfig, LLMBackendType, build_llm_backend
+from neudc.nn.backends.llm.base import ChatMessage
+
+config = LLMBackendConfig(
+    provider=LLMBackendType.OPENROUTER,  # or LLMBackendType.LOCAL
+    model_id="openai/gpt-4o",
+    temperature=0.7,
+    stream=False,
+)
+backend = build_llm_backend(config)
+reply = backend.generate([ChatMessage(role="user", content="Describe this crop.")])
+```
+
+| `LLMBackendConfig` field | Default | Purpose |
+|---|---|---|
+| `provider` | — | `OpenRouterBackend` (hosted, HTTP) or `LocalLLMBackend` (Ollama / vLLM / llama.cpp, any OpenAI-compatible endpoint) |
+| `model_id` | — | Provider-specific model identifier |
+| `base_url` | `None` | Required for `LocalLLMBackend`; defaults to the public OpenRouter endpoint otherwise |
+| `api_key` | `None` | For OpenRouter, falls back to the `OPENROUTER_API_KEY` env var; local runtimes usually don't need one |
+| `stream` | `false` | Hint for callers to use `backend.stream(...)` instead of `backend.generate(...)` |
+| `temperature`, `max_tokens`, `timeout` | `0.7`, `None`, `60.0` | Standard chat-completion tunables |
+
+Both providers speak the same OpenAI-compatible `/chat/completions` protocol, so
+`OpenAICompatibleBackend` implements the request/response handling once; each provider
+subclass only fixes the endpoint and credential resolution.
+
 ### Environment variables
 
 | Variable | Default | Purpose |
@@ -384,6 +417,53 @@ startup, naming the node.
 Model-backed nodes take a `model_config` naming the backend (`TorchBackend`,
 `ONNXBackend`, `TRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
 
+## 🔌 Control-plane API
+
+`neudc.service.api` exposes `PipelineServiceManager` over HTTP/WS (#22) — the backend
+for the upcoming frontend dashboard (#23). Run it with:
+
+```bash
+pip install -e ".[api]"
+python3 -m neudc.entrypoints.api_server --host 127.0.0.1 --port 8000
+```
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/pipelines` | GET | List every managed pipeline and its status |
+| `/pipelines/{name}/start` | POST | Validate a `{"nodes": [...], "task": {...}}` body and start it (409 if already running, 422 on a bad config) |
+| `/pipelines/{name}/stop` | POST | Stop a running pipeline (404 if unknown) |
+| `/pipelines/{name}/status` | GET | Single pipeline's status (404 if unknown) |
+| `/pipelines/{name}/preview` | GET | Latest frame from that pipeline's `SaveImageNode`, if it has one (404 otherwise) |
+| `/config/validate` | POST | Validate a `{"nodes": [...]}` body via `config_schema` without starting anything |
+| `/config` | GET | Read+parse a YAML config file (`?path=...`) |
+| `/metrics` | GET | Prometheus exposition of the Stage 12 registry (multiprocess-aware if `PROMETHEUS_MULTIPROC_DIR` is set) |
+| `/ws/metrics` | WS | Pushes a `{metric_name: {node: value}}` JSON snapshot once per second |
+
+`/pipelines/{name}/preview` only works today if that pipeline's config includes a
+`SaveImageNode` — there is no live frame tap yet (that needs a new node type, tracked
+separately); it just serves the newest file the node has already written to its
+`save_dir`.
+
+> **Metrics gotcha:** `PipelineServiceManager`-started pipelines each run in their own
+> OS process (`BasePipeline` is a `multiprocessing.Process`), so their metrics live in
+> that child process's own private registry by default — invisible to `/metrics` and
+> `/ws/metrics`. Set `PROMETHEUS_MULTIPROC_DIR` to a writable, empty directory **before**
+> starting `api_server` (it must be set on the API process so every pipeline it spawns
+> inherits it) to see per-node health/throughput/queue-depth data at all.
+
+## 🖥 Frontend (MVP dashboard, #23)
+
+`frontend/` is a Next.js read-only dashboard over the control-plane API: pipeline list,
+a per-pipeline node graph (health/throughput/queue depth), live metrics, and a feed of
+recent frames. See [frontend/README.md](frontend/README.md) for setup.
+
+```bash
+cd frontend
+npm install
+cp .env.local.example .env.local
+npm run dev
+```
+
 ## 🛠 Development
 
 ```bash
@@ -399,7 +479,8 @@ python3 -m pytest test
 ```
 
 Optional extras: `pip install -e ".[dev]"`, `".[trt]"` (TensorRT), `".[onnx]"` (ONNX Runtime),
-`".[audio]"` (`sounddevice`, for a real-microphone `AudioReaderNode` backend).
+`".[audio]"` (`sounddevice`, for a real-microphone `AudioReaderNode` backend), `".[api]"`
+(`fastapi`/`uvicorn`, for the control-plane API).
 
 ## 🗺 Roadmap
 

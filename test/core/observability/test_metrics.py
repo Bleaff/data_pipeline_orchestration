@@ -11,11 +11,12 @@ import time
 from typing import Any
 
 import pytest
-from prometheus_client import REGISTRY
+from prometheus_client import REGISTRY, CollectorRegistry
 
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.communication.messaging.types import BaseMessage
+from neudc.core.observability.metrics import HEALTH, QUEUE_DEPTH, QUEUE_HWM, build_metrics_registry
 from neudc.core.policy import ErrorAction, ErrorPolicy, ErrorPolicyConfig
 
 _counter = itertools.count()
@@ -145,3 +146,27 @@ def test_threaded_node_health_gauge_reflects_lifecycle() -> None:
         node.stop()
 
     assert _sample("neudc_node_health", node_id) == 0
+
+
+def test_build_metrics_registry_returns_none_without_multiproc_dir(monkeypatch) -> None:
+    monkeypatch.delenv("PROMETHEUS_MULTIPROC_DIR", raising=False)
+
+    assert build_metrics_registry() is None
+
+
+def test_build_metrics_registry_returns_multiprocess_collector(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("PROMETHEUS_MULTIPROC_DIR", str(tmp_path))
+
+    registry = build_metrics_registry()
+
+    assert isinstance(registry, CollectorRegistry)
+
+
+@pytest.mark.parametrize("gauge", [HEALTH, QUEUE_DEPTH, QUEUE_HWM])
+def test_state_gauges_use_livemostrecent_multiprocess_mode(gauge) -> None:
+    # "all" (the default) keeps a separate series per pid forever in
+    # PROMETHEUS_MULTIPROC_DIR, so a node's stale pre-restart reading can outlive the
+    # process and get surfaced ahead of (or alongside) its current one by a
+    # multiprocess reader. These gauges describe current per-node state, so only the
+    # latest write from a still-running process should ever be exposed.
+    assert gauge._multiprocess_mode == "livemostrecent"
