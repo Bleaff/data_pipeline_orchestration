@@ -4,7 +4,8 @@ repos:
     hooks:
       - id: check-added-large-files
         args: ["--maxkb=150"]
-        exclude: '^assets/'
+        # Lockfiles are large by nature and not hand-edited.
+        exclude: '^assets/|frontend/package-lock\.json$'
       - id: check-ast
       - id: check-case-conflict
       - id: check-json
@@ -73,6 +74,7 @@ repos:
       - id: mypy
         args: ["--ignore-missing-imports", "--explicit-package-bases"]
         exclude: '^test/'
+        additional_dependencies: ["types-requests"]
 
   # - repo: https://github.com/PyCQA/doc8
   #   rev: v1.1.2

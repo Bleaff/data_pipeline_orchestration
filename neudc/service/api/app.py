@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -33,9 +31,11 @@ def create_app(manager: PipelineServiceManager | None = None, cors_origins: list
     """
     app = FastAPI(title="neudc control plane")
     app.state.manager = manager or PipelineServiceManager()
-    # Per-pipeline nodes_config, kept only so `/pipelines/{name}/preview` can locate a
-    # SaveImageNode's save_dir; PipelineServiceManager itself doesn't retain it.
-    app.state.pipeline_nodes_configs: dict[str, list[dict[str, Any]]] = {}
+    # Per-pipeline nodes_config (dict[str, list[dict[str, Any]]]), kept only so
+    # `/pipelines/{name}/preview` can locate a SaveImageNode's save_dir;
+    # PipelineServiceManager itself doesn't retain it. Not annotated inline: mypy
+    # rejects a type annotation on a non-self attribute assignment.
+    app.state.pipeline_nodes_configs = {}
 
     app.add_middleware(
         CORSMiddleware,

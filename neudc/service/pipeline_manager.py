@@ -17,7 +17,7 @@ Methods:
 from __future__ import annotations
 
 import multiprocessing as mp
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from neudc.core.base.base_pipeline import BasePipeline
 
@@ -87,6 +87,6 @@ class PipelineServiceManager:
         if pipeline.is_alive():
             pipeline.terminate()
 
-    def status(self) -> dict[str, str]:
+    def status(self) -> dict[str, Literal["running", "stopped"]]:
         """Return the current status (running or stopped) of all managed pipelines."""
         return {name: ("running" if pipe.is_alive() else "stopped") for name, (pipe, _) in self.pipelines.items()}
