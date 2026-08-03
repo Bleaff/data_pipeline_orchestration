@@ -93,7 +93,7 @@ export default function BuilderPage() {
         <h1>Config builder</h1>
       </div>
 
-      {catalogError && <p className={styles.error}>Couldn&apos;t load the node-type catalog: {catalogError}</p>}
+      {catalogError && <p className={styles.error}>Couldn't load the node-type catalog: {catalogError}</p>}
 
       {!catalogError && (
         <div className={styles.layout}>

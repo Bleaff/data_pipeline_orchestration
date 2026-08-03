@@ -88,7 +88,9 @@ def _read_boxes(label_path: Path) -> list[BoxSpec]:
         if not parts:
             continue
         class_id, x, y, w, h = parts
-        boxes.append(BoxSpec(class_id=int(class_id), x_center=float(x), y_center=float(y), width=float(w), height=float(h)))
+        boxes.append(
+            BoxSpec(class_id=int(class_id), x_center=float(x), y_center=float(y), width=float(w), height=float(h))
+        )
     return boxes
 
 
@@ -136,7 +138,9 @@ def get_frame_detail(dataset_root: Path, frame_id: str) -> LabelFrameDetail | No
     if paths is None:
         return None
     _image_path, label_path = paths
-    return LabelFrameDetail(frame_id=frame_id, boxes=_read_boxes(label_path), reviewed=frame_id in _load_reviewed(dataset_root))
+    return LabelFrameDetail(
+        frame_id=frame_id, boxes=_read_boxes(label_path), reviewed=frame_id in _load_reviewed(dataset_root)
+    )
 
 
 def get_frame_image_path(dataset_root: Path, frame_id: str) -> Path | None:

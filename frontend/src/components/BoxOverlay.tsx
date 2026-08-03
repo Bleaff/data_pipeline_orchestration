@@ -83,7 +83,7 @@ export function BoxOverlay({
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-     
+
   }, [drag, boxes, onBoxChange, onAddBox]);
 
   function startDraw(e: React.MouseEvent) {
