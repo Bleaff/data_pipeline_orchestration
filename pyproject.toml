@@ -96,12 +96,13 @@ websockets = {version = "*", optional = true}
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.2"
 pytest-cov = "^6.0.0"
+httpx2 = "*"  # required by fastapi's TestClient (test/service/api)
 
 [tool.poetry.extras]
 dev = ["pre-commit", "virtualenv", "ipdb", "ruff", "mypy"]
 trt = ["cuda-python", "tensorrt"]
 onnx = ["onnxruntime-gpu"]
-api = ["fastapi", "uvicorn", "websockets"]
+api = ["uvicorn", "websockets"]
 audio = ["sounddevice"]
 
 # Package sources -----------------------------------------------------------------------------------------------------
