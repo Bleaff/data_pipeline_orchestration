@@ -1,0 +1,44 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fieldRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.fieldRow input,
+.fieldRow select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.fieldRow input[type="checkbox"] {
+  width: fit-content;
+}
+
+.required {
+  color: #d1453b;
+}
+
+.modelConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.empty {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}

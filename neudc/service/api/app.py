@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from neudc.service.api.routes import config, observability, pipelines
+from neudc.service.api.routes import config, labels, node_types, observability, pipelines
 from neudc.service.pipeline_manager import PipelineServiceManager
 
 __all__ = ("create_app",)
@@ -32,7 +32,8 @@ def create_app(manager: PipelineServiceManager | None = None, cors_origins: list
     app = FastAPI(title="neudc control plane")
     app.state.manager = manager or PipelineServiceManager()
     # Per-pipeline nodes_config (dict[str, list[dict[str, Any]]]), kept only so
-    # `/pipelines/{name}/preview` can locate a SaveImageNode's save_dir;
+    # `/pipelines/{name}/preview` can locate a SaveImageNode's save_dir and
+    # `/pipelines/{name}/labels` can locate a CreateDataset's save_dir;
     # PipelineServiceManager itself doesn't retain it. Not annotated inline: mypy
     # rejects a type annotation on a non-self attribute assignment.
     app.state.pipeline_nodes_configs = {}
@@ -48,5 +49,7 @@ def create_app(manager: PipelineServiceManager | None = None, cors_origins: list
     app.include_router(pipelines.router)
     app.include_router(config.router)
     app.include_router(observability.router)
+    app.include_router(node_types.router)
+    app.include_router(labels.router)
 
     return app

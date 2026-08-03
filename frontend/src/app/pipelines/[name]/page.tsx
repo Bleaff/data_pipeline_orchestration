@@ -15,6 +15,7 @@ export default function PipelineDetailPage() {
   const { detail, error, loading } = usePipelineDetail(name);
   const { snapshot, connected } = useMetricsSocket();
   const { frames, hasEverSeenAFrame } = useFrameFeed(name);
+  const hasDataset = detail?.nodes.some((n) => n.type === "CreateDataset") ?? false;
 
   return (
     <main className={styles.main}>
@@ -42,6 +43,12 @@ export default function PipelineDetailPage() {
             <h2>Recent frames</h2>
             <FrameFeed frames={frames} hasEverSeenAFrame={hasEverSeenAFrame} />
           </section>
+
+          {hasDataset && (
+            <section>
+              <Link href={`/pipelines/${encodeURIComponent(name)}/review`}>Review pre-labels →</Link>
+            </section>
+          )}
         </>
       )}
     </main>

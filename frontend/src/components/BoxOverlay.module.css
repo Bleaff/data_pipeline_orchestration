@@ -1,0 +1,60 @@
+.container {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  user-select: none;
+  cursor: crosshair;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.box {
+  position: absolute;
+  border: 2px solid #2e9e5b;
+  background: rgba(46, 158, 91, 0.08);
+  cursor: move;
+  box-sizing: border-box;
+}
+
+.box.selected {
+  border-color: #2e7bd1;
+  background: rgba(46, 123, 209, 0.12);
+}
+
+.classLabel {
+  position: absolute;
+  top: -1.3em;
+  left: -2px;
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #2e9e5b;
+  color: #fff;
+  padding: 0 0.3em;
+  border-radius: 3px;
+}
+
+.selected .classLabel {
+  background: #2e7bd1;
+}
+
+.resizeHandle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #2e7bd1;
+  border-radius: 2px;
+  cursor: nwse-resize;
+}
+
+.drawPreview {
+  position: absolute;
+  border: 2px dashed #d1453b;
+  box-sizing: border-box;
+  pointer-events: none;
+}
