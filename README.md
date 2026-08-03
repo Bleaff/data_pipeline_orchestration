@@ -438,6 +438,16 @@ python3 -m neudc.entrypoints.api_server --host 127.0.0.1 --port 8000
 | `/config` | GET | Read+parse a YAML config file (`?path=...`) |
 | `/metrics` | GET | Prometheus exposition of the Stage 12 registry (multiprocess-aware if `PROMETHEUS_MULTIPROC_DIR` is set) |
 | `/ws/metrics` | WS | Pushes a `{metric_name: {node: value}}` JSON snapshot once per second |
+| `/node-types` | GET | Catalog of registered node types with editable field specs, for the visual config builder (#24) |
+| `/pipelines/{name}/labels` | GET | List frames from that pipeline's `CreateDataset` output, with box count + reviewed state (#24) |
+| `/pipelines/{name}/labels/{frame_id}` | GET/PUT | Read or overwrite one frame's YOLO-format boxes; PUT marks it reviewed |
+| `/pipelines/{name}/labels/{frame_id}/image` | GET | The frame's image |
+
+`/node-types` excludes `AudioReaderNode` and the `SAHIDetector` model type — both need a
+live Python object (`device`/`detector`) that isn't JSON/YAML-expressible; hand-write
+YAML for those. `/pipelines/{name}/labels*` needs a `CreateDataset` node in the pipeline
+(404 otherwise); reviewed state is tracked in a `.review_state.json` manifest written
+alongside the dataset — there's no database anywhere in this codebase.
 
 `/pipelines/{name}/preview` only works today if that pipeline's config includes a
 `SaveImageNode` — there is no live frame tap yet (that needs a new node type, tracked
@@ -451,11 +461,17 @@ separately); it just serves the newest file the node has already written to its
 > starting `api_server` (it must be set on the API process so every pipeline it spawns
 > inherits it) to see per-node health/throughput/queue-depth data at all.
 
-## 🖥 Frontend (MVP dashboard, #23)
+## 🖥 Frontend (#23, #24)
 
-`frontend/` is a Next.js read-only dashboard over the control-plane API: pipeline list,
-a per-pipeline node graph (health/throughput/queue depth), live metrics, and a feed of
-recent frames. See [frontend/README.md](frontend/README.md) for setup.
+`frontend/` is a Next.js app over the control-plane API. See [frontend/README.md](frontend/README.md) for setup.
+
+- `/` and `/pipelines/{name}` (#23, read-only): pipeline list, a per-pipeline node graph
+  (health/throughput/queue depth), live metrics, and a feed of recent frames.
+- `/builder` (#24): visual pipeline config builder — add/connect nodes from the
+  `/node-types` catalog, edit their fields, validate, and start the pipeline.
+- `/pipelines/{name}/review` (#24): pre-label review — drag to add/move/resize boxes
+  over a frame, edit class ids, save corrections back through `/labels/{frame_id}`.
+  Linked from a pipeline's detail page when it has a `CreateDataset` node.
 
 ```bash
 cd frontend
