@@ -11,7 +11,9 @@ export default function DashboardPage() {
   return (
     <main className={styles.main}>
       <h1>neudc control plane</h1>
-      <p className={styles.subtitle}>Read-only dashboard over the pipeline API.</p>
+      <p className={styles.subtitle}>
+        Read-only dashboard over the pipeline API. <Link href="/builder">Build a new pipeline →</Link>
+      </p>
 
       {error && <p className={styles.error}>Could not reach the control-plane API: {error}</p>}
       {!error && loading && <p>Loading pipelines…</p>}

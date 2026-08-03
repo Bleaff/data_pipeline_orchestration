@@ -7,8 +7,12 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 __all__ = (
+    "BoxSpec",
     "ConfigValidateRequest",
     "ConfigValidateResponse",
+    "LabelFrameDetail",
+    "LabelFrameSummary",
+    "LabelUpdateRequest",
     "PipelineDetailResponse",
     "PipelineStartRequest",
     "PipelineStatusResponse",
@@ -48,3 +52,35 @@ class ConfigValidateResponse(BaseModel):
 
     valid: bool
     error: str | None = None
+
+
+class BoxSpec(BaseModel):
+    """One YOLO-format box: normalized (0-1) center/size, same convention `CreateDatasetMixin` writes."""
+
+    class_id: int
+    x_center: float
+    y_center: float
+    width: float
+    height: float
+
+
+class LabelFrameSummary(BaseModel):
+    """One frame in a pipeline's `CreateDataset` output, for the review queue list (#24)."""
+
+    frame_id: str
+    box_count: int
+    reviewed: bool
+
+
+class LabelFrameDetail(BaseModel):
+    """A single frame's boxes, for the review UI."""
+
+    frame_id: str
+    boxes: list[BoxSpec]
+    reviewed: bool
+
+
+class LabelUpdateRequest(BaseModel):
+    """Body of `PUT /pipelines/{name}/labels/{frame_id}`: the human-corrected boxes."""
+
+    boxes: list[BoxSpec]

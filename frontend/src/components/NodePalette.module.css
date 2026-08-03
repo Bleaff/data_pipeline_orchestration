@@ -1,0 +1,47 @@
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.heading {
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.item:hover {
+  border-color: #2e7bd1;
+}
+
+.type {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.runsAs {
+  opacity: 0.6;
+  font-size: 0.7rem;
+}
