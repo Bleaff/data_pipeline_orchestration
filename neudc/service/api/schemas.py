@@ -14,6 +14,7 @@ __all__ = (
     "LabelFrameSummary",
     "LabelUpdateRequest",
     "PipelineDetailResponse",
+    "PipelineRegisterRequest",
     "PipelineStartRequest",
     "PipelineStatusResponse",
 )
@@ -24,6 +25,12 @@ class PipelineStartRequest(BaseModel):
 
     nodes: list[dict[str, Any]]
     task: dict[str, Any] | None = None
+
+
+class PipelineRegisterRequest(BaseModel):
+    """Body of `POST /pipelines/{name}/register` — see `PipelineServiceManager.register_external_pipeline`."""
+
+    nodes: list[dict[str, Any]]
 
 
 class PipelineStatusResponse(BaseModel):

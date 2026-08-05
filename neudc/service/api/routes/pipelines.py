@@ -9,7 +9,12 @@ from fastapi.responses import FileResponse, Response
 
 from neudc.core.utils.config_schema import ConfigError, validate_pipeline_config
 from neudc.service.api.preview import find_latest_frame
-from neudc.service.api.schemas import PipelineDetailResponse, PipelineStartRequest, PipelineStatusResponse
+from neudc.service.api.schemas import (
+    PipelineDetailResponse,
+    PipelineRegisterRequest,
+    PipelineStartRequest,
+    PipelineStatusResponse,
+)
 
 if TYPE_CHECKING:
     from neudc.service.pipeline_manager import PipelineServiceManager
@@ -66,6 +71,45 @@ def stop_pipeline(name: str, request: Request) -> Response:
     manager: PipelineServiceManager = request.app.state.manager
     try:
         manager.stop_pipeline(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    request.app.state.pipeline_nodes_configs.pop(name, None)
+    return Response(status_code=204)
+
+
+@router.post("/pipelines/{name}/register", status_code=201)
+def register_external_pipeline(name: str, body: PipelineRegisterRequest, request: Request) -> PipelineStatusResponse:
+    """Make a caller-owned pipeline (started outside this API) visible to the dashboard.
+
+    For pipelines `/start` structurally can't run — e.g. one with live device objects
+    (`AudioReaderNode`/`AudioPlayerNode`'s mic/speaker) that don't fit a JSON body, see
+    `docs/voice_assistant/README.md`. This manager never starts/stops/health-checks
+    it — the caller owns that — it only becomes visible to `GET /pipelines`,
+    `/pipelines/{name}`, and (already node-id-scoped, no wiring needed here)
+    `/ws/metrics`.
+    """
+    try:
+        validate_pipeline_config({"nodes": body.nodes})
+    except ConfigError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    manager: PipelineServiceManager = request.app.state.manager
+    try:
+        manager.register_external_pipeline(name=name, nodes_config=body.nodes)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    request.app.state.pipeline_nodes_configs[name] = body.nodes
+    return PipelineStatusResponse(name=name, status=manager.status()[name])
+
+
+@router.post("/pipelines/{name}/unregister", status_code=204)
+def unregister_external_pipeline(name: str, request: Request) -> Response:
+    """Undo `register_external_pipeline`. Does not touch the caller's actual nodes."""
+    manager: PipelineServiceManager = request.app.state.manager
+    try:
+        manager.unregister_external_pipeline(name)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

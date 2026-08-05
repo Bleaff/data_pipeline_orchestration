@@ -147,6 +147,53 @@ for node in nodes:
 Speak into the mic; once VAD detects silence after speech, you should hear a spoken
 reply within a few seconds (network + inference latency on the remote box).
 
+## 4. Watching it: metrics and the dashboard
+
+Start the [control-plane API](../../README.md#-control-plane-api) (`neudc.service.api`)
+**in the same process** as the snippet above, right after building `nodes` and before
+`node.start()` — it must share that process's Prometheus registry to have anything to
+show, and a separately-run `python -m neudc.entrypoints.api_server` would have none of
+this pipeline's metrics in it:
+
+```python
+import uvicorn
+from neudc.service.api import create_app
+
+app = create_app()
+uvicorn_config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="warning")
+server = uvicorn.Server(uvicorn_config)
+threading.Thread(target=server.run, daemon=True).start()
+```
+
+`GET /metrics` (raw Prometheus text, includes the `neudc_node_process_latency_seconds`
+histogram) and `GET /ws/metrics` (a JSON snapshot pushed once a second) now reflect
+`reader`/`vad`/`asr`/`llm`/`tts`/`player`'s real throughput/latency/errors as they run.
+
+For the graphical dashboard (`frontend/`, `npm run dev`) to show this pipeline at
+`/pipelines/voice-assistant` too, register it — `PipelineServiceManager` normally
+only knows about pipelines it started itself via `/start` (a JSON-only contract this
+pipeline's live mic/speaker `device` objects can't satisfy, same reason as above), so
+without this the dashboard's pipeline list is just empty:
+
+```python
+import requests
+
+requests.post(
+    "http://127.0.0.1:8000/pipelines/voice-assistant/register",
+    json={"nodes": load_config("assets/configs/voice_assistant_pipeline.yaml")["nodes"]},
+)
+```
+
+This only makes the pipeline *visible* — the manager never starts, stops, or
+health-checks it (see `PipelineServiceManager.register_external_pipeline`); reports it
+as `"running"` for as long as it stays registered. Call the mirror
+`POST /pipelines/voice-assistant/unregister` when the script exits (`node.stop()`
+doesn't do this automatically).
+
+`run_voice_assistant_scratch.py`-style runner scripts typically do all of this by
+default (API on `:8000`, auto-registered, `--no-api` to skip it) — see the script's
+own `--help` if you have one from an earlier session.
+
 ## Deployment notes from the first real rollout
 
 What the plan above assumed vs. what was actually true on `bleaf@192.168.1.153`,
