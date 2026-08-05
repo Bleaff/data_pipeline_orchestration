@@ -1,0 +1,79 @@
+# End-to-end voice assistant: mic -> VAD -> ASR -> LLM -> TTS -> speaker.
+#
+# Chain: reader (AudioReaderNode) -> vad (VadNode) -> asr (AsrNode) -> llm (LlmNode)
+# -> tts (TtsNode) -> player (AudioPlayerNode).
+#
+# ASR/LLM/TTS all call out to remote OpenAI-compatible HTTP services (see
+# docs/voice_assistant/README.md for how to stand those up on a GPU box) rather than
+# loading any model in-process, so this whole graph runs as a single local pipeline
+# even though inference happens elsewhere. base_url values below point at the
+# services deployed on bleaf@192.168.1.153 (verified working end to end 2026-08-04:
+# TTS output fed into ASR round-trips to the same text; LLM answers real prompts).
+#
+# Sample rate: the mic/ASR side is 16 kHz mono (faster-whisper-server resamples
+# internally regardless of input rate). The TTS side is NOT 16 kHz — the deployed
+# Piper voices emit 22050 Hz mono natively and that isn't configurable per request.
+# AudioChunk.sample_rate already travels with each message, so no pipeline code needs
+# to change for this — just open the playback device at 22050 Hz, not 16000 (see
+# below).
+#
+# IMPORTANT - both `reader` and `player` need a live device object (an AudioDevice /
+# AudioOutputDevice), which plain YAML cannot express. This config documents the
+# nodes' parameters but is not meant to be run via `python3 -m neudc.entrypoints.main`
+# as-is: whatever builds the pipeline must construct real devices and inject them
+# into these two nodes' config dicts before calling NodeFactory.create, e.g.:
+#
+#   from neudc.core.node.readers.audio_reader import SoundDeviceAudioDevice
+#   from neudc.core.node.broadcast.audio_player import SoundDeviceAudioOutputDevice
+#   reader_config["device"] = SoundDeviceAudioDevice(sample_rate=16000, channels=1)
+#   player_config["device"] = SoundDeviceAudioOutputDevice(sample_rate=22050, channels=1)
+#
+# Requires the optional `audio` extra for real hardware: pip install -e ".[audio]"
+
+nodes:
+  - id: reader
+    type: AudioReaderNode
+    sample_rate: 16000
+    channels: 1
+    chunk_duration: 0.5
+    source: mic
+    outputs: [vad]
+
+  - id: vad
+    type: VadNode
+    energy_threshold: 0.01
+    outputs: [asr]
+
+  - id: asr
+    type: AsrNode
+    asr_config:
+      model_id: "Systran/faster-whisper-large-v3"
+      base_url: "http://192.168.1.153:5241/v1"
+    session_id: "local-voice-assistant"
+    min_speech_duration: 0.3
+    outputs: [llm]
+
+  - id: llm
+    type: LlmNode
+    llm_config:
+      provider: LocalLLMBackend
+      # llama-server doesn't validate model_id against what it's actually serving
+      # (confirmed by testing) — kept descriptive for humans reading this config.
+      model_id: "gemma-4-12b-it-UD-Q4_K_XL"
+      base_url: "http://192.168.1.153:5242/v1"
+      stream: false
+      temperature: 0.7
+    system_prompt: "You are a concise, helpful voice assistant. Keep replies short."
+    outputs: [tts]
+
+  - id: tts
+    type: TtsNode
+    tts_config:
+      model_id: "tts-1"
+      voice: "alloy"  # openedai-speech's OpenAI-style voice alias, verified working
+      base_url: "http://192.168.1.153:5243/v1"
+    outputs: [player]
+
+  - id: player
+    type: AudioPlayerNode
+    outputs: []

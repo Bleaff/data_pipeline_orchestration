@@ -1,0 +1,112 @@
+# Runs on the GPU box (bleaf@192.168.1.153), NOT part of the neudc package.
+#
+# Brings up all three remote inference services the pipeline talks to over HTTP:
+# ASR, LLM, TTS. All speak an OpenAI-compatible wire format, so the neudc-side
+# backends (OpenAICompatibleASRBackend / LocalLLMBackend / OpenAICompatibleTTSBackend)
+# need no code changes, only the right base_url (see README.md).
+#
+# LLM note: this box has no vLLM/Ollama serving Gemma (Ollama is installed but was
+# found crash-looping — a model-directory permission problem unrelated to this
+# pipeline). Instead it runs the already-built, CUDA-enabled `llama-server` binary
+# from ~/Desktop/Projects/llama.cpp/build/bin, wrapped in a container. That binary
+# was compiled on this host's Manjaro (Arch) system, so it's dynamically linked
+# against a newer glibc/libgomp/libstdc++ than the Ubuntu-based CUDA image ships —
+# it does NOT run there unmodified (`libgomp.so.1: cannot open shared object file`).
+# The `llm` service works around this by bind-mounting the host's own `/usr/lib` and
+# invoking the binary through that same host `ld-linux` as its interpreter, instead
+# of the container's own dynamic linker — so the binary always runs against the
+# exact userspace it was built against, wherever it's containerized.
+#
+# --reasoning-budget 0: this Gemma checkpoint is a "thinking" model — by default it
+# spends completion tokens on a hidden chain-of-thought (message.reasoning_content)
+# before answering, which is both slower and, at low max_tokens, can burn the whole
+# budget on thinking with an empty message.content. 0 disables it for immediate,
+# direct replies — verified end to end: ~300ms/11 tokens vs ~1.9s/63 tokens for the
+# same prompt with thinking left on.
+#
+# GPU passthrough note: `--gpus all` / `deploy.resources.reservations.devices` on
+# this host requires `/etc/cdi/nvidia.yaml` to be in sync with the installed driver
+# (`nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, as root) — it had gone
+# stale after a driver upgrade and made every GPU container fail with
+# "open /usr/lib/libnvidia-egl-gbm.so.1.1.2: no such file or directory" until
+# regenerated. If GPU containers start failing again after a future driver update,
+# regenerate it the same way.
+#
+# Usage on the remote box:
+#   docker compose -f docker-compose.remote.yml up -d
+#   docker compose -f docker-compose.remote.yml logs -f
+#
+# See README.md for the matching curl healthchecks and voice_assistant_pipeline.yaml
+# base_url values. Host paths below (under /home/bleaf, /opt/cuda) are specific to
+# this machine; adjust them if this compose file is ever reused elsewhere.
+
+services:
+  llm:
+    image: nvidia/cuda:13.0.0-runtime-ubuntu24.04
+    container_name: voice-assistant-llm
+    entrypoint:
+      - /host-lib/ld-linux-x86-64.so.2
+      - --library-path
+      - /host-lib:/opt/cuda/targets/x86_64-linux/lib
+      - /opt/llama.cpp/llama-server
+    command:
+      - -m
+      - /models/gemma-4-12b-it-GGUF/gemma-4-12b-it-UD-Q4_K_XL.gguf
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8080"
+      - -ngl
+      - "999"
+      - --ctx-size
+      - "8192"
+      - --reasoning-budget
+      - "0"
+    volumes:
+      - /home/bleaf/Desktop/Projects/llama.cpp/build/bin/llama-server:/opt/llama.cpp/llama-server:ro
+      - /usr/lib:/host-lib:ro
+      - /opt/cuda:/opt/cuda:ro
+      - /home/bleaf/.ollama/models:/models:ro
+    ports:
+      - "5242:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  asr:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: voice-assistant-asr
+    ports:
+      - "5241:8000"
+    environment:
+      WHISPER__MODEL: "Systran/faster-whisper-large-v3"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  tts:
+    image: ghcr.io/matatonic/openedai-speech:latest
+    container_name: voice-assistant-tts
+    ports:
+      - "5243:8000"
+    volumes:
+      - ./tts-voices:/app/voices
+      - ./tts-config:/app/config
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

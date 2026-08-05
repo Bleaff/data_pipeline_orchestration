@@ -355,8 +355,9 @@ startup, naming the node.
 ### LLM backends
 
 `neudc.nn.backends.llm` provides a provider-agnostic `BaseLLMBackend` interface for
-chat/VLM models, the foundation for the upcoming VLM node and copilot. It is not yet
-wired into a pipeline node — for now it is built directly from a `LLMBackendConfig`:
+chat/VLM models, the foundation for the upcoming VLM node and copilot. `LlmNode` (see
+[Available nodes](#-available-nodes)) wires it into the graph; the backend can also be
+built directly from a `LLMBackendConfig` for other callers (e.g. the future copilot):
 
 ```python
 from neudc.nn.backends.llm import LLMBackendConfig, LLMBackendType, build_llm_backend
@@ -384,6 +385,19 @@ reply = backend.generate([ChatMessage(role="user", content="Describe this crop."
 Both providers speak the same OpenAI-compatible `/chat/completions` protocol, so
 `OpenAICompatibleBackend` implements the request/response handling once; each provider
 subclass only fixes the endpoint and credential resolution.
+
+### ASR / TTS backends and the voice assistant pipeline
+
+`neudc.nn.backends.asr` (`BaseASRBackend`, `OpenAICompatibleASRBackend`) and
+`neudc.nn.backends.tts` (`BaseTTSBackend`, `OpenAICompatibleTTSBackend`) follow the
+same self-hosted-OpenAI-compatible-HTTP pattern as `LocalLLMBackend` above, wired
+into the graph by `AsrNode` and `TtsNode`. Together with `AudioReaderNode`, `VadNode`,
+`LlmNode` and `AudioPlayerNode` they make up a full mic → VAD → ASR → LLM → TTS →
+speaker pipeline (`assets/configs/voice_assistant_pipeline.yaml`) that treats remote
+GPU inference as plain HTTP calls rather than extending the ZMQ transport across
+machines. See [`docs/voice_assistant/README.md`](docs/voice_assistant/README.md) for
+the full walkthrough: deploying the remote ASR/TTS services, the config keys, and
+running the pipeline locally against real microphone/speaker hardware.
 
 ### Environment variables
 
@@ -413,9 +427,15 @@ subclass only fixes the endpoint and credential resolution.
 | `ActiveLearning` | thread | Selects frames worth human labelling |
 | `CreateDataset` | thread | Assembles the resulting dataset |
 | `TextNormalizeNode` | thread | Non-CV: strips/lowercases `TextChunk.text` (`accepts`/`emits` = `TextChunk`) |
+| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `session_id`, `min_speech_duration`) — `AudioChunk` → `TextChunk` |
+| `LlmNode` | thread | Answers transcriptions via a pluggable `LLMBackend`, keeping conversation history (`llm_config`, `system_prompt`) — `TextChunk` → `TextChunk` |
+| `TtsNode` | thread | Synthesizes replies via a remote TTS service (`tts_config`) — `TextChunk` → `AudioChunk` |
+| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device (`device`) |
 
 Model-backed nodes take a `model_config` naming the backend (`TorchBackend`,
 `ONNXBackend`, `TRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
+See [ASR / TTS backends and the voice assistant pipeline](#asr--tts-backends-and-the-voice-assistant-pipeline)
+for `AsrNode`/`LlmNode`/`TtsNode`/`AudioPlayerNode` config details.
 
 ## 🔌 Control-plane API
 

@@ -9,11 +9,14 @@ defeating `NodeFactory`'s lazy-import design. `get_node_catalog()` fills in
 `accepts`/`emits` dynamically via `NodeFactory` (already lazy, and already paid for by
 `config_schema`'s own validation) so those two stay a single source of truth.
 
-Two things are deliberately left out of the builder: `AudioReaderNode` (its `device`
-field is a live Python object, not YAML/JSON-expressible) and the `SAHIDetector` model
-type (its `detector` field is likewise a live `YOLOv8` instance). Both remain usable by
-hand-writing YAML directly; the catalog is additive tooling, not the only way to build a
-config.
+Several things are deliberately left out of the builder: `AudioReaderNode` and
+`AudioPlayerNode` (their `device` field is a live Python object, not YAML/JSON-expressible)
+and the `SAHIDetector` model type (its `detector` field is likewise a live `YOLOv8`
+instance). `AsrNode`/`LlmNode`/`TtsNode` are also not yet listed: their config
+(`asr_config`/`llm_config`/`tts_config`) is a nested mapping, and `FieldKind` has no
+"nested object" variant yet to render one — adding that is separate work. All of these
+remain usable by hand-writing YAML directly; the catalog is additive tooling, not the
+only way to build a config.
 """
 
 from __future__ import annotations
