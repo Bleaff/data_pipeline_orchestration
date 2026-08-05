@@ -452,6 +452,8 @@ python3 -m neudc.entrypoints.api_server --host 127.0.0.1 --port 8000
 | `/pipelines` | GET | List every managed pipeline and its status |
 | `/pipelines/{name}/start` | POST | Validate a `{"nodes": [...], "task": {...}}` body and start it (409 if already running, 422 on a bad config) |
 | `/pipelines/{name}/stop` | POST | Stop a running pipeline (404 if unknown) |
+| `/pipelines/{name}/register` | POST | Make a caller-started pipeline visible (`{"nodes": [...]}`) without this API managing its process — for configs `/start` can't run at all, e.g. one needing an injected live device object (409/422 same as `/start`); see [voice assistant docs](docs/voice_assistant/README.md#4-watching-it-metrics-and-the-dashboard) |
+| `/pipelines/{name}/unregister` | POST | Undo `/register` (404 if unknown); does not touch the caller's actual process |
 | `/pipelines/{name}/status` | GET | Single pipeline's status (404 if unknown) |
 | `/pipelines/{name}/preview` | GET | Latest frame from that pipeline's `SaveImageNode`, if it has one (404 otherwise) |
 | `/config/validate` | POST | Validate a `{"nodes": [...]}` body via `config_schema` without starting anything |

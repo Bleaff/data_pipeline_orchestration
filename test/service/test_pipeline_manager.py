@@ -61,3 +61,77 @@ def test_manager_runs_threaded_pipeline(tmp_path: Path) -> None:
         manager.stop_pipeline("t")
 
     assert "t" not in manager.pipelines
+
+
+# === register_external_pipeline / unregister_external_pipeline: pipelines this
+# manager doesn't own the process lifecycle of (e.g. one with live device objects
+# that can't be started via start_pipeline's JSON-only nodes_config).
+
+
+def test_register_external_pipeline_reports_as_running() -> None:
+    manager = PipelineServiceManager()
+
+    manager.register_external_pipeline("voice-assistant", nodes_config=[{"id": "reader", "type": "AudioReaderNode"}])
+
+    assert manager.status() == {"voice-assistant": "running"}
+
+
+def test_register_external_pipeline_conflicts_with_an_existing_name() -> None:
+    manager = PipelineServiceManager()
+    manager.register_external_pipeline("p", nodes_config=[])
+
+    try:
+        manager.register_external_pipeline("p", nodes_config=[])
+        raised = False
+    except ValueError:
+        raised = True
+
+    assert raised
+
+
+def test_start_pipeline_conflicts_with_a_registered_external_name(tmp_path: Path) -> None:
+    manager = PipelineServiceManager()
+    manager.register_external_pipeline("p", nodes_config=[])
+
+    try:
+        manager.start_pipeline(name="p", nodes_config=[{"id": "r", "type": "FolderImageNode", "folder_path": "x"}])
+        raised = False
+    except ValueError:
+        raised = True
+
+    assert raised
+
+
+def test_unregister_external_pipeline_removes_it() -> None:
+    manager = PipelineServiceManager()
+    manager.register_external_pipeline("p", nodes_config=[])
+
+    manager.unregister_external_pipeline("p")
+
+    assert manager.status() == {}
+
+
+def test_unregister_unknown_external_pipeline_raises() -> None:
+    manager = PipelineServiceManager()
+
+    try:
+        manager.unregister_external_pipeline("ghost")
+        raised = False
+    except ValueError:
+        raised = True
+
+    assert raised
+
+
+def test_stop_pipeline_does_not_touch_an_external_registration() -> None:
+    manager = PipelineServiceManager()
+    manager.register_external_pipeline("p", nodes_config=[])
+
+    try:
+        manager.stop_pipeline("p")
+        raised = False
+    except ValueError:
+        raised = True
+
+    assert raised
+    assert manager.status() == {"p": "running"}
