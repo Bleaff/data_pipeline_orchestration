@@ -12,11 +12,12 @@ from neudc.nn.backends.tts.openai_compatible import OpenAICompatibleTTSBackend
 
 
 def test_asr_node_from_config_builds_backend_and_wires_options() -> None:
+    # No session_id here (#barge-in): VadNode owns turn-boundary assignment and
+    # stamps it onto every AudioChunk upstream; AsrNode just relays it.
     node = AsrNode.from_config(
         {
             "mailbox": ZMQMailbox(),
             "asr_config": {"model_id": "whisper-large-v3", "base_url": "http://asr.test/v1"},
-            "session_id": "sess-1",
             "min_speech_duration": 0.5,
         },
     )
@@ -24,7 +25,6 @@ def test_asr_node_from_config_builds_backend_and_wires_options() -> None:
     assert isinstance(node.backend, OpenAICompatibleASRBackend)
     assert node.backend.model_id == "whisper-large-v3"
     assert node.backend.base_url == "http://asr.test/v1"
-    assert node.session_id == "sess-1"
     assert node.min_speech_duration == 0.5
 
 

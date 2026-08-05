@@ -94,3 +94,30 @@ def test_buffer_resets_after_flush() -> None:
     list(mixin.process(_chunk("second", is_final=True)))
 
     assert backend.calls == ["first", "second"]
+
+
+def test_interrupted_turn_does_not_leak_into_the_next_turns_reply() -> None:
+    # Barge-in: turn 1 gets cancelled mid-stream, so it never gets an is_final chunk
+    # (VadFilterMixin/BaseNode._handle stop delivering it, see AudioPlayerNode /
+    # VadFilterMixin docstrings). Turn 2's deltas must not get turn 1's leftover
+    # partial text spliced onto the front of them.
+    backend = _FakeTTSBackend()
+    mixin = TtsMixin(backend)
+
+    list(mixin.process(_chunk("Turn one, never ", is_final=False, turn_id=1)))
+    list(mixin.process(_chunk("finished", is_final=False, turn_id=1)))  # turn 1 cut off here, no final ever arrives
+
+    out = list(mixin.process(_chunk("Turn two.", is_final=True, turn_id=2)))
+
+    assert backend.calls == ["Turn two."]
+    assert out[0].turn_id == 2
+
+
+def test_different_session_id_also_resets_the_buffer() -> None:
+    backend = _FakeTTSBackend()
+    mixin = TtsMixin(backend)
+
+    list(mixin.process(_chunk("leftover", is_final=False, session_id="s1", turn_id=1)))
+    list(mixin.process(_chunk("fresh", is_final=True, session_id="s2", turn_id=1)))
+
+    assert backend.calls == ["fresh"]

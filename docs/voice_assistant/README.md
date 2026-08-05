@@ -19,6 +19,8 @@ purely over HTTP — no ZMQ cross-machine transport is used or needed.
                           │  /v1/audio/transcriptions │ /v1/chat/… │ /v1/audio/speech
                           └──────────────────────────────────────────────┘
 ```
+`vad`'s `control_outputs` also fan out a priority cancel edge straight to
+`llm`/`tts`/`player` (not shown above) — see [Barge-in](#barge-in-interrupting-a-reply-by-talking-over-it).
 
 **Deployed and verified 2026-08-04** on `bleaf@192.168.1.153`: all three services are up
 via `docker compose -f docker-compose.remote.yml up -d` and were round-trip tested —
@@ -92,12 +94,42 @@ New per-node config keys:
 
 | Node | Key | Meaning |
 |---|---|---|
+| `VadNode` | `session_id` | Stamped onto every `AudioChunk`/cancellation this node emits — it owns turn-boundary assignment for the whole downstream chain (see Barge-in below) |
+| `VadNode` | `control_outputs` | Nodes that get a priority CANCEL on barge-in (`[llm, tts, player]` in the shipped config) |
 | `AsrNode` | `asr_config.model_id` / `base_url` / `api_key` / `timeout` | ASR server identity and endpoint |
-| `AsrNode` | `session_id` | Stamped onto every transcribed `TextChunk` |
 | `AsrNode` | `min_speech_duration` | Buffered speech shorter than this (seconds) is discarded as noise |
 | `LlmNode` | `llm_config.*` | A `LLMBackendConfig` (`provider`, `model_id`, `base_url`, `stream`, `temperature`, `max_tokens`, `timeout`) — same schema the (previously unwired) `LLMBackend` layer already defined |
 | `LlmNode` | `system_prompt` | Optional system message seeding the conversation history |
 | `TtsNode` | `tts_config.model_id` / `voice` / `base_url` / `api_key` / `timeout` | TTS server identity, voice, and endpoint |
+| `AudioPlayerNode` | `playback_check_interval` | Seconds of audio per block between barge-in cancellation checks (default 0.1) |
+
+## Barge-in (interrupting a reply by talking over it)
+
+`VadNode` detects a rising edge (silence → speech) as "the user started talking
+again." If a previous turn was still active, that's a barge-in: it broadcasts a
+priority `ControlMessage(action=CANCEL)` for the previous turn over the control
+channel (`control_outputs`), which reaches `llm`/`tts`/`player` out-of-band —
+independent of however backed-up their data queues are.
+
+What that actually stops, concretely:
+- **`LlmNode`** (with `llm_config.stream: true`, the shipped default): generation is
+  checked for cancellation *between tokens*, so word generation genuinely stops mid-reply.
+  With `stream: false` it can't — a single blocking HTTP call has no interruption
+  point once fired.
+- **`TtsNode`**: any not-yet-processed chunk for a cancelled turn is skipped outright
+  (`BaseNode._handle` checks before calling `process()`); a `synthesize()` call
+  already in flight for that turn still completes, but its audio is never played
+  (see next point) — a little wasted GPU time, not an audible bug.
+- **`AudioPlayerNode`**: plays each `AudioChunk` in `playback_check_interval`-sized
+  blocks, re-checking cancellation between blocks — this is what actually cuts
+  off audio already coming out of the speaker, not just future chunks that hadn't
+  started playing yet.
+
+Known limitation: `VadNode` can't distinguish real speech from a loud noise (a cough,
+a door) — it's the same RMS-energy heuristic as before, just now driving turn
+boundaries too. A loud blip can trigger a spurious cancel of an in-flight reply, same
+false-positive rate as the existing VAD always had. A real VAD model (e.g. Silero)
+would reduce this; out of scope here.
 
 ## 3. Run it locally
 
@@ -183,9 +215,7 @@ worth knowing before touching this box again:
 
 ## Out of scope (documented, not built)
 
-- **Barge-in / cancellation** while `TtsNode` is playing a reply. The primitives
-  already exist (`ControlMessage`, `control_outputs` in the config schema) but no
-  node currently produces a cancel signal on renewed speech — that would mean
-  extending `VadNode` to detect "speech resumed while a reply is in flight" and send
-  a `ControlMessage(action=CANCEL)` to a `control_outputs` edge.
 - **Resampling** if the deployed TTS voice can't emit 16 kHz natively.
+- **A real VAD model.** Barge-in (see above) is built, but still rides on the same
+  RMS-energy heuristic as before — good enough to demonstrate cancellation working
+  end to end, not tuned against false positives from ambient noise.

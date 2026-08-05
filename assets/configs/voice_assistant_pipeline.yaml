@@ -29,6 +29,29 @@
 #   player_config["device"] = SoundDeviceAudioOutputDevice(sample_rate=22050, channels=1)
 #
 # Requires the optional `audio` extra for real hardware: pip install -e ".[audio]"
+#
+# Barge-in: `vad` owns turn-boundary assignment (stamps session_id/turn_id on every
+# AudioChunk) so it's the only node early enough to know "the user started talking
+# again" before that speech has even been transcribed. Its `control_outputs` below
+# wire a priority CANCEL straight to `llm`/`tts`/`player` on that rising edge,
+# interrupting whatever reply is still being generated, synthesized, or played —
+# see `VadFilterMixin`/`AudioPlayerNode` docstrings for the mechanism.
+# `llm_config.stream: true` matters here too: only a streaming generate() gets
+# checked for cancellation between tokens (word generation actually stops, not just
+# "finishes generating a reply nobody hears"); a non-streaming call can't be aborted
+# mid-flight once fired.
+#
+# Echo / "talking to itself": there is no acoustic echo cancellation here — on a
+# laptop with the mic and speakers close together, the mic picks up the assistant's
+# own TTS output as "the user talking again" and barge-in fires on itself, repeatedly.
+# `barge_in_energy_threshold` (higher than `energy_threshold`) and
+# `barge_in_cooldown_sec` below reduce this (see VadFilterMixin docstring for what
+# each does and why neither is a real fix). The actual fix for a real test session is
+# **wear headphones** — it removes the acoustic path entirely, no tuning needed.
+# If you don't/can't, raise `barge_in_energy_threshold` until echo stops
+# self-triggering (start around 5x `energy_threshold` and adjust from there; the
+# right value depends on speaker volume and mic distance/gain, so there's no one
+# correct number here).
 
 nodes:
   - id: reader
@@ -42,6 +65,10 @@ nodes:
   - id: vad
     type: VadNode
     energy_threshold: 0.01
+    barge_in_energy_threshold: 0.05  # tune against your own speaker/mic setup, see note above
+    barge_in_cooldown_sec: 1.5
+    session_id: "local-voice-assistant"
+    control_outputs: [llm, tts, player]
     outputs: [asr]
 
   - id: asr
@@ -49,7 +76,6 @@ nodes:
     asr_config:
       model_id: "Systran/faster-whisper-large-v3"
       base_url: "http://192.168.1.153:5241/v1"
-    session_id: "local-voice-assistant"
     min_speech_duration: 0.3
     outputs: [llm]
 
@@ -61,7 +87,7 @@ nodes:
       # (confirmed by testing) — kept descriptive for humans reading this config.
       model_id: "gemma-4-12b-it-UD-Q4_K_XL"
       base_url: "http://192.168.1.153:5242/v1"
-      stream: false
+      stream: true
       temperature: 0.7
     system_prompt: "You are a concise, helpful voice assistant. Keep replies short."
     outputs: [tts]

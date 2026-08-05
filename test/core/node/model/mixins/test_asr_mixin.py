@@ -18,16 +18,39 @@ class _FakeASRBackend:
         return self.text
 
 
-def _chunk(samples: np.ndarray, *, drop: bool, sample_rate: int = 16000) -> AudioChunk:
-    return AudioChunk(timestamp=1.0, source="mic", samples=samples, sample_rate=sample_rate, drop=drop)
+def _chunk(
+    samples: np.ndarray,
+    *,
+    drop: bool,
+    sample_rate: int = 16000,
+    session_id: str | None = "s1",
+    turn_id: int | None = 1,
+) -> AudioChunk:
+    # session_id/turn_id mirror what VadFilterMixin stamps upstream in the real
+    # pipeline: constant across one utterance, only advancing on the next onset.
+    return AudioChunk(
+        timestamp=1.0,
+        source="mic",
+        samples=samples,
+        sample_rate=sample_rate,
+        drop=drop,
+        session_id=session_id,
+        turn_id=turn_id,
+    )
 
 
-def _speech(n: int = 8000, sample_rate: int = 16000) -> AudioChunk:
-    return _chunk(np.full(n, 0.5, dtype=np.float32), drop=False, sample_rate=sample_rate)
+def _speech(
+    n: int = 8000, sample_rate: int = 16000, *, session_id: str | None = "s1", turn_id: int | None = 1
+) -> AudioChunk:
+    samples = np.full(n, 0.5, dtype=np.float32)
+    return _chunk(samples, drop=False, sample_rate=sample_rate, session_id=session_id, turn_id=turn_id)
 
 
-def _silence(n: int = 8000, sample_rate: int = 16000) -> AudioChunk:
-    return _chunk(np.zeros(n, dtype=np.float32), drop=True, sample_rate=sample_rate)
+def _silence(
+    n: int = 8000, sample_rate: int = 16000, *, session_id: str | None = "s1", turn_id: int | None = 1
+) -> AudioChunk:
+    samples = np.zeros(n, dtype=np.float32)
+    return _chunk(samples, drop=True, sample_rate=sample_rate, session_id=session_id, turn_id=turn_id)
 
 
 def test_speech_chunks_alone_yield_nothing() -> None:
@@ -42,10 +65,10 @@ def test_speech_chunks_alone_yield_nothing() -> None:
 
 def test_silence_after_enough_speech_flushes_one_utterance() -> None:
     backend = _FakeASRBackend(text="turn the lights on")
-    mixin = AsrMixin(backend, session_id="s1")
+    mixin = AsrMixin(backend)
 
-    list(mixin.process(_speech(8000)))  # 0.5s of speech at 16kHz
-    out = list(mixin.process(_silence()))
+    list(mixin.process(_speech(8000, session_id="s1", turn_id=1)))  # 0.5s of speech at 16kHz
+    out = list(mixin.process(_silence(session_id="s1", turn_id=1)))
 
     assert len(out) == 1
     result = out[0]
@@ -91,14 +114,19 @@ def test_silence_with_no_buffered_speech_yields_nothing() -> None:
     assert backend.calls == []
 
 
-def test_turn_id_increments_across_consecutive_utterances() -> None:
+def test_turn_id_is_propagated_from_upstream_vad_stamping_not_owned_here() -> None:
+    # AsrMixin no longer allocates turn ids itself (#barge-in): VadFilterMixin owns
+    # turn-boundary assignment so it can cancel a previous turn on speech onset,
+    # before this mixin has even finished transcribing it. This just relays whatever
+    # session_id/turn_id the buffered chunks arrived with.
     backend = _FakeASRBackend()
     mixin = AsrMixin(backend)
 
-    list(mixin.process(_speech(8000)))
-    first = list(mixin.process(_silence()))
-    list(mixin.process(_speech(8000)))
-    second = list(mixin.process(_silence()))
+    list(mixin.process(_speech(8000, session_id="s1", turn_id=1)))
+    first = list(mixin.process(_silence(session_id="s1", turn_id=1)))
+    list(mixin.process(_speech(8000, session_id="s1", turn_id=2)))
+    second = list(mixin.process(_silence(session_id="s1", turn_id=2)))
 
+    assert first[0].session_id == "s1"
     assert first[0].turn_id == 1
     assert second[0].turn_id == 2
