@@ -1,0 +1,23 @@
+# Build context for ./Dockerfile (the standalone control-plane API). Keeps the
+# context small and avoids ever baking local secrets/venvs/build artifacts into the
+# image.
+.git
+.github
+.claude
+env/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+frontend/
+docs/
+assets/images/
+assets/models/
+test/
+*.log
+dead_letter/
+final_datasets/
+output_images/

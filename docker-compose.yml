@@ -1,0 +1,45 @@
+# Local dev stack: the control-plane API + the dashboard frontend. Not for the voice
+# assistant pipeline itself — see the note on the `api` service below, and
+# docs/voice_assistant/README.md for why (host mic/speaker access, no GPU here).
+#
+# Usage:
+#   docker compose up                    # dockerized api + frontend, talking to each other
+#   docker compose up frontend           # just the frontend, pointed at a host-run pipeline:
+#   API_BASE_URL=http://host.docker.internal:8000 docker compose up frontend
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neudc-api
+    ports:
+      - "8000:8000"
+    # This manages only pipelines it starts itself via POST /pipelines/{name}/start
+    # (JSON-only config — no live device objects). The voice assistant pipeline runs
+    # on the host instead (needs a real mic/speaker) and carries its own embedded
+    # copy of this same API; point `frontend` at that one instead of this service
+    # when working on the voice assistant (see the API_BASE_URL override above).
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: neudc-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Defaults to this compose file's own `api` service (reachable by container
+      # DNS name). Override API_BASE_URL (see Usage above) to point at a host-run
+      # pipeline's embedded API instead — `host.docker.internal` is resolved by
+      # Docker Desktop (macOS/Windows) to the host machine; on Linux Docker Engine
+      # you'd need `extra_hosts: ["host.docker.internal:host-gateway"]` instead.
+      - NEXT_PUBLIC_API_BASE_URL=${API_BASE_URL:-http://api:8000}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    restart: unless-stopped

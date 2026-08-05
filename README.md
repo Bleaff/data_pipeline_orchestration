@@ -500,6 +500,34 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
+### Or via Docker
+
+`docker-compose.yml` runs the control-plane API and the frontend as containers —
+useful to avoid a local Python/Node setup just to poke at the dashboard:
+
+```bash
+docker compose up          # api on :8000, frontend on :3000, talking to each other
+```
+
+This `api` service only manages pipelines it starts itself via `POST /pipelines/{name}/start`
+(a JSON-only config — no live device objects). It is **not** how pipelines needing real
+hardware run (e.g. a voice-assistant-style pipeline's microphone/speaker) — those run on
+the host directly and would carry their own embedded copy of this same API. Point the
+dockerized frontend at a host-run pipeline's API instead of the compose file's own `api`
+service like this:
+
+```bash
+API_BASE_URL=http://host.docker.internal:8000 docker compose up frontend
+```
+
+(`host.docker.internal` is resolved by Docker Desktop on macOS/Windows out of the box;
+on Linux Docker Engine you'd add `extra_hosts: ["host.docker.internal:host-gateway"]`.)
+Image size note: neudc's hard dependencies (torch, torchvision, ultralytics, ...) aren't
+split into optional extras, so the `api` image pulls all of them regardless — expect a
+slow first build. torch is at least kept CPU-only (see `Dockerfile`): PyPI's default
+linux wheel bundles the full CUDA runtime as dependencies, several GB this container
+would never use (no GPU access either way — Docker Desktop on macOS has none at all).
+
 ## 🛠 Development
 
 ```bash
