@@ -254,6 +254,15 @@ def test_example_multimodal_pipeline_config_is_valid() -> None:
     assert {n.id for n in parsed.nodes} == {"normalize", "normalize_again"}
 
 
+def test_voice_assistant_pipeline_config_is_valid() -> None:
+    # Full mic -> vad -> asr -> llm -> tts -> player graph: exercises payload-compat
+    # across every non-Frame edge type (AudioChunk -> TextChunk -> AudioChunk) on real,
+    # registered node classes rather than a synthetic two-node fixture.
+    config_path = Path("assets/configs/voice_assistant_pipeline.yaml")
+    parsed = validate_pipeline_config(load_config(config_path))
+    assert [n.id for n in parsed.nodes] == ["reader", "vad", "asr", "llm", "tts", "player"]
+
+
 def test_queue_policy_and_message_queue_size_default() -> None:
     """Regression: an untouched config parses exactly as before this feature existed (#38)."""
     cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}

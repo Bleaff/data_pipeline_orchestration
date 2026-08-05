@@ -21,6 +21,22 @@ def test_audio_reader_node_is_excluded():
     assert "AudioReaderNode" not in {entry.type for entry in catalog}
 
 
+def test_audio_player_node_is_excluded():
+    # Same reason as AudioReaderNode: its `device` field is a live Python object.
+    catalog = get_node_catalog()
+
+    assert "AudioPlayerNode" not in {entry.type for entry in catalog}
+
+
+def test_voice_assistant_http_nodes_are_not_yet_catalogued():
+    # AsrNode/LlmNode/TtsNode take a nested asr_config/llm_config/tts_config mapping,
+    # which FieldKind can't render yet (see node_catalog module docstring) — pinned
+    # here so adding that support is a deliberate change, not a silent gap left open.
+    catalog_types = {entry.type for entry in get_node_catalog()}
+
+    assert not catalog_types & {"AsrNode", "LlmNode", "TtsNode"}
+
+
 def test_accepts_and_emits_are_populated_from_node_factory():
     catalog = get_node_catalog()
     folder_image = next(entry for entry in catalog if entry.type == "FolderImageNode")

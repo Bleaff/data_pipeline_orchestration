@@ -37,6 +37,10 @@ class NodeFactory:
         "ActiveLearning": ("neudc.core.node.model.active_learning_node", "ActiveLearning"),
         "CreateDataset": ("neudc.core.node.processors.create_dataset_node", "CreateDataset"),
         "TextNormalizeNode": ("neudc.core.node.processors.text_normalize_node", "TextNormalizeNode"),
+        "AsrNode": ("neudc.core.node.model.asr_node", "AsrNode"),
+        "LlmNode": ("neudc.core.node.model.llm_node", "LlmNode"),
+        "TtsNode": ("neudc.core.node.model.tts_node", "TtsNode"),
+        "AudioPlayerNode": ("neudc.core.node.broadcast.audio_player", "AudioPlayerNode"),
     }
 
     @staticmethod
