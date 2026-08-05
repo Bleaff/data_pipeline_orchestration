@@ -21,6 +21,12 @@ class TtsMixin:
     content deltas or emits one final reply) and synthesizes the buffered text as
     soon as an `is_final=True` chunk arrives — one HTTP call per reply, not per
     delta. An empty buffered utterance (e.g. an empty streaming trailer) is skipped.
+
+    The buffer is keyed to the (session_id, turn_id) it started accumulating for: a
+    chunk from a different turn resets it first. This matters for barge-in — if a
+    turn gets cancelled mid-stream (see `VadFilterMixin`), its trailing `is_final`
+    chunk never arrives, so without this the next turn's reply would get its
+    predecessor's leftover partial text spliced onto the front of it.
     """
 
     def __init__(self, backend: BaseTTSBackend) -> None:
@@ -33,6 +39,7 @@ class TtsMixin:
         """
         self.backend = backend
         self._buffer: list[str] = []
+        self._buffer_turn_key: tuple[str | None, int | None] | None = None
 
     def process(self, chunk: TextChunk) -> Iterator[AudioChunk]:
         """Buffer text, synthesizing the buffered reply once its final chunk arrives.
@@ -50,6 +57,11 @@ class TtsMixin:
         if getattr(chunk, "drop", False):
             return
 
+        turn_key = (chunk.session_id, chunk.turn_id)
+        if turn_key != self._buffer_turn_key:
+            self._buffer = []
+            self._buffer_turn_key = turn_key
+
         if chunk.text:
             self._buffer.append(chunk.text)
 
@@ -58,6 +70,7 @@ class TtsMixin:
 
         text = "".join(self._buffer).strip()
         self._buffer = []
+        self._buffer_turn_key = None
         if not text:
             return
 

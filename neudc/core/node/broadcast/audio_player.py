@@ -13,9 +13,15 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.messaging.types import AudioChunk, BaseMessage
+from neudc.utils import LOGGER
 
 if TYPE_CHECKING:
     import numpy as np
+
+#: How often (seconds of audio) playback pauses to re-check whether this chunk's turn
+#: was cancelled — the granularity of barge-in interruption. Small enough to feel
+#: instant, large enough not to fragment `device.write()` into pointless tiny calls.
+DEFAULT_PLAYBACK_CHECK_INTERVAL_SEC = 0.1
 
 
 @runtime_checkable
@@ -76,22 +82,40 @@ class AudioPlayerNode(BaseThreadedNode):
 
     A sink: it consumes `AudioChunk`s and emits nothing, mirroring `SaveImageNode` for
     the CV path. A chunk marked `drop` is skipped rather than played.
+
+    Plays each chunk in small blocks rather than one `device.write()` call, re-checking
+    cancellation (`BaseNode._is_cancelled`) between blocks — this is what makes
+    barge-in (see `VadFilterMixin`) actually cut off audio already playing, not just
+    skip chunks that hadn't started yet: the framework's generic per-message
+    cancellation check in `BaseNode._handle` runs once, *before* `process()` starts,
+    so on its own it can't interrupt a single call already in progress against one
+    (potentially many-seconds-long) reply.
     """
 
     accepts: ClassVar[tuple[type[BaseMessage], ...]] = (AudioChunk,)
     emits: ClassVar[tuple[type[BaseMessage], ...]] = ()
 
-    def __init__(self, device: AudioOutputDevice, mailbox: Any, *, id: str = "AudioPlayerNode") -> None:
+    def __init__(
+        self,
+        device: AudioOutputDevice,
+        mailbox: Any,
+        *,
+        playback_check_interval: float = DEFAULT_PLAYBACK_CHECK_INTERVAL_SEC,
+        id: str = "AudioPlayerNode",
+    ) -> None:
         """Initialize AudioPlayerNode.
 
         Args:
         ----
             device (AudioOutputDevice): Pluggable audio output backend.
             mailbox (Any): Mailbox for receiving `AudioChunk` objects.
+            playback_check_interval (float): Seconds of audio played per block between
+                cancellation checks — the granularity of barge-in interruption.
             id (str): Identifier for this node instance.
 
         """
         self.device = device
+        self.playback_check_interval = playback_check_interval
         super().__init__(mailbox, id=id)
 
     @staticmethod
@@ -125,10 +149,18 @@ class AudioPlayerNode(BaseThreadedNode):
                 "inject it into the config dict before building the pipeline."
             )
             raise ValueError(msg)
-        return AudioPlayerNode(device=device, mailbox=config["mailbox"])
+        return AudioPlayerNode(
+            device=device,
+            mailbox=config["mailbox"],
+            playback_check_interval=config.get("playback_check_interval", DEFAULT_PLAYBACK_CHECK_INTERVAL_SEC),
+        )
 
     def process(self, chunk: AudioChunk) -> None:
-        """Play `chunk` through the output device, unless it is marked `drop`.
+        """Play `chunk` through the output device in blocks, unless it is marked `drop`.
+
+        Stops early — without playing the rest — if `chunk`'s turn gets cancelled
+        partway through (barge-in): checked between blocks of
+        `playback_check_interval` seconds each, not just once up front.
 
         Args:
         ----
@@ -137,4 +169,11 @@ class AudioPlayerNode(BaseThreadedNode):
         """
         if chunk.drop:
             return
-        self.device.write(chunk.samples)
+
+        block_frames = max(1, int(chunk.sample_rate * self.playback_check_interval))
+        samples = chunk.samples
+        for start in range(0, len(samples), block_frames):
+            if self._is_cancelled(chunk.session_id, chunk.turn_id):
+                LOGGER.info(f"[{self.id}] playback of turn {chunk.turn_id} interrupted (barge-in)")
+                return
+            self.device.write(samples[start : start + block_frames])

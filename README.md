@@ -417,7 +417,7 @@ running the pipeline locally against real microphone/speaker hardware.
 | `ResizeNode` | thread | Resizes frames (`target_width`, `target_height`) |
 | `ResizeProcessNode` | process | Same, isolated in its own process |
 | `HashNode` | thread | Perceptual-hash dedup filter (`delta`, `hash_size`, `hash_type`) |
-| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy (`energy_threshold`) |
+| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy; owns turn-boundary assignment and barge-in cancellation (`energy_threshold`, `session_id`, `control_outputs`) |
 | `DrawNode` | thread | Draws detected boxes onto the frame |
 | `SaveImageNode` | thread | Writes frames to disk (`save_dir`) |
 | `ProcessDetInference` | process | Single-frame object detection (`model_config`) |
@@ -427,10 +427,10 @@ running the pipeline locally against real microphone/speaker hardware.
 | `ActiveLearning` | thread | Selects frames worth human labelling |
 | `CreateDataset` | thread | Assembles the resulting dataset |
 | `TextNormalizeNode` | thread | Non-CV: strips/lowercases `TextChunk.text` (`accepts`/`emits` = `TextChunk`) |
-| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `session_id`, `min_speech_duration`) — `AudioChunk` → `TextChunk` |
+| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `min_speech_duration`) — `AudioChunk` → `TextChunk`, propagating `session_id`/`turn_id` from `VadNode` |
 | `LlmNode` | thread | Answers transcriptions via a pluggable `LLMBackend`, keeping conversation history (`llm_config`, `system_prompt`) — `TextChunk` → `TextChunk` |
 | `TtsNode` | thread | Synthesizes replies via a remote TTS service (`tts_config`) — `TextChunk` → `AudioChunk` |
-| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device (`device`) |
+| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device, in blocks so barge-in can cut it off mid-playback (`device`, `playback_check_interval`) |
 
 Model-backed nodes take a `model_config` naming the backend (`TorchBackend`,
 `ONNXBackend`, `TRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
