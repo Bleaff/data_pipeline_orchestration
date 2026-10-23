@@ -168,6 +168,11 @@ ignore = [
 # Tests favor readability/duck-typed fakes over the doc/annotation/design rules that
 # matter for library code (see CLAUDE.md's testing guidance on lightweight mocks).
 "test/**" = ["D1", "ANN", "PLR2004", "SLF001", "ARG001", "ARG002", "FBT001", "FBT002", "S105", "S106"]
+# Root-level CLI launcher, not part of the neudc package: print() *is* its interface
+# (progress/config-picker output a user reads directly), not a library logging call,
+# and it's one linear top-to-bottom script — splitting main() further to dodge a
+# complexity threshold would add indirection without adding clarity.
+"run_voice_assistant.py" = ["T201", "C901", "PLR0915"]
 
 [tool.docformatter]
 wrap-summaries = 120

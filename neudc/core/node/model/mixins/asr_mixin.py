@@ -20,18 +20,21 @@ if TYPE_CHECKING:
 class AsrMixin:
     """Mixin turning a stream of VAD-tagged `AudioChunk`s into ASR `TextChunk`s.
 
-    `VadFilterMixin` already marks silent chunks via `chunk.drop`; this mixin reuses
-    that as utterance segmentation: it buffers consecutive speech chunks and, on the
-    next silent chunk, flushes the buffered utterance through `backend.transcribe`
-    (one HTTP call per utterance, not per chunk). A buffered utterance shorter than
-    `min_speech_duration` is discarded as noise, with no call made.
+    `VadFilterMixin` already marks silent chunks via `chunk.drop` and stamps
+    `session_id`/`turn_id` (it owns turn-boundary assignment so a barge-in can cancel
+    a turn before this mixin has even finished transcribing it, see its docstring);
+    this mixin reuses `chunk.drop` as utterance segmentation: it buffers consecutive
+    speech chunks and, on the next silent chunk, flushes the buffered utterance
+    through `backend.transcribe` (one HTTP call per utterance, not per chunk),
+    propagating the turn identity from the buffered chunks onto the emitted
+    `TextChunk`. A buffered utterance shorter than `min_speech_duration` is discarded
+    as noise, with no call made.
     """
 
     def __init__(
         self,
         backend: BaseASRBackend,
         *,
-        session_id: str = "default",
         min_speech_duration: float = 0.3,
     ) -> None:
         """Initialize the mixin.
@@ -39,23 +42,22 @@ class AsrMixin:
         Args:
         ----
             backend: ASR backend used to transcribe buffered utterances.
-            session_id: Stamped onto every emitted `TextChunk` for downstream turn tracking.
             min_speech_duration: Minimum buffered speech duration (seconds) worth transcribing.
 
         """
         self.backend = backend
-        self.session_id = session_id
         self.min_speech_duration = min_speech_duration
         self._buffer: list[np.ndarray] = []
         self._buffer_sample_rate: int | None = None
-        self._turn_id = 0
+        self._buffer_session_id: str | None = None
+        self._buffer_turn_id: int | None = None
 
     def process(self, chunk: AudioChunk) -> Iterator[TextChunk]:
         """Buffer speech, transcribing the buffered utterance once silence follows it.
 
         Args:
         ----
-            chunk: Incoming AudioChunk, already tagged by VAD via `chunk.drop`.
+            chunk: Incoming AudioChunk, already tagged by VAD via `chunk.drop`/`session_id`/`turn_id`.
 
         Yields:
         ------
@@ -67,16 +69,22 @@ class AsrMixin:
             if chunk.samples.size:
                 self._buffer.append(chunk.samples)
                 self._buffer_sample_rate = chunk.sample_rate
+                self._buffer_session_id = chunk.session_id
+                self._buffer_turn_id = chunk.turn_id
             return
 
         if not self._buffer:
             return
 
         sample_rate = self._buffer_sample_rate
+        session_id = self._buffer_session_id
+        turn_id = self._buffer_turn_id
         assert sample_rate is not None  # invariant: set alongside every append to a non-empty _buffer
         samples = np.concatenate(self._buffer)
         self._buffer = []
         self._buffer_sample_rate = None
+        self._buffer_session_id = None
+        self._buffer_turn_id = None
 
         duration = len(samples) / sample_rate
         if duration < self.min_speech_duration:
@@ -84,12 +92,11 @@ class AsrMixin:
             return
 
         text = self.backend.transcribe(samples, sample_rate)
-        self._turn_id += 1
         yield TextChunk(
             timestamp=time.time(),
             source=getattr(self, "id", "AsrNode"),
             text=text,
-            session_id=self.session_id,
-            turn_id=self._turn_id,
+            session_id=session_id,
+            turn_id=turn_id,
             is_final=True,
         )

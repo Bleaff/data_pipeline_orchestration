@@ -9,13 +9,23 @@ access needs a live `AudioOutputDevice` object, which plain YAML cannot express,
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.messaging.types import AudioChunk, BaseMessage
+from neudc.core.node.filters.mixins.aec import REFERENCE_SOURCE
+from neudc.utils import LOGGER
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import numpy as np
+
+#: How often (seconds of audio) playback pauses to re-check whether this chunk's turn
+#: was cancelled — the granularity of barge-in interruption. Small enough to feel
+#: instant, large enough not to fragment `device.write()` into pointless tiny calls.
+DEFAULT_PLAYBACK_CHECK_INTERVAL_SEC = 0.1
 
 
 @runtime_checkable
@@ -74,24 +84,48 @@ class SoundDeviceAudioOutputDevice:
 class AudioPlayerNode(BaseThreadedNode):
     """A node that plays incoming `AudioChunk` messages through a pluggable output device.
 
-    A sink: it consumes `AudioChunk`s and emits nothing, mirroring `SaveImageNode` for
-    the CV path. A chunk marked `drop` is skipped rather than played.
+    Mostly a sink — its real job is playback, mirroring `SaveImageNode` for the CV
+    path — but it also emits a copy of every block it actually writes to the device,
+    tagged `source="speaker-reference"`, so an AEC stage (see
+    `neudc/core/node/filters/mixins/aec.py`) can subtract "what we just played" from
+    the mic signal. Wire this node's `outputs` to `vad` for that (`VadFilterMixin`
+    recognizes `REFERENCE_SOURCE` and treats it as reference audio, not speech to
+    transcribe). A chunk marked `drop` is skipped rather than played, and emits
+    nothing.
+
+    Plays each chunk in small blocks rather than one `device.write()` call, re-checking
+    cancellation (`BaseNode._is_cancelled`) between blocks — this is what makes
+    barge-in (see `VadFilterMixin`) actually cut off audio already playing, not just
+    skip chunks that hadn't started yet: the framework's generic per-message
+    cancellation check in `BaseNode._handle` runs once, *before* `process()` starts,
+    so on its own it can't interrupt a single call already in progress against one
+    (potentially many-seconds-long) reply.
     """
 
     accepts: ClassVar[tuple[type[BaseMessage], ...]] = (AudioChunk,)
-    emits: ClassVar[tuple[type[BaseMessage], ...]] = ()
+    emits: ClassVar[tuple[type[BaseMessage], ...]] = (AudioChunk,)
 
-    def __init__(self, device: AudioOutputDevice, mailbox: Any, *, id: str = "AudioPlayerNode") -> None:
+    def __init__(
+        self,
+        device: AudioOutputDevice,
+        mailbox: Any,
+        *,
+        playback_check_interval: float = DEFAULT_PLAYBACK_CHECK_INTERVAL_SEC,
+        id: str = "AudioPlayerNode",
+    ) -> None:
         """Initialize AudioPlayerNode.
 
         Args:
         ----
             device (AudioOutputDevice): Pluggable audio output backend.
             mailbox (Any): Mailbox for receiving `AudioChunk` objects.
+            playback_check_interval (float): Seconds of audio played per block between
+                cancellation checks — the granularity of barge-in interruption.
             id (str): Identifier for this node instance.
 
         """
         self.device = device
+        self.playback_check_interval = playback_check_interval
         super().__init__(mailbox, id=id)
 
     @staticmethod
@@ -125,16 +159,47 @@ class AudioPlayerNode(BaseThreadedNode):
                 "inject it into the config dict before building the pipeline."
             )
             raise ValueError(msg)
-        return AudioPlayerNode(device=device, mailbox=config["mailbox"])
+        return AudioPlayerNode(
+            device=device,
+            mailbox=config["mailbox"],
+            playback_check_interval=config.get("playback_check_interval", DEFAULT_PLAYBACK_CHECK_INTERVAL_SEC),
+        )
 
-    def process(self, chunk: AudioChunk) -> None:
-        """Play `chunk` through the output device, unless it is marked `drop`.
+    def process(self, chunk: AudioChunk) -> Iterator[AudioChunk]:
+        """Play `chunk` through the output device in blocks, unless it is marked `drop`.
+
+        Stops early — without playing the rest — if `chunk`'s turn gets cancelled
+        partway through (barge-in): checked between blocks of
+        `playback_check_interval` seconds each, not just once up front.
 
         Args:
         ----
             chunk: Incoming AudioChunk to play.
 
+        Yields:
+        ------
+            One `AudioChunk` per block actually written to the device, tagged
+            `source="speaker-reference"`, for a downstream AEC stage. Nothing for a
+            dropped chunk, and nothing further once cancellation stops playback.
+
         """
         if chunk.drop:
             return
-        self.device.write(chunk.samples)
+
+        block_frames = max(1, int(chunk.sample_rate * self.playback_check_interval))
+        samples = chunk.samples
+        for start in range(0, len(samples), block_frames):
+            if self._is_cancelled(chunk.session_id, chunk.turn_id):
+                LOGGER.info(f"[{self.id}] playback of turn {chunk.turn_id} interrupted (barge-in)")
+                return
+            block = samples[start : start + block_frames]
+            self.device.write(block)
+            yield AudioChunk(
+                timestamp=time.time(),
+                source=REFERENCE_SOURCE,
+                samples=block,
+                sample_rate=chunk.sample_rate,
+                channels=chunk.channels,
+                session_id=chunk.session_id,
+                turn_id=chunk.turn_id,
+            )

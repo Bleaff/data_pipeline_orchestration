@@ -72,14 +72,26 @@ class SoundDeviceAudioDevice:
         except ImportError as e:
             msg = "SoundDeviceAudioDevice requires the optional 'sounddevice' package: pip install -e '.[audio]'"
             raise ImportError(msg) from e
+        self.channels = channels
         self._stream = sd.InputStream(samplerate=sample_rate, channels=channels, device=device)
         self._stream.start()
 
     def read(self, n_frames: int) -> np.ndarray:
-        """Block until ``n_frames`` samples are captured and return them."""
+        """Block until ``n_frames`` samples are captured and return them.
+
+        ``sd.InputStream.read`` always returns a 2D ``(n_frames, channels)`` array,
+        even for mono — flattened to 1D here for mono capture so the real device
+        matches the ``AudioDevice`` contract every other node/test assumes (see
+        ``FakeAudioDevice`` in ``test/core/node/readers/test_audio_reader.py``, and
+        every downstream consumer of ``AudioChunk.samples``). Left 2D for
+        ``channels > 1``: there is no single-array convention for multi-channel
+        elsewhere in this codebase to flatten into.
+        """
         data, overflowed = self._stream.read(n_frames)
         if overflowed:
             LOGGER.warning("Audio input overflowed; some samples may have been dropped.")
+        if self.channels == 1:
+            data = data.reshape(-1)
         return data
 
     def close(self) -> None:

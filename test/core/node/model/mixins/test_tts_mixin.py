@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from neudc.core.communication.messaging.types import TextChunk
-from neudc.core.node.model.mixins.tts_mixin import TtsMixin
+from neudc.core.node.model.mixins.tts_mixin import TtsMixin, _sanitize_for_speech
 
 
 class _FakeTTSBackend:
@@ -94,3 +94,68 @@ def test_buffer_resets_after_flush() -> None:
     list(mixin.process(_chunk("second", is_final=True)))
 
     assert backend.calls == ["first", "second"]
+
+
+def test_interrupted_turn_does_not_leak_into_the_next_turns_reply() -> None:
+    # Barge-in: turn 1 gets cancelled mid-stream, so it never gets an is_final chunk
+    # (VadFilterMixin/BaseNode._handle stop delivering it, see AudioPlayerNode /
+    # VadFilterMixin docstrings). Turn 2's deltas must not get turn 1's leftover
+    # partial text spliced onto the front of them.
+    backend = _FakeTTSBackend()
+    mixin = TtsMixin(backend)
+
+    list(mixin.process(_chunk("Turn one, never ", is_final=False, turn_id=1)))
+    list(mixin.process(_chunk("finished", is_final=False, turn_id=1)))  # turn 1 cut off here, no final ever arrives
+
+    out = list(mixin.process(_chunk("Turn two.", is_final=True, turn_id=2)))
+
+    assert backend.calls == ["Turn two."]
+    assert out[0].turn_id == 2
+
+
+def test_different_session_id_also_resets_the_buffer() -> None:
+    backend = _FakeTTSBackend()
+    mixin = TtsMixin(backend)
+
+    list(mixin.process(_chunk("leftover", is_final=False, session_id="s1", turn_id=1)))
+    list(mixin.process(_chunk("fresh", is_final=True, session_id="s2", turn_id=1)))
+
+    assert backend.calls == ["fresh"]
+
+
+# === _sanitize_for_speech: markdown formatting stripped before it reaches TTS.
+
+
+def test_sanitize_strips_bold_and_italic_markers() -> None:
+    assert _sanitize_for_speech("This is **bold** and *italic* and _also italic_.") == (
+        "This is bold and italic and also italic."
+    )
+
+
+def test_sanitize_strips_strikethrough_tildes() -> None:
+    assert _sanitize_for_speech("Ready in ~5 minutes.") == "Ready in 5 minutes."
+
+
+def test_sanitize_strips_inline_code_backticks() -> None:
+    assert _sanitize_for_speech("Run `python3 main.py` to start.") == "Run python3 main.py to start."
+
+
+def test_sanitize_strips_heading_hashes() -> None:
+    assert _sanitize_for_speech("# Heading\nBody text.") == "Heading Body text."
+
+
+def test_sanitize_collapses_whitespace_left_behind() -> None:
+    assert _sanitize_for_speech("Line one.\n\nLine   two.") == "Line one. Line two."
+
+
+def test_sanitize_leaves_plain_text_untouched() -> None:
+    assert _sanitize_for_speech("Just a normal sentence.") == "Just a normal sentence."
+
+
+def test_process_sanitizes_buffered_text_before_synthesizing() -> None:
+    backend = _FakeTTSBackend()
+    mixin = TtsMixin(backend)
+
+    list(mixin.process(_chunk("It'll take **~5** minutes.", is_final=True)))
+
+    assert backend.calls == ["It'll take 5 minutes."]

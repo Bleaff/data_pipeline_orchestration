@@ -41,6 +41,7 @@ class NodeFactory:
         "LlmNode": ("neudc.core.node.model.llm_node", "LlmNode"),
         "TtsNode": ("neudc.core.node.model.tts_node", "TtsNode"),
         "AudioPlayerNode": ("neudc.core.node.broadcast.audio_player", "AudioPlayerNode"),
+        "AgentToolNode": ("neudc.core.node.processors.agent_tool_node", "AgentToolNode"),
     }
 
     @staticmethod

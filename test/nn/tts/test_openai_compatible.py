@@ -87,6 +87,26 @@ def test_synthesize_omits_voice_when_not_given():
     assert "voice" not in backend._session.last_call["json"]
 
 
+def test_synthesize_sends_speed_when_given():
+    backend = OpenAICompatibleTTSBackend("tts-1", speed=0.85, base_url="http://fake.test/v1")
+    wav_bytes = _make_wav_bytes(np.zeros(10, dtype=np.int16), sample_rate=16000)
+    backend._session = _FakeSession(_FakeResponse(content=wav_bytes))
+
+    backend.synthesize("hi")
+
+    assert backend._session.last_call["json"]["speed"] == 0.85
+
+
+def test_synthesize_omits_speed_when_not_given():
+    backend = OpenAICompatibleTTSBackend("tts-1", base_url="http://fake.test/v1")
+    wav_bytes = _make_wav_bytes(np.zeros(10, dtype=np.int16), sample_rate=16000)
+    backend._session = _FakeSession(_FakeResponse(content=wav_bytes))
+
+    backend.synthesize("hi")
+
+    assert "speed" not in backend._session.last_call["json"]
+
+
 def test_synthesize_raises_on_http_error():
     backend = OpenAICompatibleTTSBackend("tts-1", base_url="http://fake.test/v1")
     backend._session = _FakeSession(_FakeResponse(status_error=requests.HTTPError("boom")))

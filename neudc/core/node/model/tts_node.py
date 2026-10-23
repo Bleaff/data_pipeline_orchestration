@@ -36,7 +36,8 @@ class TtsNode(TtsMixin, BaseThreadedNode):
         Args:
         ----
             config (dict): Configuration with keys `mailbox` and `tts_config` (a mapping
-                with `model_id`, `base_url`, and optionally `voice`/`api_key`/`timeout`).
+                with `model_id`, `base_url`, and optionally
+                `voice`/`speed`/`api_key`/`timeout`).
 
         Returns:
         -------
@@ -47,6 +48,7 @@ class TtsNode(TtsMixin, BaseThreadedNode):
         backend = OpenAICompatibleTTSBackend(
             model_id=tts_config["model_id"],
             voice=tts_config.get("voice"),
+            speed=tts_config.get("speed"),
             base_url=tts_config["base_url"],
             api_key=tts_config.get("api_key"),
             timeout=tts_config.get("timeout", 60.0),

@@ -255,12 +255,21 @@ def test_example_multimodal_pipeline_config_is_valid() -> None:
 
 
 def test_voice_assistant_pipeline_config_is_valid() -> None:
-    # Full mic -> vad -> asr -> llm -> tts -> player graph: exercises payload-compat
-    # across every non-Frame edge type (AudioChunk -> TextChunk -> AudioChunk) on real,
-    # registered node classes rather than a synthetic two-node fixture.
+    # Full mic -> vad -> asr -> llm -> tool -> tts -> player -> vad graph: exercises
+    # payload-compat across every non-Frame edge type (AudioChunk -> TextChunk ->
+    # AudioChunk), including the AEC reference edge closing the loop back to vad and
+    # AgentToolNode's TextChunk -> TextChunk pass-through, on real, registered node
+    # classes rather than a synthetic two-node fixture.
     config_path = Path("assets/configs/voice_assistant_pipeline.yaml")
     parsed = validate_pipeline_config(load_config(config_path))
-    assert [n.id for n in parsed.nodes] == ["reader", "vad", "asr", "llm", "tts", "player"]
+    assert [n.id for n in parsed.nodes] == ["reader", "vad", "asr", "llm", "tool", "tts", "player"]
+
+
+def test_voice_assistant_pipeline_ru_config_is_valid() -> None:
+    # Russian-language variant (config/code prep only, no deploy) — same graph shape.
+    config_path = Path("assets/configs/voice_assistant_pipeline_ru.yaml")
+    parsed = validate_pipeline_config(load_config(config_path))
+    assert [n.id for n in parsed.nodes] == ["reader", "vad", "asr", "llm", "tool", "tts", "player"]
 
 
 def test_queue_policy_and_message_queue_size_default() -> None:

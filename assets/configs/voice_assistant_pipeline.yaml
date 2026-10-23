@@ -1,7 +1,7 @@
-# End-to-end voice assistant: mic -> VAD -> ASR -> LLM -> TTS -> speaker.
+# End-to-end voice assistant: mic -> VAD -> ASR -> LLM -> tools -> TTS -> speaker.
 #
 # Chain: reader (AudioReaderNode) -> vad (VadNode) -> asr (AsrNode) -> llm (LlmNode)
-# -> tts (TtsNode) -> player (AudioPlayerNode).
+# -> tool (AgentToolNode) -> tts (TtsNode) -> player (AudioPlayerNode).
 #
 # ASR/LLM/TTS all call out to remote OpenAI-compatible HTTP services (see
 # docs/voice_assistant/README.md for how to stand those up on a GPU box) rather than
@@ -29,6 +29,57 @@
 #   player_config["device"] = SoundDeviceAudioOutputDevice(sample_rate=22050, channels=1)
 #
 # Requires the optional `audio` extra for real hardware: pip install -e ".[audio]"
+#
+# Barge-in: `vad` owns turn-boundary assignment (stamps session_id/turn_id on every
+# AudioChunk) so it's the only node early enough to know "the user started talking
+# again" before that speech has even been transcribed. Its `control_outputs` below
+# wire a priority CANCEL straight to `llm`/`tool`/`tts`/`player` on that rising edge,
+# interrupting whatever reply is still being generated, tool-resolved, synthesized,
+# or played — see `VadFilterMixin`/`AudioPlayerNode` docstrings for the mechanism.
+# `tool` can't be interrupted *mid* tool-call the way `player` can mid-block (a single
+# tool call is one synchronous, non-generator process()) — the cancel just means an
+# already-cancelled turn's tool call is skipped outright if it hasn't started yet.
+# `llm_config.stream: true` matters here too: only a streaming generate() gets
+# checked for cancellation between tokens (word generation actually stops, not just
+# "finishes generating a reply nobody hears"); a non-streaming call can't be aborted
+# mid-flight once fired.
+#
+# Echo / "talking to itself": `player`'s outputs feed a copy of every block it
+# actually plays back into `vad` (tagged source="speaker-reference"), which routes it
+# into an adaptive NLMS echo canceller (`aec_enabled: true` below, see
+# neudc/core/node/filters/mixins/aec.py) instead of forwarding it as mic input. The
+# estimated echo is subtracted from mic chunks *before* the RMS/turn logic runs, so a
+# laptop with mic and speakers close together no longer needs a blunt, hand-tuned
+# energy threshold to tell "the assistant's own voice" from "the user actually
+# talking again" — both silence detection and what ASR receives are working from the
+# cleaned signal. `mic_sample_rate` must match `reader.sample_rate` (both 16000 here);
+# `aec_filter_length`/`aec_step_size` are the adaptive filter's taps/adaptation rate,
+# defaults are usually fine to start with. `barge_in_energy_threshold`/
+# `barge_in_cooldown_sec` remain as an on-top safety net (see VadFilterMixin
+# docstring) — with AEC on they can stay close to `energy_threshold` rather than
+# needing to be inflated to filter out raw echo.
+#
+# ASR hallucination on silence/noise: even with AEC and the barge-in thresholds
+# above, brief residual echo/noise that still clears `energy_threshold` and
+# `min_speech_duration` gets sent to Whisper for transcription — and Whisper is well
+# documented to hallucinate fluent, plausible-sounding filler text ("thanks for
+# watching", "to be continued") from near-silent/noisy audio rather than returning
+# nothing. Confirmed directly against this deployment: low-level noise transcribed to
+# a real Russian sentence with `no_speech_prob` > 0.89, while genuine speech scored
+# under 0.001 — a clean signal. Without filtering, that hallucinated text reaches
+# `llm` as if the user said it, the model replies to it, that reply gets spoken and
+# partially picked back up by the mic, and the cycle can repeat indefinitely (the
+# assistant appears to "talk to itself and never stop"). `asr.no_speech_threshold`
+# below (`OpenAICompatibleASRBackend`) rejects a transcription whose average
+# `no_speech_prob` exceeds it, before it ever reaches `llm`.
+#
+# Agent tools: `tool` (AgentToolNode) sits between `llm` and `tts` and resolves inline
+# `[[tool_name({...})]]` markers the LLM emits (see AgentToolMixin) — timers/
+# reminders, web page fetch+parse, and sandboxed file create/read (confined to
+# `sandbox_dir`, never touching the filesystem outside it). Tools run autonomously,
+# no per-call confirmation. `llm.system_prompt` below includes the exact marker
+# syntax and tool list so Gemma actually knows to use it — kept in sync by hand with
+# `tool_system_prompt()`'s output for the three tools enabled here.
 
 nodes:
   - id: reader
@@ -42,6 +93,14 @@ nodes:
   - id: vad
     type: VadNode
     energy_threshold: 0.01
+    barge_in_energy_threshold: 0.02  # a light safety-net margin above energy_threshold now that AEC handles echo
+    barge_in_cooldown_sec: 1.5
+    session_id: "local-voice-assistant"
+    aec_enabled: true
+    aec_filter_length: 2048
+    aec_step_size: 0.3
+    mic_sample_rate: 16000  # must match reader.sample_rate above
+    control_outputs: [llm, tool, tts, player]
     outputs: [asr]
 
   - id: asr
@@ -49,7 +108,7 @@ nodes:
     asr_config:
       model_id: "Systran/faster-whisper-large-v3"
       base_url: "http://192.168.1.153:5241/v1"
-    session_id: "local-voice-assistant"
+      no_speech_threshold: 0.6  # default — rejects Whisper hallucinating text on silence/residual echo, see OpenAICompatibleASRBackend
     min_speech_duration: 0.3
     outputs: [llm]
 
@@ -61,9 +120,32 @@ nodes:
       # (confirmed by testing) — kept descriptive for humans reading this config.
       model_id: "gemma-4-12b-it-UD-Q4_K_XL"
       base_url: "http://192.168.1.153:5242/v1"
-      stream: false
+      stream: true
       temperature: 0.7
-    system_prompt: "You are a concise, helpful voice assistant. Keep replies short."
+    system_prompt: >
+      You are a concise, helpful voice assistant. Keep replies short. Your replies
+      are read aloud by a text-to-speech engine, so never use markdown formatting —
+      no asterisks, underscores, tildes, backticks, headings, or bullet points.
+      Write plain sentences only.
+      You can use tools by writing exactly one marker per call, anywhere in your
+      reply, in the form [[tool_name({"arg": "value"})]] — the arguments must be
+      valid JSON. Available tools:
+      - set_timer({"seconds": <number>, "label": <string, optional>}) - schedules a
+      reminder that will be spoken after the given number of seconds.
+      - fetch_url({"url": <string>}) - fetches a web page and returns its visible
+      text (truncated).
+      - create_file({"path": <string>, "content": <string>}) - creates or overwrites
+      a file inside the assistant's sandbox directory.
+      - read_file({"path": <string>}) - reads a file from the assistant's sandbox
+      directory.
+    outputs: [tool]
+
+  - id: tool
+    type: AgentToolNode
+    session_id: "local-voice-assistant"  # matches vad's, so a timer reminder lands on the active turn
+    sandbox_dir: "./agent_sandbox"  # create_file/read_file are confined to this directory
+    fetch_timeout: 10.0
+    fetch_max_chars: 1500
     outputs: [tts]
 
   - id: tts
@@ -71,9 +153,10 @@ nodes:
     tts_config:
       model_id: "tts-1"
       voice: "alloy"  # openedai-speech's OpenAI-style voice alias, verified working
+      speed: 0.9  # slightly slower than 1.0 (normal) — easier to follow for a voice assistant
       base_url: "http://192.168.1.153:5243/v1"
     outputs: [player]
 
   - id: player
     type: AudioPlayerNode
-    outputs: []
+    outputs: [vad]  # feeds back a copy of every played block as AEC reference audio

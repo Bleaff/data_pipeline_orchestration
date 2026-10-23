@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-import requests
-
+from neudc.nn.backends.http_session import build_retrying_session
 from neudc.nn.backends.llm.base import BaseLLMBackend
 from neudc.utils import LOGGER
 
@@ -56,7 +55,7 @@ class OpenAICompatibleBackend(BaseLLMBackend):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
-        self._session = requests.Session()
+        self._session = build_retrying_session()
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -142,6 +141,16 @@ class OpenAICompatibleBackend(BaseLLMBackend):
             stream=True,
         )
         response.raise_for_status()
+        # `requests` defaults `.encoding` to ISO-8859-1 for any `text/*` response whose
+        # Content-Type omits an explicit charset (RFC 2616's default, which it still
+        # follows) — `text/event-stream` from llama-server/vLLM/etc. does exactly
+        # that. Left alone, `iter_lines(decode_unicode=True)` decodes every chunk
+        # with that wrong codec: every multi-byte UTF-8 character (all Cyrillic,
+        # among others) comes out as mojibake, `json.loads` chokes on the corrupted
+        # escaping ("Skipping malformed SSE chunk"), and whatever *does* parse is
+        # still wrong text. OpenAI-compatible SSE is always UTF-8 regardless of what
+        # the header does or doesn't declare, so this is always correct to force.
+        response.encoding = "utf-8"
         for raw_line in response.iter_lines(decode_unicode=True):
             if not raw_line or not raw_line.startswith(_SSE_DATA_PREFIX):
                 continue
