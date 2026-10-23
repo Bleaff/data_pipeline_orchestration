@@ -174,3 +174,56 @@ def test_leftover_marker_not_stripped_when_no_tools_configured() -> None:
     result = mixin.process(_chunk("some [[literal]] brackets in conversation"))
 
     assert result.text == "some [[literal]] brackets in conversation"
+
+
+def _delta(text: str, *, is_final: bool = False, turn_id: int = 1) -> TextChunk:
+    return TextChunk(timestamp=1.0, source="llm", text=text, session_id="s", turn_id=turn_id, is_final=is_final)
+
+
+def _stream(mixin: AgentToolMixin, deltas: list[str], *, turn_id: int = 1) -> list[str]:
+    """Feed `deltas` as one streamed turn (plus the empty final trailer `LlmMixin` sends)."""
+    chunks = [_delta(d, turn_id=turn_id) for d in deltas] + [_delta("", is_final=True, turn_id=turn_id)]
+    return [mixin.process(c).text for c in chunks]
+
+
+def test_resolves_a_marker_split_across_streamed_deltas() -> None:
+    tool = _FakeTool()
+    mixin = AgentToolMixin(tools={tool.name: tool})
+
+    out = _stream(mixin, ["Ok, ", "[", "[", "fake", "_tool", '({"', "x", '": 5', "})", "]", "]", " done"])
+
+    assert "".join(out) == "Ok, fake-result-5 done"
+    assert tool.calls == [{"x": 5}]
+
+
+def test_text_before_a_marker_is_not_held_back() -> None:
+    tool = _FakeTool()
+    mixin = AgentToolMixin(tools={tool.name: tool})
+
+    first = mixin.process(_delta("Setting it now "))
+    held = mixin.process(_delta('[[fake_tool({"x"'))
+
+    assert first.text == "Setting it now "
+    assert held.text == ""
+    assert tool.calls == []
+
+
+def test_final_chunk_flushes_an_unclosed_marker() -> None:
+    tool = _FakeTool()
+    mixin = AgentToolMixin(tools={tool.name: tool})
+
+    out = _stream(mixin, ["Sure ", '[[fake_tool({"x": 1}'])
+
+    assert "".join(out) == 'Sure [[fake_tool({"x": 1}'
+    assert tool.calls == []
+
+
+def test_held_text_from_a_cancelled_turn_is_discarded() -> None:
+    tool = _FakeTool()
+    mixin = AgentToolMixin(tools={tool.name: tool})
+
+    mixin.process(_delta("[[fake_", turn_id=1))  # turn 1 cancelled: its final never arrives
+    out = _stream(mixin, ["hello"], turn_id=2)
+
+    assert "".join(out) == "hello"
+    assert tool.calls == []

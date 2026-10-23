@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING
 
 import pytest
@@ -57,15 +58,49 @@ def test_individual_tool_groups_can_be_disabled(tmp_path: Path) -> None:
     assert set(node.tools) == {"create_file", "read_file"}
 
 
-def test_timer_tool_uses_the_node_mailbox_and_session_id(tmp_path: Path) -> None:
-    mailbox = ZMQMailbox()
+def test_timer_tool_delivers_to_the_node_outbox_with_session_id(tmp_path: Path) -> None:
     node = AgentToolNode.from_config(
-        {"mailbox": mailbox, "sandbox_dir": str(tmp_path), "session_id": "sess-42"},
+        {"mailbox": ZMQMailbox(), "sandbox_dir": str(tmp_path), "session_id": "sess-42"},
     )
 
     timer = node.tools["set_timer"]
-    assert timer._mailbox is mailbox
     assert timer._session_id == "sess-42"
+    timer._fire("pasta")
+    reminder = node.outbox.get_nowait()
+    assert reminder.text == "Reminder: pasta"
+    assert reminder.session_id == "sess-42"
+
+
+class _RecordingMailbox:
+    """Records which thread each send happens on; receive() returns nothing."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, object]] = []
+
+    def send(self, item) -> None:
+        self.sent.append((threading.current_thread().name, item))
+
+    def receive(self, timeout=None):
+        del timeout
+
+
+def test_timer_reminder_is_sent_from_the_node_thread_not_the_timer_thread() -> None:
+    mailbox = _RecordingMailbox()
+    node = AgentToolNode.from_config({"mailbox": mailbox, "enable_file_io": False, "enable_web_fetch": False})
+
+    fired = threading.Thread(target=node.tools["set_timer"]._fire, args=("pasta",), name="timer-thread")
+    fired.start()
+    fired.join()
+    assert mailbox.sent == []  # queued only — the timer thread never touches the mailbox
+
+    node._collect_data()  # what the node's run loop calls before every receive
+
+    assert len(mailbox.sent) == 1
+    sender, reminder = mailbox.sent[0]
+    assert sender == threading.current_thread().name
+    assert sender != "timer-thread"
+    assert reminder.text == "Reminder: pasta"
+    assert node.outbox.empty()
 
 
 def test_fetch_tool_uses_configured_timeout_and_max_chars(tmp_path: Path) -> None:

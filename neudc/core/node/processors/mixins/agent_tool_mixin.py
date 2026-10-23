@@ -18,6 +18,12 @@ was set, a file was saved) where the LLM doesn't need the result to phrase a sen
 reply, weaker for a tool whose result should shape the wording (e.g. summarizing a
 fetched page in different words than the page itself uses). A second pass through
 `LlmNode` is a natural follow-up, not built here.
+
+Works with a streaming `LlmNode` (`stream: true`): each delta is one token or so, so
+a marker almost always arrives split across several chunks. Text from an unclosed
+`[[` onward is held back and prepended to the next chunk of the same turn, then
+flushed (resolved or stripped) on the turn's `is_final` chunk — a marker is only
+ever matched against complete text, never a fragment.
 """
 
 from __future__ import annotations
@@ -47,6 +53,20 @@ _TOOL_CALL_RE = re.compile(r"\[\[\s*(\w+)\s*\(\s*(\{.*?\})\s*\)\s*\]\]", re.DOTA
 #: call (bad JSON, extra text inside the brackets) that would otherwise reach `TtsMixin`
 #: and get read aloud literally, exactly the "double brackets" failure mode this guards.
 _LEFTOVER_MARKER_RE = re.compile(r"\[\[.*?\]\]", re.DOTALL)
+
+
+def _incomplete_marker_start(text: str) -> int:
+    """Index where a possibly-unfinished tool-call marker starts in `text`, or `len(text)` if none.
+
+    The last `[[` with no `]]` after it is unfinished; so is a lone trailing `[`,
+    which the next streamed delta may turn into `[[`.
+    """
+    start = text.rfind("[[")
+    if start != -1 and "]]" not in text[start + 2 :]:
+        return start
+    if text.endswith("["):
+        return len(text) - 1
+    return len(text)
 
 
 def tool_system_prompt(tools: dict[str, Tool]) -> str:
@@ -91,32 +111,60 @@ class AgentToolMixin:
 
         """
         self.tools = tools
+        self._pending = ""
+        self._pending_turn_key: tuple[str | None, int | None] | None = None
 
     def process(self, chunk: TextChunk) -> TextChunk:
         """Resolve every tool-call marker in `chunk.text`, passthrough otherwise.
 
+        A non-final chunk whose text ends inside a possible marker (an unclosed `[[`,
+        or a trailing `[`) has that tail held back until the next chunk of the same
+        (session_id, turn_id) completes it; the `is_final` chunk flushes whatever is
+        held. A chunk from a different turn discards held text first — that turn was
+        cancelled before its final chunk arrived (see `VadFilterMixin`).
+
         Args:
         ----
-            chunk: Incoming `TextChunk`, typically `LlmNode`'s reply.
+            chunk: Incoming `TextChunk`, typically `LlmNode`'s reply or one delta of it.
 
         Returns:
         -------
             The same `TextChunk`, with every recognized marker replaced by that
-            tool's result (or a short error message); text outside markers is
-            untouched, and a dropped or empty-text chunk passes through as-is.
+            tool's result (or a short error message) and any held-back tail removed;
+            text outside markers is untouched, and a dropped chunk passes through as-is.
 
         """
-        if getattr(chunk, "drop", False) or not chunk.text:
+        if getattr(chunk, "drop", False):
             return chunk
-        chunk.text = _TOOL_CALL_RE.sub(self._resolve_call, chunk.text)
+
+        turn_key = (chunk.session_id, chunk.turn_id)
+        if turn_key != self._pending_turn_key:
+            self._pending = ""
+            self._pending_turn_key = turn_key
+
+        text = self._pending + chunk.text
+        if chunk.is_final:
+            ready, self._pending = text, ""
+            self._pending_turn_key = None
+        else:
+            split = _incomplete_marker_start(text)
+            ready, self._pending = text[:split], text[split:]
+
+        chunk.text = self._resolve_text(ready)
+        return chunk
+
+    def _resolve_text(self, text: str) -> str:
+        if not text:
+            return text
+        text = _TOOL_CALL_RE.sub(self._resolve_call, text)
         # Only when tools are actually offered: with none configured, the LLM was
         # never told the [[...]] syntax means anything, so a literal "[[" in a reply
         # is just text, not a botched tool call — stripping it there would be an
         # unrelated, surprising mutation of ordinary conversation.
-        if self.tools and _LEFTOVER_MARKER_RE.search(chunk.text):
-            LOGGER.warning(f"Stripping unresolved tool-call-shaped text: {chunk.text!r}")
-            chunk.text = _LEFTOVER_MARKER_RE.sub("", chunk.text)
-        return chunk
+        if self.tools and _LEFTOVER_MARKER_RE.search(text):
+            LOGGER.warning(f"Stripping unresolved tool-call-shaped text: {text!r}")
+            text = _LEFTOVER_MARKER_RE.sub("", text)
+        return text
 
     def _resolve_call(self, match: re.Match[str]) -> str:
         tool_name, raw_args = match.group(1), match.group(2)
