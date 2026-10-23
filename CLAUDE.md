@@ -38,9 +38,17 @@ pre-commit run --all-files
 # Editable install (+ optional extras)
 pip install -e .
 pip install -e ".[dev]"   # dev tooling
+pip install -e ".[cv]"    # detection/embedding/active-learning stack (torch, opencv, ultralytics, ...)
+pip install -e ".[audio]" # voice assistant: sounddevice
+pip install -e ".[api]"   # control-plane server: uvicorn, websockets
 pip install -e ".[trt]"   # TensorRT backend
 pip install -e ".[onnx]"  # ONNX Runtime backend
 ```
+
+`.` alone (no extras) is enough for the voice-assistant/control-plane path — the CV
+model stack (`cv` extra) is not a hard dependency; see `neudc/nn/__init__.py`'s lazy
+`MODEL_IMPORTS` and `neudc/nn/backends/__init__.py`'s guarded `torch` import. A CV node
+(detection/embedding/blur) needs `.[cv]`.
 
 Python floor is **3.11** (code uses `enum.StrEnum` / `typing.Self`). Line length is **120**.
 
