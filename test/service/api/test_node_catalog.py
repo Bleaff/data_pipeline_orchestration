@@ -4,8 +4,23 @@ from __future__ import annotations
 
 import sys
 
+import pytest
+
 from neudc.core.node.node_factory import NodeFactory
 from neudc.service.api.node_catalog import get_node_catalog
+
+# Every module that (transitively) runs the `cv` guard in base_process_inference.
+_INFERENCE_MODULES = tuple(
+    f"neudc.core.node.model.{name}"
+    for name in (
+        "base_process_inference",
+        "base_batch_process_inference",
+        "proc_det_inference",
+        "proc_blur_inference",
+        "proc_det_batch_inference",
+        "proc_embedding_inference",
+    )
+)
 
 
 def test_every_catalog_entry_is_a_known_node_factory_type():
@@ -74,13 +89,28 @@ def test_required_fields_have_no_default_value_semantics_conflict():
                 assert field.default is None, f"{entry.type}.{field.name} is required but has a default"
 
 
-def test_node_types_that_cannot_be_imported_are_left_out(monkeypatch):
-    # Simulates an API-only install without the `cv` extra: FolderImageNode's module
-    # imports cv2. The rest of the catalog must still be served instead of a 500.
+def test_node_types_missing_an_extra_are_left_out(without_cv2):
+    # Simulates an API-only install without the `cv` extra. The rest of the catalog must
+    # still be served instead of a 500, and nothing that needs cv2 may be offered.
     full = {entry.type for entry in get_node_catalog()}
-    monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
+    without_cv2("neudc.core.node.readers.image_reader", *_INFERENCE_MODULES)
 
     catalog_types = {entry.type for entry in get_node_catalog()}
 
-    assert "FolderImageNode" in full
-    assert catalog_types == full - {"FolderImageNode"}
+    cv_nodes = {
+        "FolderImageNode",
+        "ProcessDetInference",
+        "ProcessBlurInference",
+        "ProcessDetBatchInference",
+        "ProcessEmbeddingInference",
+    }
+    assert cv_nodes <= full
+    assert catalog_types == full - cv_nodes
+
+
+def test_unrelated_node_import_failure_is_not_hidden(monkeypatch):
+    # A genuine bug in a node module must surface, not quietly drop the node from the builder.
+    monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
+
+    with pytest.raises(ModuleNotFoundError):
+        get_node_catalog()

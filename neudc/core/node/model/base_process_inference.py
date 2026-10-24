@@ -11,11 +11,18 @@ from typing import TYPE_CHECKING, Any
 from neudc.core.base.base_process import BaseProcessNode
 from neudc.nn import ModelFactory
 from neudc.utils import LOGGER
+from neudc.utils.extras import require_extra
 
 if TYPE_CHECKING:
     from neudc.core.communication.messaging.types import Frame
     from neudc.nn.models.cls.base import BaseClsModel
     from neudc.nn.models.det.base import BaseDetector
+
+# Every model in `neudc.nn.MODEL_IMPORTS` needs cv2, but `neudc.nn` loads them lazily —
+# only inside the spawned process, at `ModelFactory.create`. Fail here instead, at import
+# time, so `NodeFactory`, config validation and the builder catalog all see that the
+# inference nodes (det/blur/embedding, batch or not) can't run without the `cv` extra.
+require_extra("cv", "cv2")
 
 
 class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):

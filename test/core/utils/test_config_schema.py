@@ -357,9 +357,16 @@ def test_negative_health_check_interval_is_rejected() -> None:
         validate_pipeline_config(cfg)
 
 
-def test_node_whose_class_cannot_be_imported_is_a_config_error_naming_it(monkeypatch) -> None:
-    # Simulates a CV node on an install without the `cv` extra (cv2 missing).
+def test_node_missing_an_extra_is_a_config_error_naming_it(without_cv2) -> None:
+    # A CV node on an install without the `cv` extra.
+    without_cv2("neudc.core.node.readers.image_reader")
+
+    with pytest.raises(ConfigError, match=r"Node 'reader': Node type 'FolderImageNode' needs the `cv` extra"):
+        validate_pipeline_config(_VALID)
+
+
+def test_unrelated_node_import_failure_is_not_turned_into_a_config_error(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
 
-    with pytest.raises(ConfigError, match=r"Node 'reader': Node type 'FolderImageNode' could not be imported"):
+    with pytest.raises(ModuleNotFoundError):
         validate_pipeline_config(_VALID)

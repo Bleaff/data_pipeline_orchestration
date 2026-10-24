@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import importlib
 from typing import TYPE_CHECKING, Any
 
 from neudc.nn.backends import get_backend
 from neudc.utils import LOGGER
+from neudc.utils.extras import import_module_for
 
 if TYPE_CHECKING:
     from neudc.nn.models.cls.base import BaseClsModel
@@ -58,7 +58,7 @@ class ModelFactory:
             raise ValueError(msg)
 
         module_path, class_name = MODEL_IMPORTS[model_type]
-        model_class = getattr(importlib.import_module(module_path), class_name)
+        model_class = getattr(import_module_for(module_path, f"Model type '{model_type}'"), class_name)
         backend = get_backend(backend_name)
         config["backend"] = backend
         LOGGER.debug(f"Instantiating model: {model_type} with backend {backend_name}")

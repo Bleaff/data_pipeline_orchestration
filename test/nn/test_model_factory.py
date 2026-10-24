@@ -9,6 +9,7 @@ import types
 import pytest
 
 from neudc.nn import MODEL_IMPORTS, ModelFactory
+from neudc.utils.extras import MissingExtraError
 
 
 def test_create_rejects_non_dict_config() -> None:
@@ -25,6 +26,13 @@ def test_known_model_types_map_to_importable_classes() -> None:
     for module_path, class_name in MODEL_IMPORTS.values():
         module = __import__(module_path, fromlist=[class_name])
         assert hasattr(module, class_name)
+
+
+def test_create_names_the_model_type_and_extra_when_an_extra_is_missing(without_cv2) -> None:
+    without_cv2("neudc.nn.models.det.yolo")
+
+    with pytest.raises(MissingExtraError, match=r"Model type 'YOLOv8' needs the `cv` extra"):
+        ModelFactory.create({"type": "YOLOv8", "path": "unused"})
 
 
 def test_create_resolves_module_lazily_through_model_imports(monkeypatch: pytest.MonkeyPatch) -> None:

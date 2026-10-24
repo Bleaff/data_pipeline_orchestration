@@ -48,7 +48,10 @@ pip install -e ".[onnx]"  # ONNX Runtime backend
 `.` alone (no extras) is enough for the voice-assistant/control-plane path — the CV
 model stack (`cv` extra) is not a hard dependency; see `neudc/nn/__init__.py`'s lazy
 `MODEL_IMPORTS` and `neudc/nn/backends/__init__.py`'s guarded `torch` import. A CV node
-(detection/embedding/blur) needs `.[cv]`.
+(detection/embedding/blur) needs `.[cv]`. A node that needs an extra must fail at *import*
+with `MissingExtraError` (`neudc/utils/extras.py`) — import the package at module level, or
+call `require_extra(...)` if it only loads it lazily — so the factory, config validator and
+builder catalog all see it; any other import error propagates as a real bug.
 
 Python floor is **3.11** (code uses `enum.StrEnum` / `typing.Self`). Line length is **120**.
 

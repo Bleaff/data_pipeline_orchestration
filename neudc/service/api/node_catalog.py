@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from neudc.core.node.node_factory import NodeFactory
 from neudc.utils import LOGGER
+from neudc.utils.extras import MissingExtraError
 
 __all__ = ("NodeTypeSpec", "get_node_catalog")
 
@@ -302,9 +303,10 @@ _STATIC_CATALOG: list[dict[str, Any]] = [
 def get_node_catalog() -> list[NodeTypeSpec]:
     """Return the full node-type catalog, with `accepts`/`emits` filled in from `NodeFactory`.
 
-    Node types whose class can't be imported in this install (e.g. CV nodes without
-    the ``cv`` extra) are left out rather than failing the whole catalog: the builder
-    should only offer nodes that could actually run here.
+    Node types that need an optional extra this install lacks (e.g. CV nodes without
+    ``cv``) are left out rather than failing the whole catalog: the builder should only
+    offer nodes that could actually run here. Any other import failure is a bug and
+    propagates.
 
     Returns
     -------
@@ -317,8 +319,8 @@ def get_node_catalog() -> list[NodeTypeSpec]:
         try:
             accepts = [t.__name__ for t in NodeFactory.get_accepts(node_type)]
             emits = [t.__name__ for t in NodeFactory.get_emits(node_type)]
-        except ImportError as e:
-            LOGGER.info(f"Node catalog: skipping {node_type}: {e}")
+        except MissingExtraError as e:
+            LOGGER.warning(f"Node catalog: skipping {node_type}: {e}")
             continue
         catalog.append(NodeTypeSpec(accepts=accepts, emits=emits, **entry))
     return catalog
