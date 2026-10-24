@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 from typing import Any, ClassVar
 
 from neudc.core.base.base_thread import BaseThreadedNode
@@ -20,23 +21,51 @@ class AgentToolNode(AgentToolMixin, BaseThreadedNode):
     (`create_file`/`read_file`) are confined to a fixed `sandbox_dir`, never touching
     the filesystem outside it — network (`fetch_url`) and timers have their own,
     narrower guards (see each tool's docstring) instead of a sandbox directory.
+
+    Timer reminders fire on `threading.Timer` threads, but the mailbox's ZMQ sockets
+    are not thread-safe and belong to this node's run loop. So `TimerTool` only puts
+    reminders on `outbox`, and `_collect_data` sends whatever is queued from the node
+    thread before every receive — at most one receive timeout (~0.1s) of latency.
     """
 
     accepts: ClassVar[tuple[type[BaseMessage], ...]] = (TextChunk,)
     emits: ClassVar[tuple[type[BaseMessage], ...]] = (TextChunk,)
 
-    def __init__(self, tools: dict[str, Any], mailbox: Any, *, id: str = "AgentToolNode") -> None:
+    def __init__(
+        self,
+        tools: dict[str, Any],
+        mailbox: Any,
+        *,
+        outbox: queue.SimpleQueue[TextChunk] | None = None,
+        id: str = "AgentToolNode",
+    ) -> None:
         """Initialize the AgentToolNode.
 
         Args:
         ----
             tools: Tool name -> callable tool, as built by `from_config`.
             mailbox: Mailbox for sending/receiving `TextChunk` objects.
+            outbox: Queue tools put out-of-band messages on (timer reminders); drained
+                and sent from the node thread. A new empty one if not given.
             id: Identifier for this node instance.
 
         """
         AgentToolMixin.__init__(self, tools=tools)
         BaseThreadedNode.__init__(self, mailbox, id=id)
+        self.outbox: queue.SimpleQueue[TextChunk] = outbox if outbox is not None else queue.SimpleQueue()
+
+    def _collect_data(self) -> Any:
+        """Send any queued out-of-band messages, then receive the next input as usual."""
+        self._flush_outbox()
+        return super()._collect_data()
+
+    def _flush_outbox(self) -> None:
+        while True:
+            try:
+                item = self.outbox.get_nowait()
+            except queue.Empty:
+                return
+            self._send_item(item)
 
     @staticmethod
     def from_config(config: dict[str, Any]) -> AgentToolNode:
@@ -62,10 +91,11 @@ class AgentToolNode(AgentToolMixin, BaseThreadedNode):
 
         """
         mailbox = config["mailbox"]
+        outbox: queue.SimpleQueue[TextChunk] = queue.SimpleQueue()
         tools: dict[str, Any] = {}
 
         if config.get("enable_timers", True):
-            timer = TimerTool(mailbox=mailbox, session_id=config.get("session_id", "default"))
+            timer = TimerTool(deliver=outbox.put, session_id=config.get("session_id", "default"))
             tools[timer.name] = timer
 
         if config.get("enable_web_fetch", True):
@@ -85,4 +115,4 @@ class AgentToolNode(AgentToolMixin, BaseThreadedNode):
             tools[create_file.name] = create_file
             tools[read_file.name] = read_file
 
-        return AgentToolNode(tools=tools, mailbox=mailbox)
+        return AgentToolNode(tools=tools, mailbox=mailbox, outbox=outbox)

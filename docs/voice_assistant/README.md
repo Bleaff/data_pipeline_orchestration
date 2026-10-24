@@ -164,6 +164,10 @@ outside the sandbox). The LLM has to actually be told this syntax exists —
 tool list (kept in sync by hand with what `tool_system_prompt()` in
 `agent_tool_mixin.py` would generate for the same tool set).
 
+With `llm_config.stream: true` a marker arrives split across many token deltas, so
+`AgentToolMixin` holds back text from an unclosed `[[` until the rest of the marker
+(or the turn's final chunk) arrives, and only then resolves it.
+
 **This is a single pass, not a multi-turn agent loop**: a tool's result is spliced
 directly into the reply the LLM already generated — it is never fed back to `LlmNode`
 for a second generation call. That keeps the wiring a straight line with no cycle
@@ -178,9 +182,10 @@ natural extension, not built here.
 **The three tools**:
 - `set_timer({"seconds": <number>, "label": <string, optional>})` — returns an
   immediate confirmation (never blocks `process()` for the timer's duration); the
-  actual reminder is delivered later as a new `TextChunk` sent straight through this
-  node's own mailbox (`source="timer"`, `session_id` from config, `is_final=True`),
-  so it flows through `tts`/`player` and gets spoken on its own once the timer fires.
+  actual reminder is delivered later as a new `TextChunk` (`source="timer"`,
+  `session_id` from config, `is_final=True`). The timer thread only queues it; the
+  node's own run loop sends it (ZMQ sockets aren't thread-safe), so it flows through
+  `tts`/`player` and gets spoken on its own once the timer fires.
   Bounded to at most 24h (`MAX_TIMER_SECONDS`) as a guard against a typo'd/runaway
   timer, not a real product limit.
 - `fetch_url({"url": <string>})` — `http(s)`-only, with an HTTP timeout

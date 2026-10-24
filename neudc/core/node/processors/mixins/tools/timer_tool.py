@@ -24,11 +24,13 @@ class TimerTool:
     """`set_timer`: schedules a reminder that announces itself when it fires.
 
     Returns an immediate confirmation string — the call itself must not block the
-    node's `process()` for the timer's duration. The actual reminder is delivered
-    later, out-of-band, as a new `TextChunk` sent directly through `mailbox`: same
-    `session_id` as the turn that scheduled it, `source="timer"` so it's easy to
-    recognize downstream, `is_final=True` so `TtsMixin` speaks it as soon as it
-    arrives.
+    node's `process()` for the timer's duration. The actual reminder is built later,
+    on the timer's own thread, as a new `TextChunk` (`session_id` from config,
+    `source="timer"` so it's easy to recognize downstream, `is_final=True` so
+    `TtsMixin` speaks it as soon as it arrives) and handed to `deliver`. `deliver`
+    must be thread-safe and must not touch the mailbox's ZMQ sockets itself — those
+    belong to the node thread; `AgentToolNode` passes a queue's `put` and sends from
+    its own loop.
     """
 
     name = "set_timer"
@@ -39,7 +41,7 @@ class TimerTool:
 
     def __init__(
         self,
-        mailbox: Any,
+        deliver: Callable[[TextChunk], None],
         *,
         session_id: str = "default",
         scheduler: Callable[[float, Callable[[], None]], Any] | None = None,
@@ -48,15 +50,15 @@ class TimerTool:
 
         Args:
         ----
-            mailbox: Mailbox the owning node sends through — used to deliver the
-                reminder asynchronously once the timer fires.
+            deliver: Thread-safe callback receiving the reminder `TextChunk` once the
+                timer fires, called from the timer's thread (see class docstring).
             session_id: Stamped on the reminder `TextChunk` this tool sends later.
             scheduler: `(seconds, callback) -> object with a .start()/.daemon`,
                 defaults to `threading.Timer`. Overridable so tests don't need to
                 sleep for real.
 
         """
-        self._mailbox = mailbox
+        self._deliver = deliver
         self._session_id = session_id
         self._scheduler = scheduler or threading.Timer
 
@@ -91,8 +93,6 @@ class TimerTool:
     def _fire(self, label: str) -> None:
         text = f"Reminder: {label}" if label else "Timer finished."
         try:
-            self._mailbox.send(
-                TextChunk(timestamp=time.time(), source="timer", text=text, session_id=self._session_id),
-            )
+            self._deliver(TextChunk(timestamp=time.time(), source="timer", text=text, session_id=self._session_id))
         except Exception as e:  # noqa: BLE001 - a background timer callback must never crash the process
             LOGGER.exception("Error delivering timer reminder", exc_info=e)
