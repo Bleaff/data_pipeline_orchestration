@@ -9,6 +9,9 @@ from __future__ import annotations
 from typing import ClassVar
 
 import numpy as np
+import pytest
+
+pytest.importorskip("cv2")  # ProcessDetInference needs the `cv` extra
 
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.communication.messaging.types import Frame

@@ -11,10 +11,12 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-import cv2
 import numpy as np
+import pytest
 
-from neudc.service.pipeline_manager import PipelineServiceManager
+cv2 = pytest.importorskip("cv2")  # the real pipeline this test drives needs the `cv` extra
+
+from neudc.service.pipeline_manager import PipelineServiceManager  # noqa: E402
 
 if TYPE_CHECKING:
     from pathlib import Path

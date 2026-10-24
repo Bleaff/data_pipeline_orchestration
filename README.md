@@ -524,11 +524,13 @@ API_BASE_URL=http://host.docker.internal:8000 docker compose up frontend
 
 (`host.docker.internal` is resolved by Docker Desktop on macOS/Windows out of the box;
 on Linux Docker Engine you'd add `extra_hosts: ["host.docker.internal:host-gateway"]`.)
-Image size note: neudc's hard dependencies (torch, torchvision, ultralytics, ...) aren't
-split into optional extras, so the `api` image pulls all of them regardless — expect a
-slow first build. torch is at least kept CPU-only (see `Dockerfile`): PyPI's default
-linux wheel bundles the full CUDA runtime as dependencies, several GB this container
-would never use (no GPU access either way — Docker Desktop on macOS has none at all).
+Image size note: this image installs the `cv` extra (torch, torchvision, ultralytics,
+...) too, since the control-plane API can start CV pipelines as well as the voice
+assistant — expect a slow first build. torch is at least kept CPU-only (see
+`Dockerfile`): PyPI's default linux wheel bundles the full CUDA runtime as
+dependencies, several GB this container would never use (no GPU access either way —
+Docker Desktop on macOS has none at all). An audio/API-only deployment that never
+starts a CV pipeline can drop `cv` from that install and skip torch/cv2 entirely.
 
 ## 🛠 Development
 
@@ -544,9 +546,11 @@ Run the tests:
 python3 -m pytest test
 ```
 
-Optional extras: `pip install -e ".[dev]"`, `".[trt]"` (TensorRT), `".[onnx]"` (ONNX Runtime),
-`".[audio]"` (`sounddevice`, for a real-microphone `AudioReaderNode` backend), `".[api]"`
-(`fastapi`/`uvicorn`, for the control-plane API).
+Optional extras: `pip install -e ".[dev]"`, `".[cv]"` (torch/opencv/ultralytics/scikit-learn/
+scikit-image/imagehash — the detection/embedding/active-learning stack; not needed for the
+voice assistant or a CV-free control-plane deployment), `".[trt]"` (TensorRT), `".[onnx]"`
+(ONNX Runtime), `".[audio]"` (`sounddevice`, for a real-microphone `AudioReaderNode` backend),
+`".[api]"` (`fastapi`/`uvicorn`, for the control-plane API).
 
 ## 🗺 Roadmap
 

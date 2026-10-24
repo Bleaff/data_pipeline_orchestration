@@ -22,6 +22,7 @@ def test_create_rejects_unknown_model_type() -> None:
         ModelFactory.create({"type": "NotAModel"})
 
 
+@pytest.mark.cv
 def test_known_model_types_map_to_importable_classes() -> None:
     for module_path, class_name in MODEL_IMPORTS.values():
         module = __import__(module_path, fromlist=[class_name])

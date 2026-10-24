@@ -54,6 +54,7 @@ def test_voice_assistant_http_nodes_are_not_yet_catalogued():
     assert not catalog_types & {"AsrNode", "LlmNode", "TtsNode"}
 
 
+@pytest.mark.cv
 def test_accepts_and_emits_are_populated_from_node_factory():
     catalog = get_node_catalog()
     folder_image = next(entry for entry in catalog if entry.type == "FolderImageNode")
@@ -62,6 +63,7 @@ def test_accepts_and_emits_are_populated_from_node_factory():
     assert folder_image.emits == [t.__name__ for t in NodeFactory.get_emits("FolderImageNode")]
 
 
+@pytest.mark.cv
 def test_detection_nodes_expose_model_types_excluding_sahi():
     catalog = get_node_catalog()
     det_node = next(entry for entry in catalog if entry.type == "ProcessDetInference")
@@ -71,6 +73,7 @@ def test_detection_nodes_expose_model_types_excluding_sahi():
     assert model_type_names == {"YOLOv8", "BlurClassification", "EmbeddingFilter"}
 
 
+@pytest.mark.cv
 def test_nodes_without_a_model_config_have_no_model_types():
     catalog = get_node_catalog()
     save_image = next(entry for entry in catalog if entry.type == "SaveImageNode")
@@ -89,6 +92,7 @@ def test_required_fields_have_no_default_value_semantics_conflict():
                 assert field.default is None, f"{entry.type}.{field.name} is required but has a default"
 
 
+@pytest.mark.cv
 def test_node_types_missing_an_extra_are_left_out(without_cv2):
     # Simulates an API-only install without the `cv` extra. The rest of the catalog must
     # still be served instead of a 500, and nothing that needs cv2 may be offered.

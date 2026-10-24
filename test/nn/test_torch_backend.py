@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import torch
-from torch import nn
 
-from neudc.nn.backends.torch import TorchBackend
+torch = pytest.importorskip("torch")  # TorchBackend needs the `cv` extra
+nn = pytest.importorskip("torch.nn")
+
+from neudc.nn.backends.torch import TorchBackend  # noqa: E402
 
 
 class _Scale(nn.Module):

@@ -11,11 +11,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-import cv2
 import numpy as np
+import pytest
 
-from neudc.core.communication.messaging.routing_factory import RoutingFactory
-from neudc.core.node.node_factory import NodeFactory
+cv2 = pytest.importorskip("cv2")  # this pipeline needs the `cv` extra (reader/resize/saver nodes)
+
+from neudc.core.communication.messaging.routing_factory import RoutingFactory  # noqa: E402
+from neudc.core.node.node_factory import NodeFactory  # noqa: E402
 
 if TYPE_CHECKING:
     from pathlib import Path

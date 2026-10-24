@@ -41,6 +41,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -56,8 +57,8 @@ classifiers = [
 python = ">=3.11"
 pyyaml = "==6.0.2"
 jaxtyping = "==0.2.36"
-numba = ">=0.61.0,<0.62.0"  # 0.61 is the first line with Python 3.13 wheels (0.60 hard-refuses to install on 3.13)
-numpy = ">=2.0.0,<2.3.0"  # range numba 0.61 itself declares support for
+numba = ">=0.61.0,<0.69.0"  # the old <0.62.0 cap predates Python 3.15 wheels; 0.68.x ships cp315, 0.61.x only builds from source there (and that build is itself broken by a distutils change in 3.15)
+numpy = ">=2.0.0,<2.6.0"  # range 0.68's own numpy<2.6,>=1.22 constraint allows
 pytz = "==2024.2"
 pyzmq = "==27.0.0"
 requests = "*"

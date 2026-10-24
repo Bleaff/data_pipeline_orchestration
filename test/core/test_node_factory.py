@@ -24,14 +24,17 @@ _INFERENCE_MODULES = tuple(
 )
 
 
+@pytest.mark.cv
 def test_get_accepts_defaults_to_frame() -> None:
     assert NodeFactory.get_accepts("FolderImageNode") == (Frame,)
 
 
+@pytest.mark.cv
 def test_get_emits_defaults_to_frame() -> None:
     assert NodeFactory.get_emits("SaveImageNode") == (Frame,)
 
 
+@pytest.mark.cv
 def test_get_accepts_reflects_a_node_class_override(monkeypatch) -> None:
     from neudc.core.communication.messaging.types import TextChunk
 

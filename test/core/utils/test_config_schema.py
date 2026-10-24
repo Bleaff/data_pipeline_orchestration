@@ -18,6 +18,7 @@ _VALID = {
 }
 
 
+@pytest.mark.cv
 def test_valid_config_passes() -> None:
     parsed = validate_pipeline_config(_VALID)
     assert [n.id for n in parsed.nodes] == ["reader", "saver"]
@@ -94,12 +95,14 @@ def test_error_policy_must_be_a_mapping() -> None:
         validate_pipeline_config(cfg)
 
 
+@pytest.mark.cv
 def test_example_cpu_pipeline_config_is_valid() -> None:
     config_path = Path("assets/configs/example_cpu_pipeline.yaml")
     parsed = validate_pipeline_config(load_config(config_path))
     assert {n.id for n in parsed.nodes} == {"reader", "resize", "saver"}
 
 
+@pytest.mark.cv
 def test_default_frame_to_frame_edges_pass_payload_compat() -> None:
     # Every registered node type defaults to accepts=emits=(Frame,) (#35), so an
     # untouched config must keep validating exactly as before.
@@ -205,6 +208,7 @@ def test_autoscale_must_be_a_mapping() -> None:
         validate_pipeline_config(cfg)
 
 
+@pytest.mark.cv
 def test_control_outputs_defaults_to_empty() -> None:
     # An untouched config (no control_outputs anywhere) must keep validating exactly
     # as before this feature existed (#41, done-when criterion 3).
@@ -230,6 +234,7 @@ def test_dangling_control_output_reference() -> None:
         validate_pipeline_config(cfg)
 
 
+@pytest.mark.cv
 def test_incompatible_payload_types_are_rejected(monkeypatch) -> None:
     from neudc.core.communication.messaging.types import TextChunk
     from neudc.core.node.node_factory import NodeFactory
@@ -303,6 +308,7 @@ def test_message_queue_size_positive_is_accepted() -> None:
     assert parsed.nodes[0].message_queue_size == 500
 
 
+@pytest.mark.cv
 def test_real_incompatible_nodes_are_rejected_without_monkeypatch() -> None:
     # FolderImageNode emits (Frame,) and TextNormalizeNode only accepts (TextChunk,):
     # a genuinely incompatible pair using already-registered node classes, unlike
