@@ -18,11 +18,14 @@ if TYPE_CHECKING:
     from neudc.nn.models.cls.base import BaseClsModel
     from neudc.nn.models.det.base import BaseDetector
 
-# Every model in `neudc.nn.MODEL_IMPORTS` needs cv2, but `neudc.nn` loads them lazily —
-# only inside the spawned process, at `ModelFactory.create`. Fail here instead, at import
+# Every model in `neudc.nn.MODEL_IMPORTS` needs cv2, and all but BlurClassification need
+# torch whatever the backend (det models via neudc.utils.checks, EmbeddingFilter via
+# torchvision) — as does the default TorchBackend. `neudc.nn` loads them lazily — only
+# inside the spawned process, at `ModelFactory.create`. Fail here instead, at import
 # time, so `NodeFactory`, config validation and the builder catalog all see that the
-# inference nodes (det/blur/embedding, batch or not) can't run without the `cv` extra.
-require_extra("cv", "cv2")
+# inference nodes (det/blur/embedding, batch or not) can't run without the `cv` extra,
+# including a partial install that has cv2 (e.g. pulled in by another package) but no torch.
+require_extra("cv", "cv2", "torch")
 
 
 class BaseProcessInference(BaseProcessNode, metaclass=ABCMeta):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-_VALID_NODES = [{"id": "reader", "type": "FolderImageNode", "folder_path": "unused", "outputs": []}]
+_VALID_NODES = [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]
 _BAD_TYPE_NODES = [{"id": "reader", "type": "NotARealNodeType", "outputs": []}]
 
 

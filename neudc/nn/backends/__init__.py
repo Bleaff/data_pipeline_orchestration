@@ -3,6 +3,7 @@
 import importlib.util
 
 from neudc.utils import CUDA_PROFILE_ENABLE, ONNX_PROFILE_ENABLE, TENSORRT_ENABLE
+from neudc.utils.extras import MissingExtraError
 
 from .base import BackendType, BaseBackend
 
@@ -35,8 +36,8 @@ def get_backend(backend_type: BackendType) -> type[BaseBackend]:
     if backend_type == BackendType.TORCH:
         if TORCH_AVAILABLE:
             return TorchBackend
-        msg = "TorchBackend is not available. Install the `cv` extra (torch) to use it."
-        raise RuntimeError(msg)
+        msg = "TorchBackend needs the `cv` extra (torch is not installed). Install it with: pip install 'neudc[cv]'"
+        raise MissingExtraError(msg, name="torch")
     if backend_type == BackendType.TENSORRT:
         if CUDA_PROFILE_ENABLE and TENSORRT_ENABLE:
             return TensorRTBackend

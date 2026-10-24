@@ -10,6 +10,8 @@ import pytest
 from neudc.core.utils.config_loader import load_config
 from neudc.core.utils.config_schema import ConfigError, validate_pipeline_config
 
+# Validation imports every node's class, so structure-only tests (ids, policies,
+# replicas, ...) use CV-free node types and keep running without the `cv` extra.
 _VALID = {
     "nodes": [
         {"id": "reader", "type": "FolderImageNode", "folder_path": "x", "outputs": ["saver"]},
@@ -41,7 +43,7 @@ def test_unknown_node_type() -> None:
 
 
 def test_dangling_output_reference() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": ["ghost"]}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": ["ghost"]}]}
     with pytest.raises(ConfigError, match="does not reference"):
         validate_pipeline_config(cfg)
 
@@ -49,8 +51,8 @@ def test_dangling_output_reference() -> None:
 def test_duplicate_ids() -> None:
     cfg = {
         "nodes": [
-            {"id": "dup", "type": "FolderImageNode", "outputs": []},
-            {"id": "dup", "type": "SaveImageNode", "outputs": []},
+            {"id": "dup", "type": "AudioReaderNode", "outputs": []},
+            {"id": "dup", "type": "AudioPlayerNode", "outputs": []},
         ],
     }
     with pytest.raises(ConfigError, match="Duplicate node ids"):
@@ -62,7 +64,7 @@ def test_valid_error_policy_passes() -> None:
         "nodes": [
             {
                 "id": "reader",
-                "type": "FolderImageNode",
+                "type": "AudioReaderNode",
                 "outputs": [],
                 "error_policy": {"on_error": "retry", "max_retries": 3, "dead_letter_dir": "./dead"},
             },
@@ -75,8 +77,8 @@ def test_invalid_error_policy_names_the_node() -> None:
     # Fails at config load, not deep in a running pipeline, and says which node.
     cfg = {
         "nodes": [
-            {"id": "reader", "type": "FolderImageNode", "outputs": []},
-            {"id": "detector", "type": "ProcessDetInference", "outputs": [], "error_policy": {"on_error": "sometimes"}},
+            {"id": "reader", "type": "AudioReaderNode", "outputs": []},
+            {"id": "detector", "type": "VadNode", "outputs": [], "error_policy": {"on_error": "sometimes"}},
         ],
     }
     with pytest.raises(ConfigError, match="Node 'detector': invalid 'error_policy'"):
@@ -84,13 +86,13 @@ def test_invalid_error_policy_names_the_node() -> None:
 
 
 def test_error_policy_retry_without_retries_is_rejected() -> None:
-    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "error_policy": {"on_error": "retry"}}]}
+    cfg = {"nodes": [{"id": "a", "type": "AudioReaderNode", "outputs": [], "error_policy": {"on_error": "retry"}}]}
     with pytest.raises(ConfigError, match="max_retries"):
         validate_pipeline_config(cfg)
 
 
 def test_error_policy_must_be_a_mapping() -> None:
-    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "error_policy": "retry"}]}
+    cfg = {"nodes": [{"id": "a", "type": "AudioReaderNode", "outputs": [], "error_policy": "retry"}]}
     with pytest.raises(ConfigError, match="must be a mapping"):
         validate_pipeline_config(cfg)
 
@@ -122,31 +124,31 @@ def test_audio_reader_to_vad_node_payload_compat_passes() -> None:
 
 def test_default_replicas_is_one_and_behaves_as_before() -> None:
     """Regression: a config that doesn't mention `replicas` parses exactly as before."""
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].replicas == 1
 
 
 def test_explicit_replicas_one_is_accepted() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "replicas": 1}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "replicas": 1}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].replicas == 1
 
 
 def test_replicas_zero_is_rejected() -> None:
-    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": 0}]}
+    cfg = {"nodes": [{"id": "detector", "type": "VadNode", "outputs": [], "replicas": 0}]}
     with pytest.raises(ConfigError, match="Node 'detector': 'replicas' must be >= 1, got 0"):
         validate_pipeline_config(cfg)
 
 
 def test_negative_replicas_is_rejected() -> None:
-    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": -2}]}
+    cfg = {"nodes": [{"id": "detector", "type": "VadNode", "outputs": [], "replicas": -2}]}
     with pytest.raises(ConfigError, match="'replicas' must be >= 1, got -2"):
         validate_pipeline_config(cfg)
 
 
 def test_positive_replicas_is_accepted() -> None:
-    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "replicas": 4}]}
+    cfg = {"nodes": [{"id": "detector", "type": "VadNode", "outputs": [], "replicas": 4}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].replicas == 4
 
@@ -156,7 +158,7 @@ def test_valid_autoscale_block_passes() -> None:
         "nodes": [
             {
                 "id": "detector",
-                "type": "ProcessDetInference",
+                "type": "VadNode",
                 "outputs": [],
                 "replicas": 2,
                 "autoscale": {
@@ -177,7 +179,7 @@ def test_autoscale_min_greater_than_max_is_rejected() -> None:
         "nodes": [
             {
                 "id": "detector",
-                "type": "ProcessDetInference",
+                "type": "VadNode",
                 "outputs": [],
                 "autoscale": {"min_replicas": 5, "max_replicas": 2},
             },
@@ -192,7 +194,7 @@ def test_autoscale_queue_depth_low_must_be_below_high() -> None:
         "nodes": [
             {
                 "id": "detector",
-                "type": "ProcessDetInference",
+                "type": "VadNode",
                 "outputs": [],
                 "autoscale": {"queue_depth_low": 10, "queue_depth_high": 5},
             },
@@ -203,7 +205,7 @@ def test_autoscale_queue_depth_low_must_be_below_high() -> None:
 
 
 def test_autoscale_must_be_a_mapping() -> None:
-    cfg = {"nodes": [{"id": "a", "type": "FolderImageNode", "outputs": [], "autoscale": "yes please"}]}
+    cfg = {"nodes": [{"id": "a", "type": "AudioReaderNode", "outputs": [], "autoscale": "yes please"}]}
     with pytest.raises(ConfigError, match="'autoscale' must be a mapping"):
         validate_pipeline_config(cfg)
 
@@ -220,8 +222,8 @@ def test_control_outputs_defaults_to_empty() -> None:
 def test_valid_control_outputs_reference_passes() -> None:
     cfg = {
         "nodes": [
-            {"id": "reader", "type": "FolderImageNode", "outputs": [], "control_outputs": ["controller"]},
-            {"id": "controller", "type": "SaveImageNode", "outputs": [], "control_outputs": []},
+            {"id": "reader", "type": "AudioReaderNode", "outputs": [], "control_outputs": ["controller"]},
+            {"id": "controller", "type": "AudioPlayerNode", "outputs": [], "control_outputs": []},
         ],
     }
     parsed = validate_pipeline_config(cfg)
@@ -229,7 +231,7 @@ def test_valid_control_outputs_reference_passes() -> None:
 
 
 def test_dangling_control_output_reference() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "control_outputs": ["ghost"]}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "control_outputs": ["ghost"]}]}
     with pytest.raises(ConfigError, match="does not reference"):
         validate_pipeline_config(cfg)
 
@@ -271,7 +273,7 @@ def test_voice_assistant_pipeline_config_is_valid() -> None:
 
 def test_queue_policy_and_message_queue_size_default() -> None:
     """Regression: an untouched config parses exactly as before this feature existed (#38)."""
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].queue_policy == "block"
     assert parsed.nodes[0].message_queue_size == 20
@@ -279,31 +281,31 @@ def test_queue_policy_and_message_queue_size_default() -> None:
 
 @pytest.mark.parametrize("policy", ["block", "drop_oldest", "conflate"])
 def test_valid_queue_policy_values_are_accepted(policy: str) -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "queue_policy": policy}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "queue_policy": policy}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].queue_policy == policy
 
 
 def test_invalid_queue_policy_is_rejected_and_names_the_node() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "queue_policy": "yeet"}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "queue_policy": "yeet"}]}
     with pytest.raises(ConfigError, match=r"Node 'reader': invalid 'queue_policy' 'yeet'"):
         validate_pipeline_config(cfg)
 
 
 def test_message_queue_size_zero_is_rejected() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "message_queue_size": 0}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "message_queue_size": 0}]}
     with pytest.raises(ConfigError, match=r"Node 'reader': 'message_queue_size' must be >= 1, got 0"):
         validate_pipeline_config(cfg)
 
 
 def test_message_queue_size_negative_is_rejected() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "message_queue_size": -5}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "message_queue_size": -5}]}
     with pytest.raises(ConfigError, match=r"'message_queue_size' must be >= 1, got -5"):
         validate_pipeline_config(cfg)
 
 
 def test_message_queue_size_positive_is_accepted() -> None:
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": [], "message_queue_size": 500}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": [], "message_queue_size": 500}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].message_queue_size == 500
 
@@ -326,7 +328,7 @@ def test_real_incompatible_nodes_are_rejected_without_monkeypatch() -> None:
 
 def test_default_health_config_is_none_and_behaves_as_before() -> None:
     """Regression: a config that doesn't mention health keys parses exactly as before (#39)."""
-    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "outputs": []}]}
+    cfg = {"nodes": [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]}
     parsed = validate_pipeline_config(cfg)
     assert parsed.nodes[0].health_timeout is None
     assert parsed.nodes[0].health_check_interval is None
@@ -337,7 +339,7 @@ def test_valid_health_config_passes() -> None:
         "nodes": [
             {
                 "id": "detector",
-                "type": "ProcessDetInference",
+                "type": "VadNode",
                 "outputs": [],
                 "health_timeout": 30,
                 "health_check_interval": 5,
@@ -350,14 +352,14 @@ def test_valid_health_config_passes() -> None:
 
 
 def test_zero_health_timeout_is_rejected() -> None:
-    cfg = {"nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "health_timeout": 0}]}
+    cfg = {"nodes": [{"id": "detector", "type": "VadNode", "outputs": [], "health_timeout": 0}]}
     with pytest.raises(ConfigError, match="Node 'detector': 'health_timeout' must be > 0, got 0"):
         validate_pipeline_config(cfg)
 
 
 def test_negative_health_check_interval_is_rejected() -> None:
     cfg = {
-        "nodes": [{"id": "detector", "type": "ProcessDetInference", "outputs": [], "health_check_interval": -1}],
+        "nodes": [{"id": "detector", "type": "VadNode", "outputs": [], "health_check_interval": -1}],
     }
     with pytest.raises(ConfigError, match="Node 'detector': 'health_check_interval' must be > 0, got -1"):
         validate_pipeline_config(cfg)
@@ -369,6 +371,29 @@ def test_node_missing_an_extra_is_a_config_error_naming_it(without_cv2) -> None:
 
     with pytest.raises(ConfigError, match=r"Node 'reader': Node type 'FolderImageNode' needs the `cv` extra"):
         validate_pipeline_config(_VALID)
+
+
+def test_edgeless_node_missing_an_extra_is_a_config_error(without_cv2) -> None:
+    # No data edge in or out: the payload-compat check never touches this node.
+    without_cv2("neudc.core.node.readers.image_reader")
+    cfg = {"nodes": [{"id": "reader", "type": "FolderImageNode", "folder_path": "x", "outputs": []}]}
+
+    with pytest.raises(ConfigError, match=r"Node 'reader': Node type 'FolderImageNode' needs the `cv` extra"):
+        validate_pipeline_config(cfg)
+
+
+def test_control_output_target_missing_an_extra_is_a_config_error(without_cv2) -> None:
+    # Reached only via a control edge, which has no payload-compat check either.
+    without_cv2("neudc.core.node.readers.image_reader")
+    cfg = {
+        "nodes": [
+            {"id": "mic", "type": "AudioReaderNode", "outputs": [], "control_outputs": ["reader"]},
+            {"id": "reader", "type": "FolderImageNode", "folder_path": "x", "outputs": []},
+        ],
+    }
+
+    with pytest.raises(ConfigError, match=r"Node 'reader': Node type 'FolderImageNode' needs the `cv` extra"):
+        validate_pipeline_config(cfg)
 
 
 def test_unrelated_node_import_failure_is_not_turned_into_a_config_error(monkeypatch) -> None:

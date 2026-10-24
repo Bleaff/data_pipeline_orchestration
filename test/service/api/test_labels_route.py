@@ -27,7 +27,7 @@ def test_list_labels_of_unknown_pipeline_is_404(client) -> None:
 
 
 def test_list_labels_without_a_create_dataset_node_is_404(client) -> None:
-    nodes = [{"id": "reader", "type": "FolderImageNode", "folder_path": "unused", "outputs": []}]
+    nodes = [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]
     client.post("/pipelines/p1/start", json={"nodes": nodes})
 
     resp = client.get("/pipelines/p1/labels")

@@ -10,6 +10,7 @@ import pytest
 
 from neudc.nn import backends
 from neudc.nn.backends import BackendType, get_backend
+from neudc.utils.extras import MissingExtraError
 
 
 def test_torch_backend_is_rejected_with_an_install_hint_when_torch_is_unavailable(
@@ -17,8 +18,10 @@ def test_torch_backend_is_rejected_with_an_install_hint_when_torch_is_unavailabl
 ) -> None:
     monkeypatch.setattr(backends, "TORCH_AVAILABLE", False)
 
-    with pytest.raises(RuntimeError, match=r"Install the `cv` extra"):
+    with pytest.raises(MissingExtraError, match=r"TorchBackend needs the `cv` extra") as exc:
         get_backend(BackendType.TORCH)
+
+    assert exc.value.name == "torch"
 
 
 def test_backends_import_without_torch_installed() -> None:
@@ -36,12 +39,13 @@ def test_backends_import_without_torch_installed() -> None:
                 "sys.modules['torch'] = None\n"
                 "from neudc.nn import backends\n"
                 "from neudc.utils import profile\n"
+                "from neudc.utils.extras import MissingExtraError\n"
                 "assert not backends.TORCH_AVAILABLE\n"
                 "assert not profile.TORCH_PROFILE_ENABLE\n"
                 "assert 'TorchBackend' not in backends.__all__\n"
                 "try:\n"
                 "    backends.get_backend(backends.BackendType.TORCH)\n"
-                "except RuntimeError:\n"
+                "except MissingExtraError:\n"
                 "    print('ok')\n"
             ),
         ],

@@ -74,6 +74,19 @@ def test_model_inference_nodes_need_the_cv_extra(without_cv2, node_type: str) ->
         NodeFactory.get_emits(node_type)
 
 
+@pytest.mark.cv
+@pytest.mark.parametrize("node_type", ["ProcessDetInference", "ProcessBlurInference", "ProcessDetBatchInference"])
+def test_model_inference_nodes_need_torch_even_with_cv2_installed(monkeypatch, node_type: str) -> None:
+    # A partial install (cv2 pulled in by another package, no torch) must still be caught
+    # here, not later in the child process at `get_backend`/model import.
+    monkeypatch.setitem(sys.modules, "torch", None)
+    for module in _INFERENCE_MODULES:
+        monkeypatch.delitem(sys.modules, module, raising=False)
+
+    with pytest.raises(MissingExtraError, match=rf"Node type '{node_type}' needs the `cv` extra.*'torch'"):
+        NodeFactory.get_emits(node_type)
+
+
 def test_resolve_does_not_blame_an_extra_for_an_unrelated_import_failure(monkeypatch) -> None:
     # `None` for the node's own module: a ModuleNotFoundError that has nothing to do with an extra.
     monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
