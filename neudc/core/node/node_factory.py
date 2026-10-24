@@ -8,10 +8,10 @@ optional dependencies of unrelated nodes (torch, ultralytics, imagehash, ...).
 
 from __future__ import annotations
 
-import importlib
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from neudc.core.policy import ErrorPolicy
+from neudc.utils.extras import import_module_for
 
 if TYPE_CHECKING:
     from neudc.core.communication.messaging.types import BaseMessage
@@ -45,13 +45,22 @@ class NodeFactory:
 
     @staticmethod
     def _resolve(node_type: str) -> Any:
-        """Import and return the node class for ``node_type``."""
+        """Import and return the node class for ``node_type``.
+
+        Raises
+        ------
+            ValueError: ``node_type`` is not registered.
+            MissingExtraError: The node needs an optional extra (e.g. ``cv``'s cv2/torch)
+                that isn't installed. The message names the node type and the extra; the
+                original error is chained. Any other import failure propagates unchanged.
+
+        """
         try:
             module_path, class_name = NodeFactory.NODE_IMPORTS[node_type]
         except KeyError:
             msg = f"Unknown node type: {node_type}"
             raise ValueError(msg) from None
-        module = importlib.import_module(module_path)
+        module = import_module_for(module_path, f"Node type '{node_type}'")
         return getattr(module, class_name)
 
     @staticmethod

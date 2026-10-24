@@ -6,7 +6,7 @@ import yaml
 
 
 def test_validate_config_accepts_a_good_pipeline(client) -> None:
-    nodes = [{"id": "reader", "type": "FolderImageNode", "folder_path": "unused", "outputs": []}]
+    nodes = [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]
 
     resp = client.post("/config/validate", json={"nodes": nodes})
 

@@ -5,7 +5,8 @@ so instead of enumerating every node's parameters we validate the *structure* th
 the router and factory rely on:
 
 - there is a top-level ``nodes`` list;
-- every node has a unique ``id`` and a ``type`` known to the NodeFactory;
+- every node has a unique ``id`` and a ``type`` known to the NodeFactory, whose
+  optional extras (e.g. ``cv``) are installed;
 - every entry in a node's ``outputs`` references an existing node ``id``;
 - every edge's producer ``emits`` a payload type the consumer ``accepts`` (#35/#36).
 
@@ -24,6 +25,7 @@ from neudc.core.communication.mailbox.zmq_mailbox import QueuePolicy
 from neudc.core.node.node_factory import NodeFactory
 from neudc.core.policy import ErrorPolicyConfig
 from neudc.core.utils.autoscale import AutoscaleConfig
+from neudc.utils.extras import MissingExtraError
 
 
 class ConfigError(ValueError):
@@ -89,6 +91,8 @@ class PipelineConfig(BaseModel):
             if node.type not in known_types:
                 msg = f"Node '{node.id}': unknown type '{node.type}'. Known types: {sorted(known_types)}"
                 raise ConfigError(msg)
+            _check_extras(node)
+        for node in self.nodes:
             for target in node.outputs:
                 if target not in id_set:
                     msg = f"Node '{node.id}': output '{target}' does not reference any node id"
@@ -106,11 +110,27 @@ class PipelineConfig(BaseModel):
         return self
 
 
+def _check_extras(node: NodeSpec) -> None:
+    """Validate that ``node``'s class can be imported, i.e. no optional extra it needs is missing.
+
+    Runs for every node, not just those on a data edge: an edge-less node (or one reached
+    only via ``control_outputs``) would otherwise pass validation and only fail once its
+    pipeline process tries to build it. A missing extra (e.g. a CV node without ``cv``)
+    becomes a :class:`ConfigError` naming the node; any other import failure propagates.
+    """
+    try:
+        NodeFactory.get_accepts(node.type)
+    except MissingExtraError as e:
+        msg = f"Node '{node.id}': {e}"
+        raise ConfigError(msg) from e
+
+
 def _check_payload_compat(node: NodeSpec, target: NodeSpec) -> None:
     """Validate that ``node``'s declared ``emits`` is compatible with ``target``'s ``accepts`` (#35/#36).
 
     Kept out of :class:`NodeSpec`, same reason as :func:`_check_error_policy`: the
-    message should name both node ids the user wrote, not a positional index.
+    message should name both node ids the user wrote, not a positional index. Both
+    node classes are importable here: :func:`_check_extras` already ran on every node.
     """
     emits = NodeFactory.get_emits(node.type)
     accepts = NodeFactory.get_accepts(target.type)

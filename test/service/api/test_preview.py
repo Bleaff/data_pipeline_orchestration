@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from neudc.service.api.preview import find_latest_frame
 
 
@@ -37,6 +39,7 @@ def test_preview_of_unknown_pipeline_is_404(client) -> None:
     assert resp.status_code == 404
 
 
+@pytest.mark.cv
 def test_preview_before_any_frame_is_written_is_404(client, tmp_path) -> None:
     nodes = [_save_image_node(tmp_path)]
     client.post("/pipelines/p1/start", json={"nodes": nodes})
@@ -47,6 +50,7 @@ def test_preview_before_any_frame_is_written_is_404(client, tmp_path) -> None:
     assert "no SaveImageNode output" in resp.json()["detail"]
 
 
+@pytest.mark.cv
 def test_preview_serves_the_latest_written_frame(client, tmp_path) -> None:
     nodes = [_save_image_node(tmp_path)]
     client.post("/pipelines/p1/start", json={"nodes": nodes})

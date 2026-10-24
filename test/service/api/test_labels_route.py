@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 _VALID_NODES_TEMPLATE = [{"id": "reader", "type": "FolderImageNode", "folder_path": "unused", "outputs": ["ds"]}]
 
 
@@ -25,7 +27,7 @@ def test_list_labels_of_unknown_pipeline_is_404(client) -> None:
 
 
 def test_list_labels_without_a_create_dataset_node_is_404(client) -> None:
-    nodes = [{"id": "reader", "type": "FolderImageNode", "folder_path": "unused", "outputs": []}]
+    nodes = [{"id": "reader", "type": "AudioReaderNode", "outputs": []}]
     client.post("/pipelines/p1/start", json={"nodes": nodes})
 
     resp = client.get("/pipelines/p1/labels")
@@ -34,6 +36,7 @@ def test_list_labels_without_a_create_dataset_node_is_404(client) -> None:
     assert "CreateDataset" in resp.json()["detail"]
 
 
+@pytest.mark.cv
 def test_list_labels_returns_frames_from_the_dataset_dir(client, tmp_path) -> None:
     _write_frame(tmp_path, "in", "frame_0", "0 0.5 0.5 0.2 0.2\n")
     nodes = [*_VALID_NODES_TEMPLATE, _create_dataset_node(tmp_path)]
@@ -45,6 +48,7 @@ def test_list_labels_returns_frames_from_the_dataset_dir(client, tmp_path) -> No
     assert resp.json() == [{"frame_id": "in:frame_0", "box_count": 1, "reviewed": False}]
 
 
+@pytest.mark.cv
 def test_get_label_detail_returns_boxes(client, tmp_path) -> None:
     _write_frame(tmp_path, "in", "frame_0", "0 0.5 0.5 0.2 0.2\n")
     nodes = [*_VALID_NODES_TEMPLATE, _create_dataset_node(tmp_path)]
@@ -66,6 +70,7 @@ def test_get_label_detail_of_unknown_frame_is_404(client, tmp_path) -> None:
     assert resp.status_code == 404
 
 
+@pytest.mark.cv
 def test_get_label_image_serves_the_frame(client, tmp_path) -> None:
     _write_frame(tmp_path, "in", "frame_0", "")
     nodes = [*_VALID_NODES_TEMPLATE, _create_dataset_node(tmp_path)]
@@ -78,6 +83,7 @@ def test_get_label_image_serves_the_frame(client, tmp_path) -> None:
     assert resp.content == b"fake-jpeg-bytes"
 
 
+@pytest.mark.cv
 def test_update_label_persists_corrected_boxes_and_marks_reviewed(client, tmp_path) -> None:
     _write_frame(tmp_path, "in", "frame_0", "0 0.5 0.5 0.2 0.2\n")
     nodes = [*_VALID_NODES_TEMPLATE, _create_dataset_node(tmp_path)]

@@ -1,11 +1,25 @@
 """Pluggable inference backends (torch, TensorRT, ONNX Runtime) and their factory."""
 
+import importlib.util
+
 from neudc.utils import CUDA_PROFILE_ENABLE, ONNX_PROFILE_ENABLE, TENSORRT_ENABLE
+from neudc.utils.extras import MissingExtraError
 
 from .base import BackendType, BaseBackend
-from .torch import TorchBackend
 
-__all__ = ["BackendType", "BaseBackend", "TorchBackend"]
+__all__ = ["BackendType", "BaseBackend"]
+
+# torch is part of the optional `cv` extra (see pyproject.toml), not a hard dependency —
+# this package is imported transitively by every ASR/LLM/TTS backend module (Python
+# always runs a package's __init__.py before its submodules), including the
+# audio-only ones that never need torch at all. Gated on torch being *installed*, not on
+# the import succeeding: a broken torch install (or a bug in .torch) must surface its
+# own error here rather than masquerade as "install the `cv` extra" later.
+TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
+if TORCH_AVAILABLE:
+    from .torch import TorchBackend
+
+    __all__ += ["TorchBackend"]
 
 if CUDA_PROFILE_ENABLE and TENSORRT_ENABLE:
     from .trt import TensorRTBackend
@@ -20,7 +34,10 @@ if ONNX_PROFILE_ENABLE:
 # Factory function to get the appropriate backend
 def get_backend(backend_type: BackendType) -> type[BaseBackend]:
     if backend_type == BackendType.TORCH:
-        return TorchBackend
+        if TORCH_AVAILABLE:
+            return TorchBackend
+        msg = "TorchBackend needs the `cv` extra (torch is not installed). Install it with: pip install 'neudc[cv]'"
+        raise MissingExtraError(msg, name="torch")
     if backend_type == BackendType.TENSORRT:
         if CUDA_PROFILE_ENABLE and TENSORRT_ENABLE:
             return TensorRTBackend

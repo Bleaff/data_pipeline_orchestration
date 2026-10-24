@@ -8,13 +8,13 @@ This module defines two context managers/decorators:
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import sys
 import time
 from collections.abc import Callable
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Self
 
-import torch
 from numba import jit
 
 from .logger import LOGGER, USE_NUMBA
@@ -29,6 +29,14 @@ try:
 except ImportError:
     CUDA_PROFILE_ENABLE = False
     LOGGER.info("Cuda library is not installed. Check your installation carefully.")
+
+# torch is part of the optional `cv` extra (see pyproject.toml), not a hard dependency —
+# `neudc.utils` is imported by every node, including audio-only ones that never touch
+# torch, so `use_torch` CUDA sync (below) is simply unavailable without it. Gated on
+# torch being installed (not on the import succeeding) so a broken install still fails loudly.
+TORCH_PROFILE_ENABLE = importlib.util.find_spec("torch") is not None
+if TORCH_PROFILE_ENABLE:
+    import torch
 
 __all__ = ("NoProfile", "Profile", "conditional_jit", "get_profile", "toggle_jit")
 
@@ -133,7 +141,7 @@ class Profile(contextlib.ContextDecorator):
                 (err,) = cudart.cudaDeviceSynchronize()
                 if err != cuda.CUresult.CUDA_SUCCESS:
                     LOGGER.error("CUDA device synchronization failed.")
-            elif self.use_torch and torch.cuda.is_available():
+            elif self.use_torch and TORCH_PROFILE_ENABLE and torch.cuda.is_available():
                 try:
                     torch.cuda.synchronize()
                 except (AttributeError, RuntimeError) as e:

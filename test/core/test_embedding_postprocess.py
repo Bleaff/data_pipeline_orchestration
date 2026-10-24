@@ -8,6 +8,9 @@ centroid (e.g. a single-frame cluster) raised UnboundLocalError instead of selec
 from __future__ import annotations
 
 import numpy as np
+import pytest
+
+pytest.importorskip("sklearn")  # ProcessEmbeddingInference needs the `cv` extra
 
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.communication.messaging.types import Frame

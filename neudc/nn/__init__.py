@@ -5,23 +5,23 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from neudc.nn.backends import get_backend
-from neudc.nn.models.cls.base import BaseClsModel
-from neudc.nn.models.cls.blur_model import BlurClassification
-from neudc.nn.models.cls.embedding_model import EmbeddingFilter
-from neudc.nn.models.det.base import BaseDetector
-from neudc.nn.models.det.sahi import SAHIDetector
-from neudc.nn.models.det.yolo import YOLOv8
 from neudc.utils import LOGGER
+from neudc.utils.extras import import_module_for
 
 if TYPE_CHECKING:
     from neudc.nn.models.cls.base import BaseClsModel
     from neudc.nn.models.det.base import BaseDetector
 
-MODEL_REGISTRY: dict[str, type[BaseClsModel | BaseDetector]] = {
-    "YOLOv8": YOLOv8,
-    "SAHIDetector": SAHIDetector,
-    "BlurClassification": BlurClassification,
-    "EmbeddingFilter": EmbeddingFilter,
+# model type -> (module path, class name), imported lazily in `ModelFactory.create` —
+# mirrors `NodeFactory` (neudc/core/node/node_factory.py). `neudc.nn` is on the import
+# path of every ASR/LLM/TTS backend (a package's __init__.py always runs before its
+# submodules), so eagerly importing cv2/torch-based model classes here would force
+# those hard CV dependencies onto audio-only/API-only installs that never use them.
+MODEL_IMPORTS: dict[str, tuple[str, str]] = {
+    "YOLOv8": ("neudc.nn.models.det.yolo", "YOLOv8"),
+    "SAHIDetector": ("neudc.nn.models.det.sahi", "SAHIDetector"),
+    "BlurClassification": ("neudc.nn.models.cls.blur_model", "BlurClassification"),
+    "EmbeddingFilter": ("neudc.nn.models.cls.embedding_model", "EmbeddingFilter"),
 }
 
 
@@ -53,11 +53,12 @@ class ModelFactory:
         model_type = config.pop("type", None)
         backend_name = config.pop("backend", "TorchBackend")
 
-        if model_type not in MODEL_REGISTRY:
+        if model_type not in MODEL_IMPORTS:
             msg = f"Unsupported model type: {model_type}"
             raise ValueError(msg)
 
-        model_class = MODEL_REGISTRY[model_type]
+        module_path, class_name = MODEL_IMPORTS[model_type]
+        model_class = getattr(import_module_for(module_path, f"Model type '{model_type}'"), class_name)
         backend = get_backend(backend_name)
         config["backend"] = backend
         LOGGER.debug(f"Instantiating model: {model_type} with backend {backend_name}")
@@ -67,4 +68,4 @@ class ModelFactory:
         )
 
 
-__all__ = ["BlurClassification", "EmbeddingFilter", "ModelFactory", "SAHIDetector", "YOLOv8"]
+__all__ = ["MODEL_IMPORTS", "ModelFactory"]

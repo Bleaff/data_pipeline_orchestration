@@ -5,6 +5,10 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+import pytest
+
+pytest.importorskip("cv2")  # FolderImageNode needs the `cv` extra
+
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.node.readers.image_reader import FolderImageNode
 

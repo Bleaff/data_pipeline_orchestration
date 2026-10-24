@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,7 +31,30 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          # `cv`: the suite covers the detection/embedding stack (torch, cv2, ...), which is an optional extra.
+          pip install -e ".[cv]"
           pip install pytest pytest-cov httpx2
       - name: Run tests
         run: python -m pytest test -q
+
+  # Python 3.15 (released 2026-10-09): torch/torchvision/ultralytics don't ship cp315
+  # wheels yet (tracked separately), so the `cv` extra can't install here at all. This
+  # job installs everything else and runs the suite minus `@pytest.mark.cv` tests
+  # (deselected) and cv2/torch-dependent test modules (individually skipped via
+  # pytest.importorskip) - i.e. the audio/control-plane path, for real, on 3.15.
+  # Revisit folding this into the main `test` matrix once torch ships cp315 wheels.
+  test-py315-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+          cache: "pip"
+      - name: Install dependencies (no cv extra - torch has no cp315 wheel yet)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,audio,api]"
+          pip install pytest pytest-cov httpx2
+      - name: Run tests (core/audio/control-plane path only)
+        run: python -m pytest test -q -m "not cv"
