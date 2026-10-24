@@ -1,159 +1,29 @@
-<div align="center">
+# neudc — Neural Dataset Collection
 
-# neudc
+**A streaming pipeline framework for pre-annotating object-detection datasets.**
 
-**A multimodal streaming pipeline framework — images, audio, speech and text, one graph.**
-
-Describe a graph of nodes in YAML. neudc validates it, spawns every node as a thread or
-process, wires them over ZeroMQ and keeps them observable — whether the graph pre-labels
-a detection dataset or runs a voice agent that listens, thinks, calls tools and talks back.
+Point it at a stream of images, wire up a graph of nodes — dedup, detect, embed, select,
+save — and get a pre-labelled dataset ready for human review.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-[Modalities](#-what-flows-through-it) ·
-[Showcases](#-two-pipelines-one-framework) ·
-[Install](#-install) ·
-[Quick start](#-quick-start) ·
-[Architecture](#-how-it-works) ·
-[Configuration](#%EF%B8%8F-configuration) ·
-[Nodes](#-available-nodes) ·
-[API & dashboard](#-control-plane-api)
-
-</div>
-
 ---
 
-## ✨ Highlights
+## What it does
 
-- **Declarative graphs.** A pipeline is a YAML list of nodes and their `outputs`. The config
-  is validated before anything starts — unknown types, dangling edges, payload-type mismatches,
-  missing optional dependencies — and every error names the offending node.
-- **Typed, payload-agnostic transport.** Nodes exchange typed messages (`Frame`, `AudioChunk`,
-  `TextChunk`, `Batch`, …) over ZeroMQ PUSH/PULL. Each node declares what it `accepts` and
-  `emits`, and incompatible edges are rejected at startup.
-- **Right execution model per node.** Light nodes run as threads; heavy ones (model inference)
-  run as separate processes with their own GIL and GPU context.
-- **Batch *and* realtime.** Lossless backpressure by default for dataset work; per-node
-  `drop_oldest` / `conflate` queues and a priority control channel (barge-in, cancellation)
-  for live audio.
-- **Production plumbing built in.** Retry/dead-letter error policies, health monitoring,
-  worker replicas, Prometheus metrics with a Grafana dashboard, opt-in shared-memory
-  transport for large buffers.
-- **Control plane + UI.** An HTTP/WebSocket API to start, stop and watch pipelines, and a
-  Next.js dashboard with a visual pipeline builder and a pre-label review editor.
-- **Install only what you use.** The CV stack (torch, OpenCV, ultralytics, …) is an optional
-  extra — a voice or text deployment never pulls it in.
+- **Declarative pipelines.** Describe a node graph in YAML; the framework wires the
+  transport, spawns the workers and validates the config before anything starts.
+- **Nodes run where they should.** Light nodes (readers, resize, filters) run as threads;
+  heavy nodes (model inference) run as separate processes, so they get their own GIL and GPU context.
+- **Lossless transport.** Nodes talk over ZeroMQ **PUSH/PULL** — messages are queued rather
+  than dropped, and a full high-water mark applies backpressure to the producer.
+- **Batteries for dataset work.** Perceptual-hash dedup, detection, embeddings,
+  active-learning selection and dataset assembly ship as nodes.
+- **Observable.** Optional Prometheus metrics endpoint, per-node health monitoring.
 
-## 🧭 What flows through it
-
-| Modality | Message type | Status | Nodes today |
-|---|---|---|---|
-| 🖼 **Images** | `Frame`, `Batch[Frame]` | ✅ Supported | folder reader, resize, perceptual-hash dedup, detection (single / batched / SAHI), blur filter, embeddings, active learning, draw, save, dataset assembly |
-| 🎙 **Audio** | `AudioChunk` | ✅ Supported | live audio reader (pluggable device), energy VAD with turn boundaries, adaptive echo cancellation, block-wise playback |
-| 🗣 **Speech** | `AudioChunk` ↔ `TextChunk` | ✅ Supported | ASR and TTS via any OpenAI-compatible service (e.g. faster-whisper, self-hosted TTS) |
-| 💬 **Text / LLM** | `TextChunk` | ✅ Supported | LLM chat with history and streaming (OpenRouter or any local OpenAI-compatible runtime: Ollama, vLLM, llama.cpp), agent tool calling, text normalization |
-| 🎬 **Video streams** | `VideoSegment` | 🚧 In progress | message type and transport ready; file/RTSP reader, tracking and label propagation are planned ([#18](https://github.com/Bleaff/data_pipeline_orchestration/issues/18)) |
-
-Anything else is a new message type plus a node: the transport moves arbitrary payloads, and
-large buffers (images, audio, embeddings, tokens) can travel out-of-band through shared memory.
-
-## 🎯 Two pipelines, one framework
-
-### Auto-labelling a detection dataset
-
-Read images, dedupe, detect, pick the frames worth a human's time, and write a pre-labelled
-dataset you can review and correct in the dashboard.
-
-```mermaid
-flowchart LR
-    reader["📁 FolderImageNode"] --> hash["HashNode<br/><i>dedup</i>"]
-    hash --> resize["ResizeProcessNode"]
-    resize -->|Batch| det["ProcessDetBatchInference<br/><b>GPU</b>"]
-    det --> draw["DrawNode"] --> save["💾 SaveImageNode"]
-    det -.->|fan-out| emb["ProcessEmbeddingInference<br/><b>GPU</b>"]
-    emb --> al["ActiveLearning"] --> ds["📦 CreateDataset"]
-```
-
-### A voice agent with tools
-
-Microphone in, speaker out: speech is segmented, transcribed, answered by an LLM that can set
-timers, fetch web pages and read/write sandboxed files, then synthesized back. Talk over the
-reply and it stops (barge-in); its own voice is cancelled from the mic signal (AEC).
-
-```mermaid
-flowchart LR
-    mic["🎙 AudioReaderNode"] -->|AudioChunk| vad["VadNode<br/><i>turns · AEC</i>"]
-    vad -->|AudioChunk| asr["AsrNode"]
-    asr -->|TextChunk| llm["LlmNode"]
-    llm -->|TextChunk| tool["AgentToolNode<br/><i>timers · web · files</i>"]
-    tool -->|TextChunk| tts["TtsNode"]
-    tts -->|AudioChunk| player["🔊 AudioPlayerNode"]
-    player -.->|reference audio| vad
-    vad -.->|barge-in| llm
-    vad -.->|barge-in| tool
-    vad -.->|barge-in| tts
-    vad -.->|barge-in| player
-```
-
-Full walkthrough — remote ASR/LLM/TTS services, config keys, barge-in, tools, AEC, Russian
-voice: [`docs/voice_assistant/README.md`](docs/voice_assistant/README.md).
-
-## 📦 Install
-
-```bash
-git clone https://github.com/Bleaff/data_pipeline_orchestration.git
-cd data_pipeline_orchestration
-python3 -m venv env && source env/bin/activate
-```
-
-Then install the extras for what you want to run:
-
-| You want to… | Install |
-|---|---|
-| Label images / run detection, embeddings, active learning | `pip install -e ".[cv]"` |
-| Run the voice agent on a real mic and speaker | `pip install -e ".[audio]"` |
-| Serve the control-plane API / dashboard backend | `pip install -e ".[api]"` |
-| Text/LLM-only pipelines | `pip install -e .` |
-| Accelerate inference | `".[onnx]"` (ONNX Runtime) · `".[trt]"` (TensorRT) |
-| Hack on neudc itself | `".[dev]"` (pre-commit, ruff, mypy, …) |
-
-Extras combine: `pip install -e ".[cv,api]"`. A node whose extra is missing is reported at
-config validation with the exact install command, and the builder UI simply doesn't offer it.
-Python 3.11+ is required.
-
-## 🚀 Quick start
-
-**Images (CPU, no model needed)** — drop a few images into `assets/images/` first:
-
-```bash
-pip install -e ".[cv]"
-python3 -m neudc.entrypoints.main assets/configs/example_cpu_pipeline.yaml
-```
-
-**Voice agent** — needs reachable ASR/LLM/TTS endpoints, see the
-[voice assistant guide](docs/voice_assistant/README.md#1-deploy-the-remote-services):
-
-```bash
-pip install -e ".[audio]"
-python3 run_voice_assistant.py                # interactive config picker
-python3 run_voice_assistant.py --config assets/configs/voice_assistant_pipeline_ru.yaml
-```
-
-**Several pipelines side by side**, each in its own process:
-
-```bash
-python3 -m neudc.entrypoints.main_multipipe assets/configs/multipipe.yaml
-```
-
-**Dashboard** — API plus frontend in containers:
-
-```bash
-docker compose up          # api on :8000, frontend on :3000
-```
-
-## 🏗 How it works
+## How it works
 
 neudc has two planes. The **control plane** turns a YAML file into a running graph:
 the config validator fails fast (and names the offending node), the `NodeFactory` lazily
@@ -169,24 +39,28 @@ flowchart TB
         yaml["📄 pipeline.yaml"] --> validator["config validator<br/><i>fail-fast · names the bad node</i>"]
         validator --> factory["NodeFactory<br/><i>lazy imports</i>"]
         factory --> manager["PipelineServiceManager<br/><i>start · stop · status</i>"]
-        api["HTTP / WS API<br/><i>dashboard · builder</i>"] --> manager
     end
 
     manager -. "spawns and wires" .-> data
 
     subgraph data["Data plane — one running pipeline"]
         direction LR
-        src["source node<br/><i>thread</i>"]:::thread
-        light["light node<br/><i>thread</i>"]:::thread
-        heavy["model node<br/><b>process · GPU</b>"]:::gpu
-        sink["sink node<br/><i>thread</i>"]:::thread
-        side["fan-out branch<br/><i>process</i>"]:::proc
+        reader["FolderImageNode<br/><i>thread</i>"]:::thread
+        resize["ResizeProcessNode<br/><i>process</i>"]:::proc
+        det["ProcessDetBatchInference<br/><b>process · GPU</b>"]:::gpu
+        draw["DrawNode<br/><i>thread · mutates image</i>"]:::thread
+        save["SaveImageNode<br/><i>thread</i>"]:::thread
+        emb["ProcessEmbeddingInference<br/><b>process · GPU</b>"]:::gpu
+        al["ActiveLearning<br/><i>thread</i>"]:::thread
+        ds["CreateDataset<br/><i>thread</i>"]:::thread
 
-        src ==>|"Frame · AudioChunk"| light
-        light ==>|"Batch · TextChunk"| heavy
-        heavy ==> sink
-        heavy -. "fan-out" .-> side
-        src -. "ControlMessage<br/>priority channel" .-> sink
+        reader ==>|Frame| resize
+        resize ==>|Batch| det
+        det ==>|Frame| draw
+        draw ==>|Frame| save
+        det -. "fan-out" .-> emb
+        emb ==> al
+        al ==> ds
     end
 
     classDef thread fill:#eef6ff,stroke:#3b82f6,color:#1e3a8a;
@@ -194,17 +68,12 @@ flowchart TB
     classDef gpu fill:#f0fdf4,stroke:#16a34a,color:#14532d;
 ```
 
-**Typed messages.** Every payload derives from `BaseMessage`: `Frame` (image + boxes +
-metadata), `AudioChunk` (PCM samples), `TextChunk` (ASR hypotheses, LLM output),
-`TokenTensor`, `VideoSegment`, and the generic `Batch` for batched inference. Nodes declare
-the types they `accept` and `emit`, and the validator checks every edge.
-
-**Message transport.** A message is serialized once per send with pickle protocol 5 and the
-same bytes feed every edge. Large buffers can travel *beside* the pickle stream through
-POSIX shared memory instead of over TCP — opt-in via `NEUDC_SHM_IMAGES`, and only on
-single-consumer edges (fan-out keeps everything in-band to avoid a race on unlink). The
-consumer copies the buffer into its own **writable** memory, because nodes like `DrawNode`
-mutate the image in place.
+**Message transport.** A message (`Frame` = image + boxes + metadata, or a `Batch`) is
+serialized once per send with pickle protocol 5 and the same bytes feed every edge. Large
+buffers can travel *beside* the pickle stream through POSIX shared memory instead of over
+TCP — opt-in via `NEUDC_SHM_IMAGES`, and only on single-consumer edges (fan-out keeps
+everything in-band to avoid a race on unlink). The consumer copies the buffer into its own
+**writable** memory, because nodes like `DrawNode` mutate the image in place.
 
 ```mermaid
 flowchart LR
@@ -214,14 +83,14 @@ flowchart LR
     end
 
     enc ==>|"envelope: metadata + small buffers"| push(["ZMQ PUSH"])
-    enc -. "large out-of-band buffers<br/>image · audio · embedding · tokens" .-> shm[("POSIX shared memory<br/><i>opt-in · single-consumer</i>")]
+    enc -. "large out-of-band buffers<br/>image · embedding · tokens" .-> shm[("POSIX shared memory<br/><i>opt-in · single-consumer</i>")]
 
     push ==>|"TCP · 1:1 · backpressure"| pull(["ZMQ PULL"])
 
     subgraph cons["Consumer node"]
-        pull --> rx["rx-thread<br/><i>bounded queue · queue policy</i>"]
+        pull --> rx["rx-thread<br/><i>bounded queue</i>"]
         rx --> dec["codec.loads"]
-        dec --> out["process()<br/><b>writable payload</b>"]
+        dec --> out["process()<br/><b>writable Frame</b>"]
     end
 
     shm -. "open → copy → unlink" .-> dec
@@ -230,17 +99,34 @@ flowchart LR
     class push,pull io;
 ```
 
-**Control channel.** A node can declare `control_outputs` — ids it sends priority
-`ControlMessage`s to (turn cancellation, barge-in). They travel over a second channel,
-independent of the data FIFO, so a cancel is never stuck behind the backlog it is meant to
-interrupt.
-
 A rendered architecture diagram lives in [`assets/schema/neudc.pdf`](assets/schema/neudc.pdf).
+
+## 🚀 Quick start
+
+```bash
+git clone https://github.com/Bleaff/data_pipeline_orchestration.git
+cd data_pipeline_orchestration
+python3 -m venv env && source env/bin/activate
+python3 -m pip install -e .
+```
+
+Run the bundled CPU-only example (no GPU, no model required — put some images in
+`assets/images/` first):
+
+```bash
+python3 -m neudc.entrypoints.main assets/configs/example_cpu_pipeline.yaml
+```
+
+Run several pipelines side by side, each in its own process:
+
+```bash
+python3 -m neudc.entrypoints.main_multipipe assets/configs/multipipe.yaml
+```
 
 ## ⚙️ Configuration
 
 A pipeline is a list of nodes. Each node has an `id`, a `type`, its own parameters, and
-`outputs` — the ids it forwards messages to.
+`outputs` — the ids it forwards frames to.
 
 ```yaml
 nodes:
@@ -264,14 +150,17 @@ nodes:
 ```
 
 The config is validated at startup, so mistakes fail fast and legibly: an unknown node
-`type`, a duplicate `id`, an `outputs` entry that points at no node, an edge whose producer
-emits a payload the consumer doesn't accept, or a node whose optional extra isn't installed
-are all rejected before a single message moves.
+`type`, a duplicate `id`, or an `outputs` entry that points at no node are all rejected
+before a single frame moves.
 
-A node can optionally declare `control_outputs` (see [How it works](#-how-it-works)). A node
-with no `control_outputs` (the default, `[]`) simply has no control channel wired up.
+A node can optionally declare `control_outputs` — ids it sends priority control-plane
+messages to (e.g. turn cancellation / barge-in for streaming pipelines). These travel
+over a second channel, entirely independent of `outputs`/the data FIFO, so a cancel
+signal is never stuck behind a backlog of data it is meant to interrupt. A node with no
+`control_outputs` (the default, `[]`) simply has no control channel wired up and behaves
+exactly as before this existed.
 
-### Metrics
+Optional metrics endpoint:
 
 ```yaml
 prometheus:
@@ -314,12 +203,13 @@ mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
 python -m neudc.entrypoints.main config/pipeline.yaml
 ```
 
-Without it, only same-process (`BaseThreadedNode`) metrics are visible.
+Without it, only same-process (`BaseThreadedNode`) metrics are visible — the historical,
+single-process behaviour.
 
 ### Error policy
 
 Any node may declare what happens when its processing raises. Without the block a
-node logs the exception and drops the message.
+node logs the exception and drops the message — the historical behaviour.
 
 ```yaml
   - id: detector
@@ -377,7 +267,8 @@ flagged unhealthy once `health_timeout` elapses.
 ```
 
 Both keys are optional and fall back to `BaseProcessNode.HEALTH_TIMEOUT`/
-`HEALTH_CHECK_INTERVAL` when omitted; when set they must be `> 0`.
+`HEALTH_CHECK_INTERVAL` when omitted; when set they must be `> 0`, validated with the
+rest of the config the same way `error_policy` is.
 
 ### Worker replicas & autoscale
 
@@ -392,7 +283,8 @@ heavy inference node's load across more CPU/GPU workers:
 ```
 
 Each replica gets its own mailbox; a producer's single `PUSH` socket connects to
-every replica's port, and ZeroMQ round-robins messages across them fairly.
+every replica's port, and ZeroMQ round-robins messages across them fairly — a
+replicated node's queue depth is naturally load-balanced without any extra code.
 Replica instances are named `<id>#0`, `<id>#1`, … so per-node metrics, health and
 dead-letter records never collide across replicas.
 
@@ -415,7 +307,8 @@ on how deep each replica's own inbound queue is:
 Scaling moves one replica at a time and only triggers when **every** current
 replica crosses the same threshold, so one busy worker does not spin up new ones
 while its siblings are idle. `min_replicas <= max_replicas` and
-`queue_depth_low < queue_depth_high` are enforced at config-validation time.
+`queue_depth_low < queue_depth_high` are enforced at config-validation time, the
+same way `error_policy` is.
 
 > **Status:** the decision engine (`ReplicaAutoscaler.check_and_scale`) is fully
 > implemented and unit-tested against injected queue-depth readers and a fake
@@ -449,17 +342,22 @@ Any node may opt into that per-edge:
 | `drop_oldest` | Discard the single oldest queued message to make room for the new one. |
 | `conflate` | Discard every currently-queued message, keeping only the newest. At most one message is ever queued. |
 
-Dropped messages are counted in `neudc_node_queue_drops_total{node, reason}`. Dropping
-only ever happens to an already-deserialized message sitting in the queue — never at the
-ZMQ socket level — so it is safe even with the shared-memory buffer transport: by the time
-a message is queued, any shared-memory segment backing it has already been copied out and
-unlinked.
+Dropped messages are counted in `neudc_node_queue_drops_total{node, reason}` (`reason`
+is `drop_oldest` or `conflate`). Dropping only ever happens to an already-deserialized
+message sitting in the queue — never at the ZMQ socket level — so it is safe even with
+the shared-memory buffer transport (`NEUDC_SHM_IMAGES`): by the time a message is
+queued, any shared-memory segment backing it has already been copied out and unlinked.
+
+`message_queue_size`/`queue_policy` are validated with the rest of the config: an
+unknown `queue_policy` string or a non-positive `message_queue_size` is rejected at
+startup, naming the node.
 
 ### LLM backends
 
 `neudc.nn.backends.llm` provides a provider-agnostic `BaseLLMBackend` interface for
-chat/VLM models. `LlmNode` wires it into the graph; the backend can also be built directly
-from a `LLMBackendConfig`:
+chat/VLM models, the foundation for the upcoming VLM node and copilot. `LlmNode` (see
+[Available nodes](#-available-nodes)) wires it into the graph; the backend can also be
+built directly from a `LLMBackendConfig` for other callers (e.g. the future copilot):
 
 ```python
 from neudc.nn.backends.llm import LLMBackendConfig, LLMBackendType, build_llm_backend
@@ -488,14 +386,18 @@ Both providers speak the same OpenAI-compatible `/chat/completions` protocol, so
 `OpenAICompatibleBackend` implements the request/response handling once; each provider
 subclass only fixes the endpoint and credential resolution.
 
-### ASR / TTS backends
+### ASR / TTS backends and the voice assistant pipeline
 
 `neudc.nn.backends.asr` (`BaseASRBackend`, `OpenAICompatibleASRBackend`) and
 `neudc.nn.backends.tts` (`BaseTTSBackend`, `OpenAICompatibleTTSBackend`) follow the
-same self-hosted-OpenAI-compatible-HTTP pattern as `LocalLLMBackend`, wired into the graph
-by `AsrNode` and `TtsNode`. Remote GPU inference is treated as plain HTTP calls rather than
-extending the ZMQ transport across machines. Deployment, config keys and tuning are in
-[`docs/voice_assistant/README.md`](docs/voice_assistant/README.md).
+same self-hosted-OpenAI-compatible-HTTP pattern as `LocalLLMBackend` above, wired
+into the graph by `AsrNode` and `TtsNode`. Together with `AudioReaderNode`, `VadNode`,
+`LlmNode` and `AudioPlayerNode` they make up a full mic → VAD → ASR → LLM → TTS →
+speaker pipeline (`assets/configs/voice_assistant_pipeline.yaml`) that treats remote
+GPU inference as plain HTTP calls rather than extending the ZMQ transport across
+machines. See [`docs/voice_assistant/README.md`](docs/voice_assistant/README.md) for
+the full walkthrough: deploying the remote ASR/TTS services, the config keys, and
+running the pipeline locally against real microphone/speaker hardware.
 
 ### Environment variables
 
@@ -508,57 +410,38 @@ extending the ZMQ transport across machines. Deployment, config keys and tuning 
 
 ## 🧩 Available nodes
 
-### 🖼 Vision — needs the `cv` extra
-
 | Node | Runs as | What it does |
 |---|---|---|
 | `FolderImageNode` | thread | Reads images from a folder (`folder_path`, `mode`, `frame_delay`) |
+| `AudioReaderNode` | thread | Reads live audio from a pluggable device (`device`, `sample_rate`, `channels`, `chunk_duration`, `source`) |
 | `ResizeNode` | thread | Resizes frames (`target_width`, `target_height`) |
 | `ResizeProcessNode` | process | Same, isolated in its own process |
 | `HashNode` | thread | Perceptual-hash dedup filter (`delta`, `hash_size`, `hash_type`) |
+| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy; owns turn-boundary assignment and barge-in cancellation (`energy_threshold`, `session_id`, `control_outputs`); optional adaptive echo cancellation against `AudioPlayerNode` reference audio (`aec_enabled`) |
+| `DrawNode` | thread | Draws detected boxes onto the frame |
+| `SaveImageNode` | thread | Writes frames to disk (`save_dir`) |
 | `ProcessDetInference` | process | Single-frame object detection (`model_config`) |
 | `ProcessDetBatchInference` | process | Batched object detection (`batch_size`, `model_config`) |
 | `ProcessBlurInference` | process | Blur detection / filtering |
 | `ProcessEmbeddingInference` | process | Batched embedding extraction |
-| `DrawNode` | thread | Draws detected boxes onto the frame |
-| `SaveImageNode` | thread | Writes frames to disk (`save_dir`) |
+| `ActiveLearning` | thread | Selects frames worth human labelling |
 | `CreateDataset` | thread | Assembles the resulting dataset |
-
-Model-backed nodes take a `model_config` naming the model `type` (`YOLOv8`, `SAHIDetector`,
-`BlurClassification`, `EmbeddingFilter`), the `backend` (`TorchBackend`, `ONNXRuntimeBackend`,
-`TensorRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
-
-### 🎙 Audio & speech
-
-| Node | Runs as | What it does |
-|---|---|---|
-| `AudioReaderNode` | thread | Reads live audio from a pluggable device (`device`, `sample_rate`, `channels`, `chunk_duration`, `source`) |
-| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy; owns turn-boundary assignment and barge-in cancellation (`energy_threshold`, `session_id`, `control_outputs`); optional adaptive echo cancellation against `AudioPlayerNode` reference audio (`aec_enabled`) |
-| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `min_speech_duration`) — `AudioChunk` → `TextChunk` |
+| `TextNormalizeNode` | thread | Non-CV: strips/lowercases `TextChunk.text` (`accepts`/`emits` = `TextChunk`) |
+| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `min_speech_duration`) — `AudioChunk` → `TextChunk`, propagating `session_id`/`turn_id` from `VadNode` |
+| `LlmNode` | thread | Answers transcriptions via a pluggable `LLMBackend`, keeping conversation history (`llm_config`, `system_prompt`) — `TextChunk` → `TextChunk` |
+| `AgentToolNode` | thread | Resolves inline `[[tool_name({...})]]` markers in `TextChunk` text via a pluggable tool registry — timers/reminders, web page fetch+parse, sandboxed file create/read (`enable_timers`, `enable_web_fetch`, `enable_file_io`, `sandbox_dir`) — `TextChunk` → `TextChunk` |
 | `TtsNode` | thread | Synthesizes replies via a remote TTS service (`tts_config`) — `TextChunk` → `AudioChunk` |
-| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device, in blocks so barge-in can cut it off mid-playback (`device`, `playback_check_interval`); also emits each played block as AEC reference audio |
+| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device, in blocks so barge-in can cut it off mid-playback (`device`, `playback_check_interval`); also emits a copy of each played block as AEC reference audio |
 
-### 💬 Text & agents
-
-| Node | Runs as | What it does |
-|---|---|---|
-| `LlmNode` | thread | Answers via a pluggable `LLMBackend`, keeping conversation history (`llm_config`, `system_prompt`) — `TextChunk` → `TextChunk` |
-| `AgentToolNode` | thread | Resolves inline `[[tool_name({...})]]` markers in LLM output via a pluggable tool registry — `set_timer`, `fetch_url`, sandboxed `create_file` / `read_file` (`enable_timers`, `enable_web_fetch`, `enable_file_io`, `sandbox_dir`) — `TextChunk` → `TextChunk` |
-| `TextNormalizeNode` | thread | Strips/lowercases `TextChunk.text` |
-
-### 🧠 Selection
-
-| Node | Runs as | What it does |
-|---|---|---|
-| `ActiveLearning` | thread | Selects frames worth human labelling by detection uncertainty and embedding diversity |
-
-Writing your own node is a mixin with a `process()` method plus a thin node class registered
-in the factory — see [`docs/NODE_DEV_GUIDE.md`](docs/NODE_DEV_GUIDE.md).
+Model-backed nodes take a `model_config` naming the backend (`TorchBackend`,
+`ONNXBackend`, `TRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
+See [ASR / TTS backends and the voice assistant pipeline](#asr--tts-backends-and-the-voice-assistant-pipeline)
+for `AsrNode`/`LlmNode`/`AgentToolNode`/`TtsNode`/`AudioPlayerNode` config details.
 
 ## 🔌 Control-plane API
 
-`neudc.service.api` exposes `PipelineServiceManager` over HTTP/WS — the backend for the
-dashboard. Run it with:
+`neudc.service.api` exposes `PipelineServiceManager` over HTTP/WS (#22) — the backend
+for the upcoming frontend dashboard (#23). Run it with:
 
 ```bash
 pip install -e ".[api]"
@@ -576,10 +459,10 @@ python3 -m neudc.entrypoints.api_server --host 127.0.0.1 --port 8000
 | `/pipelines/{name}/preview` | GET | Latest frame from that pipeline's `SaveImageNode`, if it has one (404 otherwise) |
 | `/config/validate` | POST | Validate a `{"nodes": [...]}` body via `config_schema` without starting anything |
 | `/config` | GET | Read+parse a YAML config file (`?path=...`) |
-| `/metrics` | GET | Prometheus exposition (multiprocess-aware if `PROMETHEUS_MULTIPROC_DIR` is set) |
+| `/metrics` | GET | Prometheus exposition of the Stage 12 registry (multiprocess-aware if `PROMETHEUS_MULTIPROC_DIR` is set) |
 | `/ws/metrics` | WS | Pushes a `{metric_name: {node: value}}` JSON snapshot once per second |
-| `/node-types` | GET | Catalog of registered node types with editable field specs, for the visual config builder |
-| `/pipelines/{name}/labels` | GET | List frames from that pipeline's `CreateDataset` output, with box count + reviewed state |
+| `/node-types` | GET | Catalog of registered node types with editable field specs, for the visual config builder (#24) |
+| `/pipelines/{name}/labels` | GET | List frames from that pipeline's `CreateDataset` output, with box count + reviewed state (#24) |
 | `/pipelines/{name}/labels/{frame_id}` | GET/PUT | Read or overwrite one frame's YOLO-format boxes; PUT marks it reviewed |
 | `/pipelines/{name}/labels/{frame_id}/image` | GET | The frame's image |
 
@@ -592,8 +475,9 @@ install without the `cv` extra, the detection/embedding/image nodes are not offe
 alongside the dataset — there's no database anywhere in this codebase.
 
 `/pipelines/{name}/preview` only works today if that pipeline's config includes a
-`SaveImageNode` — there is no live frame tap yet; it just serves the newest file the node
-has already written to its `save_dir`.
+`SaveImageNode` — there is no live frame tap yet (that needs a new node type, tracked
+separately); it just serves the newest file the node has already written to its
+`save_dir`.
 
 > **Metrics gotcha:** `PipelineServiceManager`-started pipelines each run in their own
 > OS process (`BasePipeline` is a `multiprocessing.Process`), so their metrics live in
@@ -602,15 +486,15 @@ has already written to its `save_dir`.
 > starting `api_server` (it must be set on the API process so every pipeline it spawns
 > inherits it) to see per-node health/throughput/queue-depth data at all.
 
-## 🖥 Dashboard
+## 🖥 Frontend (#23, #24)
 
 `frontend/` is a Next.js app over the control-plane API. See [frontend/README.md](frontend/README.md) for setup.
 
-- `/` and `/pipelines/{name}`: pipeline list, a per-pipeline node graph
+- `/` and `/pipelines/{name}` (#23, read-only): pipeline list, a per-pipeline node graph
   (health/throughput/queue depth), live metrics, and a feed of recent frames.
-- `/builder`: visual pipeline config builder — add/connect nodes from the
+- `/builder` (#24): visual pipeline config builder — add/connect nodes from the
   `/node-types` catalog, edit their fields, validate, and start the pipeline.
-- `/pipelines/{name}/review`: pre-label review — drag to add/move/resize boxes
+- `/pipelines/{name}/review` (#24): pre-label review — drag to add/move/resize boxes
   over a frame, edit class ids, save corrections back through `/labels/{frame_id}`.
   Linked from a pipeline's detail page when it has a `CreateDataset` node.
 
@@ -643,38 +527,41 @@ API_BASE_URL=http://host.docker.internal:8000 docker compose up frontend
 
 (`host.docker.internal` is resolved by Docker Desktop on macOS/Windows out of the box;
 on Linux Docker Engine you'd add `extra_hosts: ["host.docker.internal:host-gateway"]`.)
-
 Image size note: this image installs the `cv` extra (torch, torchvision, ultralytics,
 ...) too, since the control-plane API can start CV pipelines as well as the voice
 assistant — expect a slow first build. torch is at least kept CPU-only (see
 `Dockerfile`): PyPI's default linux wheel bundles the full CUDA runtime as
-dependencies, several GB this container would never use. An audio/API-only deployment
-that never starts a CV pipeline can drop `cv` from that install and skip torch/cv2 entirely.
+dependencies, several GB this container would never use (no GPU access either way —
+Docker Desktop on macOS has none at all). An audio/API-only deployment that never
+starts a CV pipeline can drop `cv` from that install and skip torch/cv2 entirely.
 
 ## 🛠 Development
 
 ```bash
-pip install -e ".[dev,cv,audio,api]"
+python3 -m pip install pre-commit
 pre-commit install
 pre-commit run --all-files
-python3 -m pytest test -q
 ```
 
-Tests marked `cv` need the `cv` extra; deselect them with `-m "not cv"` to run the suite on a
-CV-free install (CI does exactly that on Python 3.15). Contributor rules — layering, tests,
-definition of done — are in [`CLAUDE.md`](CLAUDE.md); a node-authoring walkthrough is in
-[`docs/NODE_DEV_GUIDE.md`](docs/NODE_DEV_GUIDE.md).
+Run the tests:
+
+```bash
+python3 -m pytest test
+```
+
+Optional extras: `pip install -e ".[dev]"`, `".[cv]"` (torch/opencv/ultralytics/scikit-learn/
+scikit-image/imagehash — the detection/embedding/active-learning stack; not needed for the
+voice assistant or a CV-free control-plane deployment), `".[trt]"` (TensorRT), `".[onnx]"`
+(ONNX Runtime), `".[audio]"` (`sounddevice`, for a real-microphone `AudioReaderNode` backend),
+`".[api]"` (`fastapi`/`uvicorn`, for the control-plane API).
 
 ## 🗺 Roadmap
 
 The full roadmap lives in [docs/ROADMAP.md](docs/ROADMAP.md); task status is tracked on the
 [project board](https://github.com/users/Bleaff/projects/6). Highlights:
-
-- 🎬 **Video** — file/RTSP reader, tracking (ByteTrack / BoT-SORT) and label propagation along tracks
-- 🎯 **Zero-shot / open-vocabulary labelling** — GroundingDINO / Grounded-SAM / SAM2
-- 👁 **VLM node** — captioning, VQA and attribute tagging on top of the LLM backends
-- 🔁 **Closing the labelling loop** — CVAT / Label Studio integration and retraining
-- 🎨 **Diffusion-based image generation** — local models or hosted API endpoints
+zero-shot / open-vocabulary labelling, video support with tracking and label propagation,
+a control-plane API with a dashboard, shared-memory image transport, and diffusion-based
+image generation (local models or hosted API endpoints).
 
 ## 📄 License
 
