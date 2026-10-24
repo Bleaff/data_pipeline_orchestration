@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Any
 
+import pytest
+
 from neudc.core.base.base_process import BaseProcessNode
 from neudc.core.base.base_thread import BaseThreadedNode
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
@@ -149,6 +151,7 @@ def test_process_node_uses_multiprocessing_primitives() -> None:
 # === Factory wiring ===
 
 
+@pytest.mark.cv
 def test_factory_builds_the_policy_from_node_config(tmp_path) -> None:
     # Wiring lives in the factory, so no node's from_config has to know about it.
     node = NodeFactory.create(
@@ -170,6 +173,7 @@ def test_factory_builds_the_policy_from_node_config(tmp_path) -> None:
     assert node.id == "reader"
 
 
+@pytest.mark.cv
 def test_factory_gives_an_unconfigured_node_the_historical_behaviour(tmp_path) -> None:
     node = NodeFactory.create(
         {"id": "reader", "type": "FolderImageNode", "folder_path": str(tmp_path), "outputs": []},
@@ -180,6 +184,7 @@ def test_factory_gives_an_unconfigured_node_the_historical_behaviour(tmp_path) -
     assert node.error_policy.config.max_retries == 0
 
 
+@pytest.mark.cv
 def test_factory_wires_health_overrides_onto_the_node(tmp_path) -> None:
     # Same pop-then-wire pattern as error_policy (#39): the keys must not leak into
     # from_config's kwargs and must land on the constructed instance.
@@ -199,6 +204,7 @@ def test_factory_wires_health_overrides_onto_the_node(tmp_path) -> None:
     assert node.health_check_interval == 2
 
 
+@pytest.mark.cv
 def test_factory_leaves_health_defaults_when_unconfigured(tmp_path) -> None:
     node = NodeFactory.create(
         {"id": "reader", "type": "FolderImageNode", "folder_path": str(tmp_path), "outputs": []},
@@ -210,6 +216,7 @@ def test_factory_leaves_health_defaults_when_unconfigured(tmp_path) -> None:
     assert not hasattr(node, "health_timeout")
 
 
+@pytest.mark.cv
 def test_factory_pops_queue_policy_keys_before_from_config(tmp_path, monkeypatch) -> None:
     # `message_queue_size`/`queue_policy` (#38) are routing-only config, consumed by
     # RoutingFactory when building the node's mailbox -- they must not leak into the

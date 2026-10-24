@@ -41,6 +41,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -56,25 +57,15 @@ classifiers = [
 python = ">=3.11"
 pyyaml = "==6.0.2"
 jaxtyping = "==0.2.36"
-numba = ">=0.61.0,<0.62.0"  # 0.61 is the first line with Python 3.13 wheels (0.60 hard-refuses to install on 3.13)
-numpy = ">=2.0.0,<2.3.0"  # range numba 0.61 itself declares support for
+numba = ">=0.61.0,<0.69.0"  # the old <0.62.0 cap predates Python 3.15 wheels; 0.68.x ships cp315, 0.61.x only builds from source there (and that build is itself broken by a distutils change in 3.15)
+numpy = ">=2.0.0,<2.6.0"  # range 0.68's own numpy<2.6,>=1.22 constraint allows
 pytz = "==2024.2"
-opencv-python-headless = "==4.10.0.84"
 pyzmq = "==27.0.0"
 requests = "*"
 tqdm = "*"
-scipy = "*"
-scikit-learn = "*"
-imagehash = "*"
-scikit-image = "*"
+scipy = "*"  # needed outside the CV stack too: audio AEC's resample_poly (core/node/filters/mixins/aec.py)
 pydantic = "*"
 prometheus-client = "*"
-torchvision = "*"
-torch = [
-    {version = "^2.2.1", source="pypi", markers = "sys_platform == 'darwin'"},
-    {version = "^2.2.1", source="torch_cuda121", markers = "sys_platform == 'linux' or sys_platform == 'win32'"},
-]
-ultralytics = "*"
 fastapi = "*"
 
 # Optional dependencies -------------------------------------------------------------------------------------------
@@ -93,6 +84,22 @@ sounddevice = {version = "*", optional = true}
 uvicorn = {version = "*", optional = true}
 websockets = {version = "*", optional = true}
 
+# `cv` extra: the detection/embedding/active-learning stack (neudc/nn/models/, the
+# *ProcessInference nodes). Audio-only and API-only deployments (voice assistant,
+# control-plane without CV pipelines) never import any of these — see the lazy
+# MODEL_IMPORTS in neudc/nn/__init__.py and the guarded torch import in
+# neudc/nn/backends/__init__.py — so they're optional rather than hard dependencies.
+opencv-python-headless = {version = "==4.10.0.84", optional = true}
+scikit-learn = {version = "*", optional = true}
+imagehash = {version = "*", optional = true}
+scikit-image = {version = "*", optional = true}
+torchvision = {version = "*", optional = true}
+torch = [
+    {version = "^2.2.1", source="pypi", markers = "sys_platform == 'darwin'", optional = true},
+    {version = "^2.2.1", source="torch_cuda121", markers = "sys_platform == 'linux' or sys_platform == 'win32'", optional = true},
+]
+ultralytics = {version = "*", optional = true}
+
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.2"
 pytest-cov = "^6.0.0"
@@ -104,6 +111,7 @@ trt = ["cuda-python", "tensorrt"]
 onnx = ["onnxruntime-gpu"]
 api = ["uvicorn", "websockets"]
 audio = ["sounddevice"]
+cv = ["opencv-python-headless", "scikit-learn", "imagehash", "scikit-image", "torchvision", "torch", "ultralytics"]
 
 # Package sources -----------------------------------------------------------------------------------------------------
 # Referenced by the `torch` dependency above for Linux/Windows CUDA wheels.

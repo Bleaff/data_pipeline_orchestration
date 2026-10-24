@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.cv  # both tests assert on FolderImageNode, which needs cv2
+
 
 def test_list_node_types_returns_the_full_catalog(client) -> None:
     resp = client.get("/node-types")

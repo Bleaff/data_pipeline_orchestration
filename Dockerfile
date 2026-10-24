@@ -8,9 +8,12 @@
 # docs/voice_assistant/README.md) and point the `frontend` service at its embedded
 # API (API_BASE_URL=http://host.docker.internal:8000), not at this container.
 #
-# Image size note: neudc's hard dependencies (torch, torchvision, ultralytics,
-# opencv-python-headless, numba, ...) are not split into optional extras, so even
-# this API-only image pulls all of them regardless — expect a slow first build.
+# The CV stack (torch, torchvision, ultralytics, opencv-python-headless, scikit-learn,
+# scikit-image, imagehash) lives behind the optional `cv` extra — this control-plane API
+# image installs it too (below) since it can start CV pipelines, not just the voice
+# assistant. An audio/API-only deployment that never runs a detection/embedding pipeline
+# can drop `.[cv]` and skip torch/cv2 entirely (see neudc/nn/__init__.py's lazy
+# MODEL_IMPORTS and neudc/nn/backends/__init__.py's guarded torch import).
 # torch is at least kept CPU-only (see below): this container has no GPU access
 # either way (Docker Desktop on macOS has none at all; this image isn't built with
 # --gpus in mind on Linux either), so pulling PyPI's default CUDA-bundled linux
@@ -30,10 +33,10 @@ COPY neudc ./neudc
 # installed, the next step's resolver sees the constraint is met and leaves it alone.
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-# `api` extra: uvicorn + websockets, the only deps the control-plane server needs
-# beyond neudc's (already substantial) hard requirements. No audio/dev/trt/onnx —
-# this container never touches a microphone or a GPU.
-RUN pip install --no-cache-dir ".[api]"
+# `api` + `cv`: uvicorn/websockets for the control-plane server, plus the CV stack so it
+# can start detection/embedding pipelines too. No audio/dev/trt/onnx — this container
+# never touches a microphone or a GPU.
+RUN pip install --no-cache-dir ".[api,cv]"
 
 EXPOSE 8000
 
