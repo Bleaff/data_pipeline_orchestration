@@ -8,6 +8,7 @@ This module defines two context managers/decorators:
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import sys
 import time
 from collections.abc import Callable
@@ -31,13 +32,11 @@ except ImportError:
 
 # torch is part of the optional `cv` extra (see pyproject.toml), not a hard dependency —
 # `neudc.utils` is imported by every node, including audio-only ones that never touch
-# torch, so `use_torch` CUDA sync (below) is simply unavailable without it.
-try:
+# torch, so `use_torch` CUDA sync (below) is simply unavailable without it. Gated on
+# torch being installed (not on the import succeeding) so a broken install still fails loudly.
+TORCH_PROFILE_ENABLE = importlib.util.find_spec("torch") is not None
+if TORCH_PROFILE_ENABLE:
     import torch
-
-    TORCH_PROFILE_ENABLE = True
-except ImportError:
-    TORCH_PROFILE_ENABLE = False
 
 __all__ = ("NoProfile", "Profile", "conditional_jit", "get_profile", "toggle_jit")
 

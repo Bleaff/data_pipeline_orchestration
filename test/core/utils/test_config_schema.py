@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -354,3 +355,11 @@ def test_negative_health_check_interval_is_rejected() -> None:
     }
     with pytest.raises(ConfigError, match="Node 'detector': 'health_check_interval' must be > 0, got -1"):
         validate_pipeline_config(cfg)
+
+
+def test_node_whose_class_cannot_be_imported_is_a_config_error_naming_it(monkeypatch) -> None:
+    # Simulates a CV node on an install without the `cv` extra (cv2 missing).
+    monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
+
+    with pytest.raises(ConfigError, match=r"Node 'reader': Node type 'FolderImageNode' could not be imported"):
+        validate_pipeline_config(_VALID)

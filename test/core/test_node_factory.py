@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys
+
+import pytest
+
 from neudc.core.communication.messaging.types import Frame
 from neudc.core.node.node_factory import NodeFactory
 
@@ -34,3 +38,16 @@ def test_vad_node_accepts_and_emits_audio_chunk() -> None:
 
     assert NodeFactory.get_accepts("VadNode") == (AudioChunk,)
     assert NodeFactory.get_emits("VadNode") == (AudioChunk,)
+
+
+def test_resolve_names_the_node_type_when_its_module_cannot_be_imported(monkeypatch) -> None:
+    # `None` in sys.modules makes the import fail exactly like a missing optional dependency.
+    monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
+
+    with pytest.raises(ImportError, match=r"Node type 'FolderImageNode' could not be imported.*\.\[cv\]"):
+        NodeFactory.get_emits("FolderImageNode")
+
+
+def test_resolve_unknown_type_is_still_a_value_error() -> None:
+    with pytest.raises(ValueError, match="Unknown node type"):
+        NodeFactory.get_emits("NopeNode")

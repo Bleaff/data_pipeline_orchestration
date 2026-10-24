@@ -110,10 +110,20 @@ def _check_payload_compat(node: NodeSpec, target: NodeSpec) -> None:
     """Validate that ``node``'s declared ``emits`` is compatible with ``target``'s ``accepts`` (#35/#36).
 
     Kept out of :class:`NodeSpec`, same reason as :func:`_check_error_policy`: the
-    message should name both node ids the user wrote, not a positional index.
+    message should name both node ids the user wrote, not a positional index. A node
+    whose class can't be imported (e.g. a CV node without the ``cv`` extra) is reported
+    the same way, instead of escaping as a bare ``ImportError``.
     """
-    emits = NodeFactory.get_emits(node.type)
-    accepts = NodeFactory.get_accepts(target.type)
+    try:
+        emits = NodeFactory.get_emits(node.type)
+    except ImportError as e:
+        msg = f"Node '{node.id}': {e}"
+        raise ConfigError(msg) from e
+    try:
+        accepts = NodeFactory.get_accepts(target.type)
+    except ImportError as e:
+        msg = f"Node '{target.id}': {e}"
+        raise ConfigError(msg) from e
     if not any(issubclass(e, a) for e in emits for a in accepts):
         emits_names = [t.__name__ for t in emits]
         accepts_names = [t.__name__ for t in accepts]

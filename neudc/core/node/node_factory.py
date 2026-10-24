@@ -45,13 +45,29 @@ class NodeFactory:
 
     @staticmethod
     def _resolve(node_type: str) -> Any:
-        """Import and return the node class for ``node_type``."""
+        """Import and return the node class for ``node_type``.
+
+        Raises
+        ------
+            ValueError: ``node_type`` is not registered.
+            ImportError: The node's module (or one of its optional dependencies, e.g. the
+                ``cv`` extra's cv2/torch) cannot be imported. The message names the node
+                type; the original error is chained.
+
+        """
         try:
             module_path, class_name = NodeFactory.NODE_IMPORTS[node_type]
         except KeyError:
             msg = f"Unknown node type: {node_type}"
             raise ValueError(msg) from None
-        module = importlib.import_module(module_path)
+        try:
+            module = importlib.import_module(module_path)
+        except ImportError as e:
+            msg = (
+                f"Node type '{node_type}' could not be imported ({e}). If this is a missing optional "
+                "dependency, install the matching extra (detection/embedding/image nodes need `.[cv]`)."
+            )
+            raise ImportError(msg, name=e.name) from e
         return getattr(module, class_name)
 
     @staticmethod

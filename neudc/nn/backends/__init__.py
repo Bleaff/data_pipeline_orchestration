@@ -1,5 +1,7 @@
 """Pluggable inference backends (torch, TensorRT, ONNX Runtime) and their factory."""
 
+import importlib.util
+
 from neudc.utils import CUDA_PROFILE_ENABLE, ONNX_PROFILE_ENABLE, TENSORRT_ENABLE
 
 from .base import BackendType, BaseBackend
@@ -9,14 +11,14 @@ __all__ = ["BackendType", "BaseBackend"]
 # torch is part of the optional `cv` extra (see pyproject.toml), not a hard dependency —
 # this package is imported transitively by every ASR/LLM/TTS backend module (Python
 # always runs a package's __init__.py before its submodules), including the
-# audio-only ones that never need torch at all.
-try:
+# audio-only ones that never need torch at all. Gated on torch being *installed*, not on
+# the import succeeding: a broken torch install (or a bug in .torch) must surface its
+# own error here rather than masquerade as "install the `cv` extra" later.
+TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
+if TORCH_AVAILABLE:
     from .torch import TorchBackend
 
-    TORCH_AVAILABLE = True
     __all__ += ["TorchBackend"]
-except ImportError:
-    TORCH_AVAILABLE = False
 
 if CUDA_PROFILE_ENABLE and TENSORRT_ENABLE:
     from .trt import TensorRTBackend

@@ -465,7 +465,9 @@ python3 -m neudc.entrypoints.api_server --host 127.0.0.1 --port 8000
 
 `/node-types` excludes `AudioReaderNode` and the `SAHIDetector` model type — both need a
 live Python object (`device`/`detector`) that isn't JSON/YAML-expressible; hand-write
-YAML for those. `/pipelines/{name}/labels*` needs a `CreateDataset` node in the pipeline
+YAML for those. It also leaves out node types whose dependencies aren't installed — e.g. on an
+install without the `cv` extra, the detection/embedding/image nodes are not offered.
+`/pipelines/{name}/labels*` needs a `CreateDataset` node in the pipeline
 (404 otherwise); reviewed state is tracked in a `.review_state.json` manifest written
 alongside the dataset — there's no database anywhere in this codebase.
 

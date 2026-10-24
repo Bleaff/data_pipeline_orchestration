@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from neudc.core.node.node_factory import NodeFactory
 from neudc.service.api.node_catalog import get_node_catalog
 
@@ -70,3 +72,15 @@ def test_required_fields_have_no_default_value_semantics_conflict():
         for field in entry.fields:
             if field.required:
                 assert field.default is None, f"{entry.type}.{field.name} is required but has a default"
+
+
+def test_node_types_that_cannot_be_imported_are_left_out(monkeypatch):
+    # Simulates an API-only install without the `cv` extra: FolderImageNode's module
+    # imports cv2. The rest of the catalog must still be served instead of a 500.
+    full = {entry.type for entry in get_node_catalog()}
+    monkeypatch.setitem(sys.modules, "neudc.core.node.readers.image_reader", None)
+
+    catalog_types = {entry.type for entry in get_node_catalog()}
+
+    assert "FolderImageNode" in full
+    assert catalog_types == full - {"FolderImageNode"}

@@ -43,12 +43,15 @@ def test_create_resolves_module_lazily_through_model_imports(monkeypatch: pytest
     fake_module.FakeModel = _FakeModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "test_fake_model_module", fake_module)
     monkeypatch.setitem(MODEL_IMPORTS, "FakeModel", ("test_fake_model_module", "FakeModel"))
+    # Backend resolution isn't under test here, and the real TorchBackend needs the `cv` extra.
+    fake_backend = object()
+    monkeypatch.setattr("neudc.nn.get_backend", lambda _name: fake_backend)
 
     instance = ModelFactory.create({"type": "FakeModel", "backend": "TorchBackend", "path": "unused"})
 
     assert isinstance(instance, _FakeModel)
     assert instance.kwargs["path"] == "unused"
-    assert instance.kwargs["backend"] is not None
+    assert instance.kwargs["backend"] is fake_backend
 
 
 def test_importing_neudc_nn_does_not_pull_in_cv2() -> None:
