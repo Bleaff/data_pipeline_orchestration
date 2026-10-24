@@ -12,11 +12,12 @@ from neudc.nn.backends.tts.openai_compatible import OpenAICompatibleTTSBackend
 
 
 def test_asr_node_from_config_builds_backend_and_wires_options() -> None:
+    # No session_id here (#barge-in): VadNode owns turn-boundary assignment and
+    # stamps it onto every AudioChunk upstream; AsrNode just relays it.
     node = AsrNode.from_config(
         {
             "mailbox": ZMQMailbox(),
             "asr_config": {"model_id": "whisper-large-v3", "base_url": "http://asr.test/v1"},
-            "session_id": "sess-1",
             "min_speech_duration": 0.5,
         },
     )
@@ -24,8 +25,50 @@ def test_asr_node_from_config_builds_backend_and_wires_options() -> None:
     assert isinstance(node.backend, OpenAICompatibleASRBackend)
     assert node.backend.model_id == "whisper-large-v3"
     assert node.backend.base_url == "http://asr.test/v1"
-    assert node.session_id == "sess-1"
+    assert node.backend.language is None
+    assert node.backend.no_speech_threshold == 0.6
     assert node.min_speech_duration == 0.5
+
+
+def test_asr_node_from_config_wires_language() -> None:
+    node = AsrNode.from_config(
+        {
+            "mailbox": ZMQMailbox(),
+            "asr_config": {"model_id": "whisper-large-v3", "language": "ru", "base_url": "http://asr.test/v1"},
+        },
+    )
+
+    assert node.backend.language == "ru"
+
+
+def test_asr_node_from_config_wires_no_speech_threshold() -> None:
+    node = AsrNode.from_config(
+        {
+            "mailbox": ZMQMailbox(),
+            "asr_config": {
+                "model_id": "whisper-large-v3",
+                "no_speech_threshold": 0.8,
+                "base_url": "http://asr.test/v1",
+            },
+        },
+    )
+
+    assert node.backend.no_speech_threshold == 0.8
+
+
+def test_asr_node_from_config_no_speech_threshold_null_disables_it() -> None:
+    node = AsrNode.from_config(
+        {
+            "mailbox": ZMQMailbox(),
+            "asr_config": {
+                "model_id": "whisper-large-v3",
+                "no_speech_threshold": None,
+                "base_url": "http://asr.test/v1",
+            },
+        },
+    )
+
+    assert node.backend.no_speech_threshold is None
 
 
 def test_llm_node_from_config_builds_local_backend_and_seeds_system_prompt() -> None:
@@ -63,3 +106,15 @@ def test_tts_node_from_config_builds_backend_with_voice() -> None:
     assert node.backend.model_id == "tts-1"
     assert node.backend.voice == "alloy"
     assert node.backend.base_url == "http://tts.test/v1"
+    assert node.backend.speed is None
+
+
+def test_tts_node_from_config_builds_backend_with_speed() -> None:
+    node = TtsNode.from_config(
+        {
+            "mailbox": ZMQMailbox(),
+            "tts_config": {"model_id": "tts-1", "speed": 0.85, "base_url": "http://tts.test/v1"},
+        },
+    )
+
+    assert node.backend.speed == 0.85

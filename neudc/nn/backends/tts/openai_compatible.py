@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import io
 import wave
+from typing import Any
 
 import numpy as np
-import requests
 
+from neudc.nn.backends.http_session import build_retrying_session
 from neudc.nn.backends.tts.base import BaseTTSBackend
 
 __all__ = ("OpenAICompatibleTTSBackend",)
@@ -42,6 +43,7 @@ class OpenAICompatibleTTSBackend(BaseTTSBackend):
         model_id: str,
         *,
         voice: str | None = None,
+        speed: float | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
         timeout: float = 60.0,
@@ -52,6 +54,9 @@ class OpenAICompatibleTTSBackend(BaseTTSBackend):
         ----
             model_id (str): Provider-specific model identifier (e.g. `"tts-1"`).
             voice (str | None): Provider-specific voice/speaker name (e.g. `"alloy"`).
+            speed (float | None): Playback speed multiplier forwarded to the provider
+                (OpenAI's own range is `0.25`-`4.0`, `1.0` normal speed); `None` omits
+                the field entirely and lets the provider use its own default.
             base_url (str | None): Root URL of the OpenAI-compatible API (no trailing slash needed).
             api_key (str | None): Bearer token sent as `Authorization`, when the provider requires one.
             timeout (float): Request timeout in seconds.
@@ -63,10 +68,11 @@ class OpenAICompatibleTTSBackend(BaseTTSBackend):
 
         self.model_id = model_id
         self.voice = voice
+        self.speed = speed
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
-        self._session = requests.Session()
+        self._session = build_retrying_session()
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -86,9 +92,11 @@ class OpenAICompatibleTTSBackend(BaseTTSBackend):
             tuple[np.ndarray, int]: Mono float32 PCM samples in `[-1, 1]`, and their sample rate in Hz.
 
         """
-        payload = {"model": self.model_id, "input": text, "response_format": "wav"}
+        payload: dict[str, Any] = {"model": self.model_id, "input": text, "response_format": "wav"}
         if self.voice:
             payload["voice"] = self.voice
+        if self.speed is not None:
+            payload["speed"] = self.speed
         response = self._session.post(
             f"{self.base_url}{_SPEECH_PATH}",
             json=payload,

@@ -1,0 +1,122 @@
+# Russian-language variant of voice_assistant_pipeline.yaml — same graph, same
+# services, only the language-facing settings differ (asr.language, llm system_prompt,
+# tts.voice). See that file for the full architecture/barge-in/AEC notes; this one
+# only documents what's different.
+#
+# Deployed and verified 2026-08-05 on bleaf@192.168.1.153: `ru_RU-irina-medium`
+# (single-speaker Piper voice, downloaded from the rhasspy/piper-voices HF repo) was
+# added to tts-voices/ and aliased as "irina" in tts-config/voice_to_speaker.yaml,
+# the tts service restarted, and the full loop round-tripped for real —
+# tts.voice="irina" synthesized "Привет! Это тест русского голоса." to a valid
+# 22050Hz mono WAV, which asr (language="ru") transcribed back to essentially the
+# same text ("Привет, это тест русского голоса."), and llm answered a real Russian
+# chat-completion prompt in Russian using this file's own system_prompt. `asr`/`llm`
+# needed no server-side changes for this (faster-whisper-server's multilingual
+# Whisper checkpoint and Gemma both already support Russian); `tts` needed the voice
+# file + alias above, since openedai-speech's default `voice_to_speaker.yaml` only
+# ships the OpenAI-style English aliases (alloy, echo, fable, onyx, nova, shimmer).
+#
+# To add a different/additional Russian Piper voice later, the same steps: download
+# the `.onnx`/`.onnx.json` into `tts-voices/` (paths relative to
+# docker-compose.remote.yml, which bind-mounts `./tts-voices` into the tts
+# container), add an alias in `tts-config/voice_to_speaker.yaml`
+# (`tts-1: <alias>: {model: voices/<file>.onnx, speaker: <index or blank for
+# single-speaker>}`), then `docker compose -f docker-compose.remote.yml restart tts`.
+# Both config files under `tts-config/` are root-owned on this host (created via a
+# container bind mount) — editing them needs `sudo`.
+#
+# asr.language: "ru" pins faster-whisper-server's language instead of relying on
+# per-request auto-detection (see OpenAICompatibleASRBackend docstring) — auto-detect
+# already works for Russian, this just removes a source of misdetection on short
+# utterances now that the assistant is pinned to one language end to end.
+#
+# tool (AgentToolNode): same as the English config — timers, web fetch, sandboxed
+# file I/O via inline [[tool_name({...})]] markers (see AgentToolMixin). Tool names
+# and JSON argument keys stay in English (that's the wire protocol this mixin parses,
+# not spoken output); only the system_prompt instruction text is translated.
+#
+# asr.no_speech_threshold: also same as the English config — see its header comment
+# for the full "ASR hallucination on silence/noise" explanation. Confirmed against
+# this exact deployment with Russian text: near-silent noise hallucinated to
+# "Продолжение следует..." with no_speech_prob 0.89, filtered out before it ever
+# reaches llm.
+
+nodes:
+  - id: reader
+    type: AudioReaderNode
+    sample_rate: 16000
+    channels: 1
+    chunk_duration: 0.5
+    source: mic
+    outputs: [vad]
+
+  - id: vad
+    type: VadNode
+    energy_threshold: 0.01
+    barge_in_energy_threshold: 0.02
+    barge_in_cooldown_sec: 1.5
+    session_id: "local-voice-assistant-ru"
+    aec_enabled: true
+    aec_filter_length: 2048
+    aec_step_size: 0.3
+    mic_sample_rate: 16000
+    control_outputs: [llm, tool, tts, player]
+    outputs: [asr]
+
+  - id: asr
+    type: AsrNode
+    asr_config:
+      model_id: "Systran/faster-whisper-large-v3"
+      language: "ru"
+      base_url: "http://192.168.1.153:5241/v1"
+      no_speech_threshold: 0.6  # default — rejects Whisper hallucinating text on silence/residual echo, see OpenAICompatibleASRBackend
+    min_speech_duration: 0.3
+    outputs: [llm]
+
+  - id: llm
+    type: LlmNode
+    llm_config:
+      provider: LocalLLMBackend
+      model_id: "gemma-4-12b-it-UD-Q4_K_XL"
+      base_url: "http://192.168.1.153:5242/v1"
+      stream: true
+      temperature: 0.7
+    system_prompt: >
+      Ты краткий и полезный голосовой ассистент. Всегда отвечай только на русском
+      языке, коротко и по делу, даже если сообщение пользователя на другом языке.
+      Твои ответы озвучивает голосовой синтезатор, поэтому никогда не используй
+      markdown-разметку — не пиши звёздочки, подчёркивания, тильды, обратные
+      кавычки, заголовки или маркированные списки. Пиши только обычными
+      предложениями.
+      Ты можешь использовать инструменты — ровно один маркер на вызов, в любом
+      месте ответа, в формате [[tool_name({"arg": "value"})]] (аргументы — валидный
+      JSON). Доступные инструменты:
+      - set_timer({"seconds": <number>, "label": <string, optional>}) - ставит
+      напоминание, которое будет озвучено через заданное число секунд.
+      - fetch_url({"url": <string>}) - загружает веб-страницу и возвращает её видимый
+      текст (обрезанный).
+      - create_file({"path": <string>, "content": <string>}) - создаёт или
+      перезаписывает файл в песочнице ассистента.
+      - read_file({"path": <string>}) - читает файл из песочницы ассистента.
+    outputs: [tool]
+
+  - id: tool
+    type: AgentToolNode
+    session_id: "local-voice-assistant-ru"  # matches vad's, so a timer reminder lands on the active turn
+    sandbox_dir: "./agent_sandbox"
+    fetch_timeout: 10.0
+    fetch_max_chars: 1500
+    outputs: [tts]
+
+  - id: tts
+    type: TtsNode
+    tts_config:
+      model_id: "tts-1"
+      voice: "irina"  # single-speaker Piper voice, deployed and round-trip verified, see notes above
+      speed: 0.9
+      base_url: "http://192.168.1.153:5243/v1"
+    outputs: [player]
+
+  - id: player
+    type: AudioPlayerNode
+    outputs: [vad]

@@ -9,14 +9,17 @@ real sleep proportional to `n_frames / sample_rate` (the same thing a real block
 from __future__ import annotations
 
 import itertools
+import sys
 import time
+import types
 from typing import Any
 
 import numpy as np
+import pytest
 
 from neudc.core.communication.mailbox.zmq_mailbox import ZMQMailbox
 from neudc.core.communication.messaging.types import AudioChunk
-from neudc.core.node.readers.audio_reader import AudioReaderNode
+from neudc.core.node.readers.audio_reader import AudioReaderNode, SoundDeviceAudioDevice
 
 
 class FakeAudioDevice:
@@ -114,3 +117,75 @@ def test_device_error_stops_reader_cleanly() -> None:
         time.sleep(0.05)
 
     assert reader.is_running is False
+
+
+class _FakeInputStream:
+    """Stand-in for `sounddevice.InputStream`: `.read()` returns a fixed (n, channels) array."""
+
+    def __init__(self, samplerate: int, channels: int, device: object) -> None:
+        del samplerate, device
+        self.channels = channels
+        self.started = False
+        self.stopped = False
+        self.closed = False
+        # (n_frames, channels), like the real sd.InputStream.read() always returns —
+        # even for mono, which is the whole point of the bug this covers.
+        self._data = np.arange(100 * channels, dtype=np.float32).reshape(-1, channels)
+
+    def start(self) -> None:
+        self.started = True
+
+    def read(self, n_frames: int) -> tuple[np.ndarray, bool]:
+        return self._data[:n_frames], False
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def fake_sounddevice(monkeypatch: pytest.MonkeyPatch) -> list[_FakeInputStream]:
+    """Inject a fake `sounddevice` module into `sys.modules` — real hardware, not tested here."""
+    created: list[_FakeInputStream] = []
+    fake_module = types.ModuleType("sounddevice")
+
+    def _input_stream(samplerate: int, channels: int, device: object) -> _FakeInputStream:
+        stream = _FakeInputStream(samplerate, channels, device)
+        created.append(stream)
+        return stream
+
+    fake_module.InputStream = _input_stream  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_module)
+    return created
+
+
+def test_sounddevice_read_flattens_mono_capture_to_1d(fake_sounddevice: list[_FakeInputStream]) -> None:
+    # sd.InputStream.read() always returns (n_frames, channels), even for mono — the
+    # AudioDevice contract (see FakeAudioDevice above) is 1D regardless of channel
+    # count, so mono capture must be flattened here, not left (n, 1).
+    device = SoundDeviceAudioDevice(sample_rate=16000, channels=1)
+
+    samples = device.read(10)
+
+    assert samples.shape == (10,)
+    assert np.array_equal(samples, np.arange(10, dtype=np.float32))
+
+
+def test_sounddevice_read_keeps_multichannel_capture_2d(fake_sounddevice: list[_FakeInputStream]) -> None:
+    device = SoundDeviceAudioDevice(sample_rate=16000, channels=2)
+
+    samples = device.read(10)
+
+    assert samples.shape == (10, 2)
+
+
+def test_sounddevice_close_stops_and_closes_the_stream(fake_sounddevice: list[_FakeInputStream]) -> None:
+    device = SoundDeviceAudioDevice(sample_rate=16000, channels=1)
+
+    device.close()
+
+    stream = fake_sounddevice[0]
+    assert stream.stopped is True
+    assert stream.closed is True

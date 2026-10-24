@@ -11,7 +11,7 @@ save — and get a pre-labelled dataset ready for human review.
 
 ---
 
-## ✨ What it does
+## What it does
 
 - **Declarative pipelines.** Describe a node graph in YAML; the framework wires the
   transport, spawns the workers and validates the config before anything starts.
@@ -23,7 +23,7 @@ save — and get a pre-labelled dataset ready for human review.
   active-learning selection and dataset assembly ship as nodes.
 - **Observable.** Optional Prometheus metrics endpoint, per-node health monitoring.
 
-## 🧭 How it works
+## How it works
 
 neudc has two planes. The **control plane** turns a YAML file into a running graph:
 the config validator fails fast (and names the offending node), the `NodeFactory` lazily
@@ -34,7 +34,7 @@ every edge is an independent 1:1 channel and fan-out is just several edges.
 
 ```mermaid
 flowchart TB
-    subgraph control["🧠 Control plane"]
+    subgraph control["Control plane"]
         direction LR
         yaml["📄 pipeline.yaml"] --> validator["config validator<br/><i>fail-fast · names the bad node</i>"]
         validator --> factory["NodeFactory<br/><i>lazy imports</i>"]
@@ -43,7 +43,7 @@ flowchart TB
 
     manager -. "spawns and wires" .-> data
 
-    subgraph data["⚙️ Data plane — one running pipeline"]
+    subgraph data["Data plane — one running pipeline"]
         direction LR
         reader["FolderImageNode<br/><i>thread</i>"]:::thread
         resize["ResizeProcessNode<br/><i>process</i>"]:::proc
@@ -417,7 +417,7 @@ running the pipeline locally against real microphone/speaker hardware.
 | `ResizeNode` | thread | Resizes frames (`target_width`, `target_height`) |
 | `ResizeProcessNode` | process | Same, isolated in its own process |
 | `HashNode` | thread | Perceptual-hash dedup filter (`delta`, `hash_size`, `hash_type`) |
-| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy (`energy_threshold`) |
+| `VadNode` | thread | Marks silent `AudioChunk`s as droppable by RMS energy; owns turn-boundary assignment and barge-in cancellation (`energy_threshold`, `session_id`, `control_outputs`); optional adaptive echo cancellation against `AudioPlayerNode` reference audio (`aec_enabled`) |
 | `DrawNode` | thread | Draws detected boxes onto the frame |
 | `SaveImageNode` | thread | Writes frames to disk (`save_dir`) |
 | `ProcessDetInference` | process | Single-frame object detection (`model_config`) |
@@ -427,15 +427,16 @@ running the pipeline locally against real microphone/speaker hardware.
 | `ActiveLearning` | thread | Selects frames worth human labelling |
 | `CreateDataset` | thread | Assembles the resulting dataset |
 | `TextNormalizeNode` | thread | Non-CV: strips/lowercases `TextChunk.text` (`accepts`/`emits` = `TextChunk`) |
-| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `session_id`, `min_speech_duration`) — `AudioChunk` → `TextChunk` |
+| `AsrNode` | thread | Buffers VAD-segmented speech and transcribes it via a remote ASR service (`asr_config`, `min_speech_duration`) — `AudioChunk` → `TextChunk`, propagating `session_id`/`turn_id` from `VadNode` |
 | `LlmNode` | thread | Answers transcriptions via a pluggable `LLMBackend`, keeping conversation history (`llm_config`, `system_prompt`) — `TextChunk` → `TextChunk` |
+| `AgentToolNode` | thread | Resolves inline `[[tool_name({...})]]` markers in `TextChunk` text via a pluggable tool registry — timers/reminders, web page fetch+parse, sandboxed file create/read (`enable_timers`, `enable_web_fetch`, `enable_file_io`, `sandbox_dir`) — `TextChunk` → `TextChunk` |
 | `TtsNode` | thread | Synthesizes replies via a remote TTS service (`tts_config`) — `TextChunk` → `AudioChunk` |
-| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device (`device`) |
+| `AudioPlayerNode` | thread | Plays incoming `AudioChunk`s through a pluggable output device, in blocks so barge-in can cut it off mid-playback (`device`, `playback_check_interval`); also emits a copy of each played block as AEC reference audio |
 
 Model-backed nodes take a `model_config` naming the backend (`TorchBackend`,
 `ONNXBackend`, `TRTBackend`), the weights `path` and the `device_id` (`-1` for CPU).
 See [ASR / TTS backends and the voice assistant pipeline](#asr--tts-backends-and-the-voice-assistant-pipeline)
-for `AsrNode`/`LlmNode`/`TtsNode`/`AudioPlayerNode` config details.
+for `AsrNode`/`LlmNode`/`AgentToolNode`/`TtsNode`/`AudioPlayerNode` config details.
 
 ## 🔌 Control-plane API
 
@@ -452,6 +453,8 @@ python3 -m neudc.entrypoints.api_server --host 127.0.0.1 --port 8000
 | `/pipelines` | GET | List every managed pipeline and its status |
 | `/pipelines/{name}/start` | POST | Validate a `{"nodes": [...], "task": {...}}` body and start it (409 if already running, 422 on a bad config) |
 | `/pipelines/{name}/stop` | POST | Stop a running pipeline (404 if unknown) |
+| `/pipelines/{name}/register` | POST | Make a caller-started pipeline visible (`{"nodes": [...]}`) without this API managing its process — for configs `/start` can't run at all, e.g. one needing an injected live device object (409/422 same as `/start`); see [voice assistant docs](docs/voice_assistant/README.md#4-watching-it-metrics-and-the-dashboard) |
+| `/pipelines/{name}/unregister` | POST | Undo `/register` (404 if unknown); does not touch the caller's actual process |
 | `/pipelines/{name}/status` | GET | Single pipeline's status (404 if unknown) |
 | `/pipelines/{name}/preview` | GET | Latest frame from that pipeline's `SaveImageNode`, if it has one (404 otherwise) |
 | `/config/validate` | POST | Validate a `{"nodes": [...]}` body via `config_schema` without starting anything |
@@ -513,10 +516,10 @@ docker compose up          # api on :8000, frontend on :3000, talking to each ot
 
 This `api` service only manages pipelines it starts itself via `POST /pipelines/{name}/start`
 (a JSON-only config — no live device objects). It is **not** how pipelines needing real
-hardware run (e.g. a voice-assistant-style pipeline's microphone/speaker) — those run on
-the host directly and would carry their own embedded copy of this same API. Point the
-dockerized frontend at a host-run pipeline's API instead of the compose file's own `api`
-service like this:
+hardware run (e.g. the [voice assistant](docs/voice_assistant/README.md)'s microphone/speaker) —
+those run on the host directly and carry their own embedded copy of this same API. Point
+the dockerized frontend at a host-run pipeline's API instead of the compose file's own
+`api` service like this:
 
 ```bash
 API_BASE_URL=http://host.docker.internal:8000 docker compose up frontend
